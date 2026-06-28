@@ -22,6 +22,7 @@ export default async function FirearmsPage() {
   const counts = new Map(summary.firearmCounts.map((f) => [f.id, f.count]));
   const items: FirearmListItem[] = firearms.map((f) => ({
     id: f.id,
+    ownerId: f.ownerId,
     name: f.name,
     manufacturer: f.manufacturer,
     caliber: f.caliber,
@@ -35,6 +36,7 @@ export default async function FirearmsPage() {
   return (
     <FirearmsView
       firearms={items}
+      currentUserId={user.id}
       showSerial={showSerial}
       caliberSuggestions={caliberSuggestions}
       manufacturerSuggestions={manufacturers()}

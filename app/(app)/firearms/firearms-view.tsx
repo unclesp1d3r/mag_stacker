@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { ShareControl } from "@/app/(app)/grants/share-control";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/feedback";
 import { Card, PageHeader } from "@/components/ui/surface";
@@ -11,11 +12,13 @@ import { FirearmForm, type FirearmFormValues } from "./firearm-form";
 
 export interface FirearmListItem extends FirearmFormValues {
   id: string;
+  ownerId: string;
   magazineCount: number;
 }
 
 interface FirearmsViewProps {
   firearms: FirearmListItem[];
+  currentUserId: string;
   showSerial: boolean;
   caliberSuggestions: string[];
   manufacturerSuggestions: string[];
@@ -25,6 +28,7 @@ type FormState = { open: false } | { open: true; initial?: FirearmFormValues };
 
 export function FirearmsView({
   firearms,
+  currentUserId,
   showSerial,
   caliberSuggestions,
   manufacturerSuggestions,
@@ -108,6 +112,13 @@ export function FirearmsView({
                 <TD className="text-right tabular">{item.magazineCount}</TD>
                 <TD className="text-right">
                   <div className="flex justify-end gap-1">
+                    {item.ownerId === currentUserId ? (
+                      <ShareControl
+                        parentType="firearm"
+                        parentId={item.id}
+                        itemName={item.name}
+                      />
+                    ) : null}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -115,14 +126,16 @@ export function FirearmsView({
                     >
                       Edit
                     </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      disabled={pending}
-                      onClick={() => onDelete(item)}
-                    >
-                      Delete
-                    </Button>
+                    {item.ownerId === currentUserId ? (
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        disabled={pending}
+                        onClick={() => onDelete(item)}
+                      >
+                        Delete
+                      </Button>
+                    ) : null}
                   </div>
                 </TD>
               </TRow>

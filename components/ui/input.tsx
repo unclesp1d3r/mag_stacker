@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, TextareaHTMLAttributes } from "react";
+import type { InputHTMLAttributes, Ref, TextareaHTMLAttributes } from "react";
 import { cn } from "./cn";
 
 const BASE =
@@ -9,10 +9,15 @@ const BASE =
 
 export function Input({
   className,
+  ref,
   ...props
-}: InputHTMLAttributes<HTMLInputElement>) {
+}: InputHTMLAttributes<HTMLInputElement> & { ref?: Ref<HTMLInputElement> }) {
   return (
-    <input className={cn(BASE, "h-10 text-sm tabular", className)} {...props} />
+    <input
+      ref={ref}
+      className={cn(BASE, "h-10 text-sm tabular", className)}
+      {...props}
+    />
   );
 }
 
