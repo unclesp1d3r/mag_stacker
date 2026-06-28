@@ -9,6 +9,12 @@ COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
 COPY . .
+# `next build` imports the db client, which fails fast without DATABASE_URL.
+# The pool connects lazily (never during this dynamic-only build), so a dummy
+# value satisfies module load without ever opening a connection. The real
+# DATABASE_URL is supplied at runtime by docker-compose.
+ENV DATABASE_URL="postgres://build:build@127.0.0.1:5432/build"
+ENV BETTER_AUTH_SECRET="build-only-placeholder-secret-not-used-at-runtime"
 RUN bun run build
 
 # --- Runner: production-only deps + built app + migration sources -----------
@@ -28,7 +34,9 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.ts ./next.config.ts
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
+COPY --from=builder /app/auth.ts ./auth.ts
 COPY --from=builder /app/src ./src
+COPY --from=builder /app/scripts ./scripts
 
 # Run as the unprivileged user shipped in the bun image.
 USER bun
