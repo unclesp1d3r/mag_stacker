@@ -1,0 +1,113 @@
+import { asc, eq, inArray } from "drizzle-orm";
+import {
+  authorizeAndDeleteParent,
+  authorizeUpdate,
+  resolveCreateOwner,
+} from "@/src/auth/authorize";
+import { NotFoundError } from "@/src/auth/errors";
+import { getVisibleIds, resolvePermission } from "@/src/auth/visibility";
+import { db } from "@/src/db/client";
+import { firearm } from "@/src/db/schema";
+import { ValidationError } from "../errors";
+import { type FirearmInput, validateFirearm } from "./validate";
+
+/**
+ * Firearm service (U5). Visibility-scoped CRUD/list to the parity floor. Every
+ * read/write resolves through the U4 scoping layer (R66). Validation runs before
+ * any write (R21); raw values are persisted (R18).
+ */
+
+export type Firearm = typeof firearm.$inferSelect;
+
+export interface FirearmCreateInput extends FirearmInput {
+  manufacturer?: string;
+  serialNumber?: string;
+  notes?: string;
+  /** Create-on-behalf target owner; defaults to the acting user (KTD-5). */
+  ownerId?: string;
+}
+
+export type FirearmUpdateInput = Omit<FirearmCreateInput, "ownerId">;
+
+function persistableFields(input: FirearmCreateInput | FirearmUpdateInput) {
+  return {
+    // Raw values persisted verbatim (R18/R19); optional text is empty-not-null.
+    name: input.name,
+    caliber: input.caliber,
+    manufacturer: input.manufacturer ?? "",
+    serialNumber: input.serialNumber ?? "",
+    notes: input.notes ?? "",
+  };
+}
+
+export async function createFirearm(
+  actorId: string,
+  input: FirearmCreateInput,
+): Promise<Firearm> {
+  const codes = validateFirearm(input);
+  if (codes.length > 0) throw new ValidationError(codes);
+
+  return db.transaction(async (tx) => {
+    const ownerId = await resolveCreateOwner(tx, actorId, input.ownerId);
+    const [row] = await tx
+      .insert(firearm)
+      .values({ ownerId, ...persistableFields(input) })
+      .returning();
+    return row;
+  });
+}
+
+export async function updateFirearm(
+  actorId: string,
+  id: string,
+  input: FirearmUpdateInput,
+): Promise<Firearm> {
+  const codes = validateFirearm(input);
+  if (codes.length > 0) throw new ValidationError(codes);
+
+  return db.transaction(async (tx) => {
+    await authorizeUpdate(tx, actorId, "firearm", id);
+    const [row] = await tx
+      .update(firearm)
+      .set({ ...persistableFields(input), updatedAt: new Date() })
+      .where(eq(firearm.id, id))
+      .returning();
+    if (!row) throw new NotFoundError();
+    return row;
+  });
+}
+
+/** Owner-only delete; removes this firearm's join rows + grants (R23, R35, R17b). */
+export async function deleteFirearm(
+  actorId: string,
+  id: string,
+): Promise<void> {
+  await authorizeAndDeleteParent(actorId, "firearm", id);
+}
+
+/** Get a single firearm, or not-found if it is outside the requester's visible set. */
+export async function getFirearm(
+  actorId: string,
+  id: string,
+): Promise<Firearm> {
+  const perm = await resolvePermission(db, actorId, "firearm", id);
+  if (perm === null) throw new NotFoundError();
+  const [row] = await db
+    .select()
+    .from(firearm)
+    .where(eq(firearm.id, id))
+    .limit(1);
+  if (!row) throw new NotFoundError();
+  return row;
+}
+
+/** Owned + shared firearms ordered by name ascending; always an array (R22, R68). */
+export async function listFirearms(actorId: string): Promise<Firearm[]> {
+  const visible = await getVisibleIds(db, actorId, "firearm");
+  if (visible.size === 0) return [];
+  return db
+    .select()
+    .from(firearm)
+    .where(inArray(firearm.id, [...visible]))
+    .orderBy(asc(firearm.name));
+}
