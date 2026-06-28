@@ -1,0 +1,58 @@
+# Self-hosted MagStacker stack: Next.js app + Postgres.
+#
+# Secrets (POSTGRES_PASSWORD, BETTER_AUTH_SECRET, ...) are supplied at runtime
+# via a gitignored `.env` file or the host environment — never committed here
+# or baked into the image. Copy `.env.example` to `.env` and fill it in.
+#
+# Network exposure on a home network should sit behind a TLS-terminating
+# reverse proxy so session cookies and credentials are never sent in cleartext.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-magstacker}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-magstacker}
+    volumes:
+      - magstacker-pgdata:/var/lib/postgresql/data
+    ports:
+      # Host port is configurable; defaults away from 5432 to avoid clashing
+      # with a host Postgres. The app reaches the db by service name internally.
+      - "${POSTGRES_HOST_PORT:-5544}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-magstacker} -d ${POSTGRES_DB:-magstacker}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["bun", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-magstacker}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-magstacker}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-magstacker}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-magstacker}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+    ports:
+      - "${APP_HOST_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  magstacker-pgdata:
