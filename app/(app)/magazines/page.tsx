@@ -1,10 +1,16 @@
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { PageHeader } from "@/components/ui/surface";
 import { getCurrentUser } from "@/src/auth/session";
 import { db } from "@/src/db/client";
 import { listFirearms } from "@/src/domain/firearms/service";
 import { listMagazinesFiltered } from "@/src/domain/magazines/filter";
-import { calibersForInput } from "@/src/domain/reference/reference";
+import {
+  calibersForFilter,
+  calibersForInput,
+} from "@/src/domain/reference/reference";
+import { ExportButton } from "./export-button";
+import { FilterBar } from "./filter-bar";
 import type { FirearmOption } from "./magazine-form";
 import { type MagazineListItem, MagazinesView } from "./magazines-view";
 
@@ -22,11 +28,13 @@ export default async function MagazinesPage({ searchParams }: PageProps) {
     compatibleFirearmId: params.firearm,
   };
 
-  const [magazines, firearms, caliberSuggestions] = await Promise.all([
-    listMagazinesFiltered(user.id, filter),
-    listFirearms(user.id),
-    calibersForInput(db, user.id),
-  ]);
+  const [magazines, firearms, caliberSuggestions, filterCalibers] =
+    await Promise.all([
+      listMagazinesFiltered(user.id, filter),
+      listFirearms(user.id),
+      calibersForInput(db, user.id),
+      calibersForFilter(db, user.id),
+    ]);
 
   const nameById = new Map(firearms.map((f) => [f.id, f.name]));
   const nameCounts = new Map<string, number>();
@@ -41,6 +49,7 @@ export default async function MagazinesPage({ searchParams }: PageProps) {
 
   const items: MagazineListItem[] = magazines.map((m) => ({
     id: m.id,
+    ownerId: m.ownerId,
     brandModel: m.brandModel,
     caliber: m.caliber,
     baseCapacity: m.baseCapacity,
@@ -61,9 +70,14 @@ export default async function MagazinesPage({ searchParams }: PageProps) {
       <PageHeader
         title="Magazines"
         description="Search, filter, add, and export your magazines."
+        actions={<ExportButton />}
       />
+      <Suspense fallback={null}>
+        <FilterBar calibers={filterCalibers} firearmOptions={firearmOptions} />
+      </Suspense>
       <MagazinesView
         magazines={items}
+        currentUserId={user.id}
         firearmOptions={firearmOptions}
         caliberSuggestions={caliberSuggestions}
         filtered={filtered}
