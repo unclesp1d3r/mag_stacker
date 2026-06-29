@@ -47,11 +47,11 @@ export function PageHeader({
 
 export function Stat({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="rounded-[var(--radius-lg)] border border-line bg-paper-raised p-5 shadow-[var(--shadow-raised)]">
-      <div className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+    <div className="relative overflow-hidden rounded-[var(--radius-lg)] border border-line bg-paper-raised p-5 shadow-[var(--shadow-raised)] before:absolute before:left-5 before:top-0 before:h-0.5 before:w-3.5 before:bg-blaze before:content-['']">
+      <div className="font-mono text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-ink-faint">
         {label}
       </div>
-      <div className="mt-1 text-3xl font-semibold tabular text-ink">
+      <div className="mt-1.5 text-3xl font-semibold tabular text-ink">
         {value}
       </div>
     </div>

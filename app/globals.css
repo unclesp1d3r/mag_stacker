@@ -1,35 +1,72 @@
 @import "tailwindcss";
 
 /*
- * MagStacker visual direction: Swiss / utilitarian inventory.
- * Warm-neutral "paper" surfaces, near-black ink, a single semantic blaze accent
- * for primary actions, steel for structure. Dense, high-contrast tables;
- * monospace for numeric/label/serial data. Intentional scale hierarchy — not a
- * generic card-grid dashboard or unmodified component defaults.
+ * The Machined Console — one instrument, two modes.
+ *
+ *   dark  (default / SSR fallback) = "Field Console": graphite readout,
+ *         high-contrast, the anodized accent runs bright/amber and lights up
+ *         active state.
+ *   light (`[data-theme="light"]`) = "Machined Instrument": matte near-white,
+ *         deep burnt-orange accent, machined inset on primary controls.
+ *
+ * Theme is driven by next-themes (attribute="data-theme", default "system").
+ * Shared identity across both: tabular monospace figures, hairline precision
+ * borders, the anodized-orange accent, and "active = lit / marked". Token names
+ * are stable so every component themes for free.
  */
-:root {
-  --paper: oklch(98.5% 0.004 90);
-  --paper-raised: oklch(100% 0 0);
-  --paper-sunken: oklch(96% 0.006 90);
-  --ink: oklch(22% 0.01 60);
-  --ink-soft: oklch(45% 0.012 60);
-  --ink-faint: oklch(62% 0.012 60);
-  --line: oklch(89% 0.008 70);
-  --line-strong: oklch(80% 0.01 70);
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
 
-  --blaze: oklch(58% 0.18 36);
-  --blaze-ink: oklch(98% 0.01 36);
-  --blaze-soft: oklch(94% 0.04 40);
-  --steel: oklch(48% 0.05 245);
-  --danger: oklch(52% 0.2 25);
-  --danger-soft: oklch(95% 0.04 25);
-  --ok: oklch(56% 0.13 150);
+  --paper: #15181c;
+  --paper-raised: #1a1e24;
+  --paper-sunken: #11151a;
+  --ink: #e9edf1;
+  --ink-soft: #c5ccd4;
+  --ink-faint: #8a929c;
+  --line: #2a3037;
+  --line-strong: #39414a;
+
+  --blaze: #ffb240;
+  --blaze-ink: #1a1205;
+  --blaze-soft: #2a2415;
+  --steel: #8fb4e8;
+  --danger: #ff6b5e;
+  --danger-soft: #2c1816;
+  --ok: #57d98a;
 
   --radius: 0.375rem;
   --radius-lg: 0.625rem;
+  --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.35), 0 2px 10px rgb(0 0 0 / 0.3);
+  --shadow-pop: 0 12px 40px rgb(0 0 0 / 0.55);
+  /* primary control "lights up" in dark; reads as a machined inset in light */
+  --glow-blaze: 0 0 16px rgb(255 178 64 / 0.3);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --paper: #f3f2ee;
+  --paper-raised: #ffffff;
+  --paper-sunken: #eceae4;
+  --ink: #1e1c19;
+  --ink-soft: #6a665e;
+  --ink-faint: #918c82;
+  --line: #dcdad3;
+  --line-strong: #cbc8bf;
+
+  --blaze: #bd4620;
+  --blaze-ink: #fdf3ee;
+  --blaze-soft: #f6e7df;
+  --steel: #3a6ea5;
+  --danger: #b23224;
+  --danger-soft: #f7e4e1;
+  --ok: #2f8f57;
+
   --shadow-raised:
-    0 1px 2px oklch(20% 0.02 60 / 0.06), 0 2px 8px oklch(20% 0.02 60 / 0.05);
-  --shadow-pop: 0 8px 30px oklch(20% 0.02 60 / 0.14);
+    0 1px 2px rgb(40 36 30 / 0.06), 0 2px 8px rgb(40 36 30 / 0.05);
+  --shadow-pop: 0 8px 30px rgb(40 36 30 / 0.16);
+  --glow-blaze: 0 1px 0 #9c3a18, 0 1px 3px rgb(0 0 0 / 0.18);
 }
 
 @theme inline {

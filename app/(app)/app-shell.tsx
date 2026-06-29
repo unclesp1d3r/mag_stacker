@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { signOut } from "@/lib/auth-client";
 
 interface NavItem {
@@ -82,6 +83,7 @@ export function AppShell({
             >
               {user.name || user.email}
             </span>
+            <ThemeToggle />
             <Button variant="ghost" size="sm" onClick={logout}>
               Sign out
             </Button>

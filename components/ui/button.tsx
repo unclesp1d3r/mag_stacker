@@ -6,7 +6,7 @@ type Size = "sm" | "md";
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    "bg-blaze text-blaze-ink border-transparent hover:brightness-95 active:brightness-90 shadow-[var(--shadow-raised)]",
+    "bg-blaze text-blaze-ink border-transparent hover:brightness-105 active:brightness-95 shadow-[var(--glow-blaze)]",
   secondary:
     "bg-paper-raised text-ink border-line-strong hover:bg-paper-sunken active:bg-paper-sunken",
   ghost:
