@@ -2,11 +2,15 @@
  * Bulk-add label algorithm (U10, parity §10.3–§10.4 + §12.4). Pure.
  */
 
+import { MAX_BULK_ADD_COUNT } from "@/src/domain/magazines/validate";
+
 /**
  * Generate `count` labels starting at `startAt`.
  *
  * - Empty/whitespace-only prefix ⇒ all labels are empty strings (no numbering).
- * - `count < 1` ⇒ no labels.
+ * - `count < 1`, or `count` above the bulk-add ceiling ⇒ no labels. Callers
+ *   validate `count` first (R53); the upper bound here is a defensive cap so the
+ *   function never allocates an array from an unbounded, caller-supplied length.
  * - Otherwise `<prefix><N>` zero-padded to width = max(2, digits in the largest
  *   N emitted), so the width grows as the sequence crosses 99 → 100, etc.
  */
@@ -15,7 +19,7 @@ export function generateLabels(
   count: number,
   startAt = 1,
 ): string[] {
-  if (count < 1) return [];
+  if (count < 1 || count > MAX_BULK_ADD_COUNT) return [];
   if (prefix.trim() === "") return new Array(count).fill("");
 
   const largest = startAt + count - 1;
