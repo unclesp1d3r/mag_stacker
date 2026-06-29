@@ -30,8 +30,8 @@ next request.
   (base plus any extension), labels, acquired date, serial, notes.
 - Link each magazine to the firearms it fits. The order you set is the order it
   shows up in everywhere else.
-- Bulk-add a labeled batch in one go — say 60 mags numbered `AR-01` through
-  `AR-60` — and the count picks up where it left off the next time you add.
+- Bulk-add a labeled batch in one go (say, 60 mags numbered `AR-01` through
+  `AR-60`), and the count picks up where it left off the next time you add.
 - Filter magazines by brand or model, exact caliber, or which firearm they fit.
 - Check a summary: a running total, plus counts per caliber and per firearm,
   over everything you can see.
