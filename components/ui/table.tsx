@@ -35,8 +35,9 @@ export function TH({
     <th
       scope="col"
       className={cn(
-        // Stamped mono column label (DESIGN.md "label" role).
-        "px-4 py-3 text-left font-mono text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-ink-faint",
+        // Stamped mono column label (DESIGN.md "label" role). ink-soft (not
+        // ink-faint) keeps headers legible on the sunken surface — AA 4.5:1.
+        "px-4 py-3 text-left font-mono text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-ink-soft",
         className,
       )}
       {...props}
@@ -49,10 +50,15 @@ export function TH({
 export function TRow({
   className,
   children,
+  flash = false,
   ...props
-}: HTMLAttributes<HTMLTableRowElement>) {
+}: HTMLAttributes<HTMLTableRowElement> & {
+  /** One-shot "armed gauge" highlight after this row was just created/edited. */
+  flash?: boolean;
+}) {
   return (
     <tr
+      data-flash={flash ? "true" : undefined}
       className={cn(
         "border-b border-line transition-colors duration-150 last:border-0 hover:bg-blaze-soft/45",
         className,

@@ -19,12 +19,12 @@ async function requireUserId(): Promise<string> {
 
 export async function createFirearmAction(
   input: FirearmCreateInput,
-): Promise<ActionResult> {
+): Promise<ActionResult<{ id: string }>> {
   try {
     const userId = await requireUserId();
-    await createFirearm(userId, input);
+    const created = await createFirearm(userId, input);
     revalidatePath("/firearms");
-    return { ok: true };
+    return { ok: true, data: { id: created.id } };
   } catch (error) {
     return toActionError(error);
   }
@@ -33,12 +33,12 @@ export async function createFirearmAction(
 export async function updateFirearmAction(
   id: string,
   input: FirearmCreateInput,
-): Promise<ActionResult> {
+): Promise<ActionResult<{ id: string }>> {
   try {
     const userId = await requireUserId();
     await updateFirearm(userId, id, input);
     revalidatePath("/firearms");
-    return { ok: true };
+    return { ok: true, data: { id } };
   } catch (error) {
     return toActionError(error);
   }

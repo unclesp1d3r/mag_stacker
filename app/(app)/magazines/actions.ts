@@ -23,12 +23,12 @@ async function requireUserId(): Promise<string> {
 
 export async function createMagazineAction(
   input: MagazineInput,
-): Promise<ActionResult> {
+): Promise<ActionResult<{ id: string }>> {
   try {
     const userId = await requireUserId();
-    await createMagazine(userId, input);
+    const created = await createMagazine(userId, input);
     revalidatePath("/magazines");
-    return { ok: true };
+    return { ok: true, data: { id: created.id } };
   } catch (error) {
     return toActionError(error);
   }
@@ -37,12 +37,12 @@ export async function createMagazineAction(
 export async function updateMagazineAction(
   id: string,
   input: MagazineInput,
-): Promise<ActionResult> {
+): Promise<ActionResult<{ id: string }>> {
   try {
     const userId = await requireUserId();
     await updateMagazine(userId, id, input);
     revalidatePath("/magazines");
-    return { ok: true };
+    return { ok: true, data: { id } };
   } catch (error) {
     return toActionError(error);
   }

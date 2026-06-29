@@ -7,34 +7,90 @@
         "role": "primary",
         "displayName": "Anodized Orange",
         "canonical": "#ffb240 (dark) / #bd4620 (light)",
-        "tonalRamp": ["#2a1a05", "#5c3a0c", "#8a5612", "#b8741c", "#e09433", "#ffb240", "#ffc874", "#ffe0ad"]
+        "tonalRamp": [
+          "#2a1a05",
+          "#5c3a0c",
+          "#8a5612",
+          "#b8741c",
+          "#e09433",
+          "#ffb240",
+          "#ffc874",
+          "#ffe0ad"
+        ]
       },
       "paper": {
         "role": "neutral",
         "displayName": "Console Graphite / Matte Paper",
         "canonical": "#15181c (dark) / #f3f2ee (light)",
-        "tonalRamp": ["#0d0f12", "#15181c", "#1a1e24", "#252b33", "#39414a", "#5a6571", "#8a929c", "#c5ccd4"]
+        "tonalRamp": [
+          "#0d0f12",
+          "#15181c",
+          "#1a1e24",
+          "#252b33",
+          "#39414a",
+          "#5a6571",
+          "#8a929c",
+          "#c5ccd4"
+        ]
       },
       "ink": {
         "role": "neutral",
         "displayName": "Ink",
         "canonical": "#e9edf1 (dark) / #1e1c19 (light)",
-        "tonalRamp": ["#11151a", "#2a3037", "#4a525c", "#6b7682", "#8a929c", "#c5ccd4", "#e9edf1", "#f6f8fa"]
+        "tonalRamp": [
+          "#11151a",
+          "#2a3037",
+          "#4a525c",
+          "#6b7682",
+          "#8a929c",
+          "#c5ccd4",
+          "#e9edf1",
+          "#f6f8fa"
+        ]
       }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "Page titles only; fixed rem, never fluid." },
-      "label": { "displayName": "Mono Label", "purpose": "Stamped uppercase kicker / column header; the machined tell." },
-      "data": { "displayName": "Data", "purpose": "Every number/serial; mono + tabular figures." }
+      "display": {
+        "displayName": "Display",
+        "purpose": "Page titles only; fixed rem, never fluid."
+      },
+      "label": {
+        "displayName": "Mono Label",
+        "purpose": "Stamped uppercase kicker / column header; the machined tell."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Every number/serial; mono + tabular figures."
+      }
     },
     "shadows": [
-      { "name": "raised", "value": "0 1px 2px rgb(40 36 30 / 0.06), 0 2px 8px rgb(40 36 30 / 0.05)", "purpose": "Whisper under cards/tables (light). Near-invisible on dark graphite." },
-      { "name": "glow-blaze", "value": "0 0 16px rgb(255 178 64 / 0.30)", "purpose": "Dark-mode state signal: the primary/lit control is energized." },
-      { "name": "inset-blaze", "value": "0 1px 0 #9c3a18, 0 1px 3px rgb(0 0 0 / 0.18)", "purpose": "Light-mode machined inset on the primary control (same token as glow)." }
+      {
+        "name": "raised",
+        "value": "0 1px 2px rgb(40 36 30 / 0.06), 0 2px 8px rgb(40 36 30 / 0.05)",
+        "purpose": "Whisper under cards/tables (light). Near-invisible on dark graphite."
+      },
+      {
+        "name": "glow-blaze",
+        "value": "0 0 16px rgb(255 178 64 / 0.30)",
+        "purpose": "Dark-mode state signal: the primary/lit control is energized."
+      },
+      {
+        "name": "inset-blaze",
+        "value": "0 1px 0 #9c3a18, 0 1px 3px rgb(0 0 0 / 0.18)",
+        "purpose": "Light-mode machined inset on the primary control (same token as glow)."
+      }
     ],
     "motion": [
-      { "name": "ease-out-expo", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Default easing; confident exponential ease-out, no bounce." },
-      { "name": "icon-swap", "value": "180ms ease-out, rotate -90/0/90 + opacity", "purpose": "Theme-toggle icon crossfade (Motion). Reduced-motion: instant." }
+      {
+        "name": "ease-out-expo",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Default easing; confident exponential ease-out, no bounce."
+      },
+      {
+        "name": "icon-swap",
+        "value": "180ms ease-out, rotate -90/0/90 + opacity",
+        "purpose": "Theme-toggle icon crossfade (Motion). Reduced-motion: instant."
+      }
     ],
     "breakpoints": [
       { "name": "sm", "value": "640px" },
@@ -102,10 +158,26 @@
       "Dense, scannable tables over airy marketing space"
     ],
     "rules": [
-      { "name": "The One Accent Rule", "body": "Anodized orange is the only routine chromatic color and appears on ≤10% of a screen — the live control, current selection, lit row. Its rarity makes 'lit' read as signal.", "section": "colors" },
-      { "name": "The No-Cream Rule", "body": "The light surface is matte paper at near-zero warmth, not cream/sand/beige. Warmth lives in the accent.", "section": "colors" },
-      { "name": "The Tabular Rule", "body": "Every number is mono with tabular figures. Numbers that don't line up vertically are a defect.", "section": "typography" },
-      { "name": "The Flat-Until-Lit Rule", "body": "Surfaces are flat at rest, separated by tone and hairline. Only the accent visibly energizes, and only when it marks live state.", "section": "elevation" }
+      {
+        "name": "The One Accent Rule",
+        "body": "Anodized orange is the only routine chromatic color and appears on ≤10% of a screen — the live control, current selection, lit row. Its rarity makes 'lit' read as signal.",
+        "section": "colors"
+      },
+      {
+        "name": "The No-Cream Rule",
+        "body": "The light surface is matte paper at near-zero warmth, not cream/sand/beige. Warmth lives in the accent.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "Every number is mono with tabular figures. Numbers that don't line up vertically are a defect.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-Until-Lit Rule",
+        "body": "Surfaces are flat at rest, separated by tone and hairline. Only the accent visibly energizes, and only when it marks live state.",
+        "section": "elevation"
+      }
     ],
     "dos": [
       "Do keep anodized orange to ≤10% of a screen.",

@@ -1,12 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { ShareControl } from "@/app/(app)/grants/share-control";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/feedback";
 import { Card, PageHeader } from "@/components/ui/surface";
 import { DataTable, TD, TH, THead, TRow } from "@/components/ui/table";
+import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
+import { useRowFlash } from "@/hooks/use-row-flash";
 import { deleteFirearmAction } from "./actions";
 import { FirearmForm, type FirearmFormValues } from "./firearm-form";
 
@@ -35,24 +38,17 @@ export function FirearmsView({
 }: FirearmsViewProps) {
   const router = useRouter();
   const [form, setForm] = useState<FormState>({ open: false });
-  const [pending, startTransition] = useTransition();
+  const { flashId, flash } = useRowFlash();
+  const del = useDeleteConfirmation<FirearmListItem>({
+    entityLabel: "Firearm",
+    getName: (item) => item.name,
+    remove: deleteFirearmAction,
+  });
 
-  function refresh() {
+  function refresh(touchedId?: string) {
     setForm({ open: false });
+    if (touchedId) flash(touchedId);
     router.refresh();
-  }
-
-  function onDelete(item: FirearmListItem) {
-    if (
-      !confirm(
-        `Delete "${item.name}"? Linked magazines keep their other compatibility.`,
-      )
-    )
-      return;
-    startTransition(async () => {
-      await deleteFirearmAction(item.id);
-      router.refresh();
-    });
   }
 
   return (
@@ -61,7 +57,9 @@ export function FirearmsView({
         title="Firearms"
         description="Your collection and anything shared with you."
         actions={
-          !form.open ? (
+          // The cold-start empty state carries its own CTA; only show the
+          // toolbar button once there's a collection to act on.
+          !form.open && firearms.length > 0 ? (
             <Button onClick={() => setForm({ open: true })}>Add firearm</Button>
           ) : null
         }
@@ -103,7 +101,7 @@ export function FirearmsView({
           </THead>
           <tbody>
             {firearms.map((item) => (
-              <TRow key={item.id}>
+              <TRow key={item.id} flash={item.id === flashId}>
                 <TD className="font-medium">{item.name}</TD>
                 <TD className="tabular">{item.caliber}</TD>
                 {showSerial ? (
@@ -130,8 +128,7 @@ export function FirearmsView({
                       <Button
                         variant="danger"
                         size="sm"
-                        disabled={pending}
-                        onClick={() => onDelete(item)}
+                        onClick={() => del.request(item)}
                       >
                         Delete
                       </Button>
@@ -143,6 +140,15 @@ export function FirearmsView({
           </tbody>
         </DataTable>
       ) : null}
+
+      <ConfirmDialog
+        open={del.target !== null}
+        title={`Delete “${del.target?.name}”?`}
+        description="Linked magazines keep their other compatibility. This can’t be undone."
+        pending={del.pending}
+        onConfirm={del.confirm}
+        onCancel={del.cancel}
+      />
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/feedback";
+import { useToast } from "@/components/ui/toast";
 
 const DEFAULT_FILENAME = "magstacker-inventory.csv";
 
@@ -11,6 +12,7 @@ const DEFAULT_FILENAME = "magstacker-inventory.csv";
  * in-flight state and a non-leaking error message on failure (R48).
  */
 export function ExportButton() {
+  const { toast } = useToast();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,6 +31,7 @@ export function ExportButton() {
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(url);
+      toast({ message: "Inventory exported", detail: DEFAULT_FILENAME });
     } catch {
       setError("Could not export. Please try again.");
     } finally {

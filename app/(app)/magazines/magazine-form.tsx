@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useId, useMemo, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Callout } from "@/components/ui/feedback";
 import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import type { ActionResult } from "@/src/domain/action-result";
 import { generateLabels } from "@/src/domain/bulkadd/labels";
 import { validateMagazine } from "@/src/domain/magazines/validate";
@@ -57,7 +59,8 @@ interface MagazineFormProps {
   initial?: MagazineFormValues;
   firearmOptions: FirearmOption[];
   caliberSuggestions: string[];
-  onDone: () => void;
+  /** `touchedId` flashes the just-created/edited row; omitted for bulk adds. */
+  onDone: (touchedId?: string) => void;
   onCancel: () => void;
 }
 
@@ -68,6 +71,7 @@ export function MagazineForm({
   onDone,
   onCancel,
 }: MagazineFormProps) {
+  const { toast } = useToast();
   const isEdit = Boolean(initial?.id);
   const [values, setValues] = useState<MagazineFormValues>(initial ?? DEFAULTS);
   const [mode, setMode] = useState<"single" | "bulk">("single");
@@ -142,7 +146,7 @@ export function MagazineForm({
     };
 
     startTransition(async () => {
-      let result: ActionResult<{ created: number }>;
+      let result: ActionResult<{ id?: string; created?: number }>;
       if (isEdit && initial?.id) {
         result = await updateMagazineAction(initial.id, baseInput);
       } else if (mode === "bulk") {
@@ -157,9 +161,27 @@ export function MagazineForm({
       } else {
         result = await createMagazineAction(baseInput);
       }
-      if (result.ok) onDone();
-      else if (result.codes) setCodes(result.codes);
-      else setServerError(result.error ?? "Could not save.");
+      if (result.ok) {
+        if (isEdit) {
+          toast({ message: "Changes saved", detail: values.brandModel });
+        } else if (mode === "bulk") {
+          const n = result.data?.created ?? addCount;
+          toast({
+            message: `Seated ${n} magazine${n === 1 ? "" : "s"}`,
+            detail: labelPrefix.trim()
+              ? `Label ${labelPrefix.trim()}`
+              : undefined,
+            tone: "blaze",
+          });
+        } else {
+          toast({ message: "Magazine seated", detail: values.brandModel });
+        }
+        onDone(result.data?.id);
+      } else if (result.codes) {
+        setCodes(result.codes);
+      } else {
+        setServerError(result.error ?? "Could not save.");
+      }
     });
   }
 
@@ -321,7 +343,13 @@ export function MagazineForm({
         </legend>
         {firearmOptions.length === 0 ? (
           <p className="text-xs text-ink-faint">
-            Add a firearm first to link compatibility.
+            <Link
+              href="/firearms"
+              className="font-medium text-blaze underline-offset-2 hover:underline"
+            >
+              Add a firearm
+            </Link>{" "}
+            first to link compatibility.
           </p>
         ) : (
           <div className="max-h-44 overflow-y-auto rounded-[var(--radius)] border border-line bg-paper-raised p-1">

@@ -41,6 +41,11 @@
   --shadow-pop: 0 12px 40px rgb(0 0 0 / 0.55);
   /* primary control "lights up" in dark; reads as a machined inset in light */
   --glow-blaze: 0 0 16px rgb(255 178 64 / 0.3);
+
+  /* Semantic stacking scale (theme-agnostic). Sticky → modal → toast. */
+  --z-sticky: 10;
+  --z-modal: 50;
+  --z-toast: 60;
 }
 
 [data-theme="light"] {
@@ -51,17 +56,22 @@
   --paper-sunken: #eceae4;
   --ink: #1e1c19;
   --ink-soft: #6a665e;
-  --ink-faint: #918c82;
+  /* Darkened from #918c82 (2.8:1) to clear WCAG AA 4.5:1 on paper/inputs — the
+     light "Machined Instrument" muted text. Stays lighter than --ink-soft. */
+  --ink-faint: #716d66;
   --line: #dcdad3;
   --line-strong: #cbc8bf;
 
-  --blaze: #bd4620;
+  /* Deepened a touch from #bd4620 so accent text on --blaze-soft (active nav,
+     badges) clears AA 4.5:1; still the anodized burnt-orange. */
+  --blaze: #b6431f;
   --blaze-ink: #fdf3ee;
   --blaze-soft: #f6e7df;
   --steel: #3a6ea5;
   --danger: #b23224;
   --danger-soft: #f7e4e1;
-  --ok: #2f8f57;
+  /* Deepened from #2f8f57 so "ok" badge text clears AA on light tints. */
+  --ok: #297c4c;
 
   --shadow-raised:
     0 1px 2px rgb(40 36 30 / 0.06), 0 2px 8px rgb(40 36 30 / 0.05);
@@ -112,6 +122,29 @@ body {
 .tabular {
   font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * "Armed gauge" — a just-touched row lights with the anodized accent and
+ * settles, the way a gauge lights when it's armed (DESIGN.md north star).
+ * Conveys state (this is what just changed), not decoration. Applied per-cell
+ * so the wash spans the full row under border-collapse. Reduced-motion is
+ * honored by the global rule above (duration collapses to instant).
+ */
+[data-flash="true"] > td {
+  animation: arm-row 1100ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes arm-row {
+  0%,
+  12% {
+    background-color: var(--blaze-soft);
+    box-shadow: inset 0 1px 0 var(--blaze);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 0 1px 0 transparent;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

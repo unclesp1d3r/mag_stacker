@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, Ref } from "react";
 import { cn } from "./cn";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
@@ -22,6 +22,7 @@ const SIZES: Record<Size, string> = {
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
+  ref?: Ref<HTMLButtonElement>;
 }
 
 export function Button({
@@ -29,15 +30,18 @@ export function Button({
   size = "md",
   className,
   type = "button",
+  ref,
   ...props
 }: ButtonProps) {
   return (
     <button
+      ref={ref}
       type={type}
       className={cn(
         "inline-flex items-center justify-center rounded-[var(--radius)] border font-medium",
-        "transition-[filter,background-color,color] duration-150",
-        "disabled:cursor-not-allowed disabled:opacity-55",
+        "transition-[filter,background-color,color,transform] duration-150",
+        // Tactile press — the control settles under your finger, then releases.
+        "active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0",
         VARIANTS[variant],
         SIZES[size],
         className,

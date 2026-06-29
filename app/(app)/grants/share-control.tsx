@@ -108,7 +108,7 @@ export function ShareControl({
         Share
       </Button>
       {open ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4">
+        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-ink/30 p-4">
           <div
             role="dialog"
             aria-modal="true"

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/feedback";
 import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { validateFirearm } from "@/src/domain/firearms/validate";
 import { firstMessage } from "@/src/domain/validation-messages";
 import { createFirearmAction, updateFirearmAction } from "./actions";
@@ -22,7 +23,8 @@ interface FirearmFormProps {
   initial?: FirearmFormValues;
   caliberSuggestions: string[];
   manufacturerSuggestions: string[];
-  onDone: () => void;
+  /** `touchedId` flashes the just-created/edited row. */
+  onDone: (touchedId?: string) => void;
   onCancel: () => void;
 }
 
@@ -41,6 +43,7 @@ export function FirearmForm({
   onDone,
   onCancel,
 }: FirearmFormProps) {
+  const { toast } = useToast();
   const isEdit = Boolean(initial?.id);
   const [values, setValues] = useState<FirearmFormValues>(initial ?? EMPTY);
   const [codes, setCodes] = useState<string[]>([]);
@@ -72,7 +75,11 @@ export function FirearmForm({
           ? await updateFirearmAction(initial.id, values)
           : await createFirearmAction(values);
       if (result.ok) {
-        onDone();
+        toast({
+          message: isEdit ? "Changes saved" : "Firearm logged",
+          detail: values.name,
+        });
+        onDone(result.data?.id);
       } else if (result.codes) {
         setCodes(result.codes);
       } else {

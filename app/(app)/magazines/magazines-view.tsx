@@ -1,12 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { ShareControl } from "@/app/(app)/grants/share-control";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge, EmptyState } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/surface";
 import { DataTable, TD, TH, THead, TRow } from "@/components/ui/table";
+import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
+import { useRowFlash } from "@/hooks/use-row-flash";
 import { deleteMagazineAction } from "./actions";
 import {
   type FirearmOption,
@@ -62,28 +65,28 @@ export function MagazinesView({
 }: MagazinesViewProps) {
   const router = useRouter();
   const [form, setForm] = useState<FormState>({ open: false });
-  const [pending, startTransition] = useTransition();
+  const { flashId, flash } = useRowFlash();
+  const del = useDeleteConfirmation<MagazineListItem>({
+    entityLabel: "Magazine",
+    getName: (item) => item.brandModel,
+    remove: deleteMagazineAction,
+  });
 
-  function refresh() {
+  function refresh(touchedId?: string) {
     setForm({ open: false });
+    if (touchedId) flash(touchedId);
     router.refresh();
-  }
-
-  function onDelete(item: MagazineListItem) {
-    if (!confirm(`Delete "${item.brandModel}"?`)) return;
-    startTransition(async () => {
-      await deleteMagazineAction(item.id);
-      router.refresh();
-    });
   }
 
   return (
     <div className="space-y-5">
-      <div className="flex justify-end">
-        {!form.open ? (
+      {/* When the inventory is truly empty the empty state owns the add CTA;
+          show this toolbar button only once there are rows (or a filter). */}
+      {!form.open && (magazines.length > 0 || filtered) ? (
+        <div className="flex justify-end">
           <Button onClick={() => setForm({ open: true })}>Add magazine</Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {form.open ? (
         <Card>
@@ -105,6 +108,23 @@ export function MagazinesView({
           <EmptyState
             title="No magazines match your filters"
             description="Try clearing or widening the filters above."
+          />
+        ) : firearmOptions.length === 0 ? (
+          // Cold start: no firearms and no magazines. Point at the path to the
+          // payoff — compatibility mapping needs a firearm first.
+          <EmptyState
+            title="Set up your inventory"
+            description="MagStacker maps which magazines fit which firearms. Start with a firearm, then add the magazines that feed it."
+            action={
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button onClick={() => router.push("/firearms")}>
+                  Add a firearm
+                </Button>
+                <Button variant="ghost" onClick={() => setForm({ open: true })}>
+                  Start with a magazine
+                </Button>
+              </div>
+            }
           />
         ) : (
           <EmptyState
@@ -129,7 +149,7 @@ export function MagazinesView({
           </THead>
           <tbody>
             {magazines.map((item) => (
-              <TRow key={item.id}>
+              <TRow key={item.id} flash={item.id === flashId}>
                 <TD className="font-medium">{item.brandModel}</TD>
                 <TD className="tabular">{item.caliber}</TD>
                 <TD className="text-right tabular">
@@ -167,8 +187,7 @@ export function MagazinesView({
                       <Button
                         variant="danger"
                         size="sm"
-                        disabled={pending}
-                        onClick={() => onDelete(item)}
+                        onClick={() => del.request(item)}
                       >
                         Delete
                       </Button>
@@ -180,6 +199,15 @@ export function MagazinesView({
           </tbody>
         </DataTable>
       ) : null}
+
+      <ConfirmDialog
+        open={del.target !== null}
+        title={`Delete “${del.target?.brandModel}”?`}
+        description="This removes the magazine from your inventory and can’t be undone."
+        pending={del.pending}
+        onConfirm={del.confirm}
+        onCancel={del.cancel}
+      />
     </div>
   );
 }

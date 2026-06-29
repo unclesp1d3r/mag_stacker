@@ -64,17 +64,26 @@ export default async function MagazinesPage({ searchParams }: PageProps) {
   }));
 
   const filtered = Boolean(params.q || params.caliber || params.firearm);
+  // Filtering and export only make sense once there's inventory (or an active
+  // filter to clear). On a truly empty account, the cold-start guidance carries
+  // the screen alone — no controls competing with the one path forward.
+  const showControls = items.length > 0 || filtered;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Magazines"
         description="Search, filter, add, and export your magazines."
-        actions={<ExportButton />}
+        actions={showControls ? <ExportButton /> : undefined}
       />
-      <Suspense fallback={null}>
-        <FilterBar calibers={filterCalibers} firearmOptions={firearmOptions} />
-      </Suspense>
+      {showControls ? (
+        <Suspense fallback={null}>
+          <FilterBar
+            calibers={filterCalibers}
+            firearmOptions={firearmOptions}
+          />
+        </Suspense>
+      ) : null}
       <MagazinesView
         magazines={items}
         currentUserId={user.id}
