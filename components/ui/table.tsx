@@ -20,7 +20,7 @@ export function DataTable({
 
 export function THead({ children }: { children: ReactNode }) {
   return (
-    <thead className="border-b border-line-strong bg-paper-sunken">
+    <thead className="border-b-2 border-line-strong bg-paper-sunken">
       <tr>{children}</tr>
     </thead>
   );
@@ -35,7 +35,8 @@ export function TH({
     <th
       scope="col"
       className={cn(
-        "px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-ink-soft",
+        // Stamped mono column label (DESIGN.md "label" role).
+        "px-4 py-3 text-left font-mono text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-ink-faint",
         className,
       )}
       {...props}
@@ -53,7 +54,7 @@ export function TRow({
   return (
     <tr
       className={cn(
-        "border-b border-line last:border-0 transition-colors hover:bg-blaze-soft/30",
+        "border-b border-line transition-colors duration-150 last:border-0 hover:bg-blaze-soft/45",
         className,
       )}
       {...props}
@@ -69,10 +70,7 @@ export function TD({
   ...props
 }: HTMLAttributes<HTMLTableCellElement>) {
   return (
-    <td
-      className={cn("px-4 py-2.5 align-middle text-ink", className)}
-      {...props}
-    >
+    <td className={cn("px-4 py-3 align-middle text-ink", className)} {...props}>
       {children}
     </td>
   );

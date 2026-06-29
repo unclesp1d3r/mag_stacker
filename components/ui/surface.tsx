@@ -29,9 +29,9 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-4">
+    <header className="relative flex flex-wrap items-end justify-between gap-4 border-b border-line pb-4 before:absolute before:bottom-[-1px] before:left-0 before:h-0.5 before:w-12 before:bg-blaze before:content-['']">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">
+        <h1 className="text-pretty text-[1.75rem] font-bold leading-none tracking-[-0.02em] text-ink">
           {title}
         </h1>
         {description ? (
