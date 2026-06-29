@@ -1,0 +1,3 @@
+# Keeps public/ present in fresh checkouts so the Docker build's
+# `COPY --from=builder /app/public ./public` step succeeds. Drop static assets
+# (favicons, robots.txt, og images) here as needed.
