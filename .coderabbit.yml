@@ -1,0 +1,200 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+tone_instructions:
+  "Technical, professional, concise. Focus on actionable feedback. Match project culture: decisive,
+  production-focused, pattern-driven. Reference ARCHITECTURE.md and GOTCHAS.md. Be direct, avoid editorializing."
+
+early_access: true
+
+inheritance: true
+
+reviews:
+  high_level_summary_instructions: |-
+    Provide a concise summary (3-5 bullets) covering:
+        1. What changed (components, features, fixes)
+        2. Technical approach (Next.js routes, Drizzle queries, BetterAuth, etc.)
+        3. Testing coverage (bun:test unit, Testing Library components, Playwright E2E)
+        4. Breaking changes or migration notes (if any)
+        5. Follow-up items or known limitations
+
+    Keep it technical and focused on implementation details.
+  high_level_summary_in_walkthrough: true
+  auto_title_instructions: |
+    Generate PR titles following conventional commit format:
+    - Type: feat, fix, refactor, docs, test, chore, style, perf, ci
+    - Scope: component name, feature area, or module (optional)
+    - Description: concise, imperative mood
+
+    Examples:
+    - "fix(auth): handle BetterAuth session refresh errors"
+
+    Prefer specific scopes over generic ones. Use kebab-case for multi-word scopes.
+  collapse_walkthrough: false
+  estimate_code_review_effort: false
+  labeling_instructions:
+    - label: bug
+      instructions: Apply when PR fixes broken functionality, error handling, or incorrect behavior.
+    - label: enhancement
+      instructions: Apply when PR improves existing features or adds new functionality.
+    - label: backend
+      instructions: Apply when PR modifies packages/backend/ (Hono routes, services, middleware, Drizzle queries).
+    - label: frontend
+      instructions: Apply when PR modifies packages/frontend/ (React components, pages, stores, hooks).
+    - label: shared
+      instructions: Apply when PR modifies packages/shared/ (Drizzle schema, Zod schemas, shared types).
+    - label: documentation
+      instructions: Apply when PR changes docs/, ARCHITECTURE.md, CONTRIBUTING.md, GOTCHAS.md, or AGENTS.md.
+    - label: security
+      instructions: "Apply when PR addresses security: auth, RBAC, input validation, secrets, XSS/injection prevention."
+    - label: testing
+      instructions: Apply when PR adds or modifies test files.
+    - label: dependencies
+      instructions: Apply when PR updates package.json files or bun.lock.
+    - label: infrastructure
+      instructions: Apply when PR modifies docker-compose.yml, Dockerfile, CI workflows, or deployment configs.
+    - label: priority:critical
+      instructions: Apply for security vulnerabilities, data loss risks, or production outages. Requires immediate attention.
+    - label: priority:high
+      instructions: Apply for bugs blocking other work, broken core workflows, or urgent features on the sprint path.
+    - label: priority:medium
+      instructions: Apply for standard feature work, non-blocking bugs, and improvements that should be addressed soon.
+    - label: priority:low
+      instructions: Apply for nice-to-have improvements, minor polish, tech debt cleanup, or issues with easy workarounds.
+  auto_apply_labels: true
+  auto_assign_reviewers: true
+  path_filters:
+    - "!node_modules/**"
+    - "!bun.lock"
+    - "!dist/**"
+    - "!build/**"
+    - "!*.tsbuildinfo"
+    - "!coverage/**"
+    - "!**/test-results/**"
+    - "!**/playwright-report/**"
+    - "!.env*"
+    - "!*.log"
+    - "!*.pem"
+    - "!*.key"
+    - "!*.crt"
+    - "!.idea/**"
+    - "!.vscode/**"
+    - "!*.swp"
+    - "!*.swo"
+    - "!*~"
+    - "!.claude/**"
+    - "!.cursor/**"
+    - "!.codex/**"
+    - "!.impeccable.md"
+    - "!CLAUDE.md"
+    - "!.kiro/hooks/**"
+    - "!**/*.min.js"
+    - "!**/*.bundle.js"
+    - "!**/*.map"
+    - "!*.tmp"
+    - "!*.temp"
+    - "!*.bak"
+  slop_detection:
+    label: slop
+  finishing_touches:
+    unit_tests:
+      enabled: false
+    simplify:
+      enabled: true
+  pre_merge_checks:
+    title:
+      requirements:
+        "All commits must follow [Conventional Commits](https://www.conventionalcommits.org): `<type>(<scope>):
+        knowledge_base: opt_out: false web_search: enabled: true code_guidelines: enabled: true filePatterns: # Project
+        documentation (AGENTS.md included by default) - 'ARCHITECTURE.md' - 'CONTRIBUTING.md' - 'GOTCHAS.md' -
+        'docs/development.md' - 'docs/testing.md' # Authoritative steering docs - '.kiro/steering/**/*.md' -
+        '.kiro/specs/**/*.md' issue_enrichment: auto_enrich: enabled: true planning: enabled: true <description>`"
+  tools:
+    ruff:
+      enabled: false
+    hadolint:
+      enabled: false
+    swiftlint:
+      enabled: false
+    phpstan:
+      enabled: false
+    phpmd:
+      enabled: false
+    phpcs:
+      enabled: false
+    golangci-lint:
+      enabled: false
+    tflint:
+      enabled: false
+    detekt:
+      enabled: false
+    eslint:
+      enabled: false
+    flake8:
+      enabled: false
+    rubocop:
+      enabled: false
+    buf:
+      enabled: false
+    regal:
+      enabled: false
+    pmd:
+      enabled: false
+    clang:
+      enabled: false
+    cppcheck:
+      enabled: false
+    circleci:
+      enabled: false
+    clippy:
+      enabled: false
+    prismaLint:
+      enabled: false
+    pylint:
+      enabled: false
+    oxc:
+      enabled: false
+    shopifyThemeCheck:
+      enabled: false
+    luacheck:
+      enabled: false
+    brakeman:
+      enabled: false
+    htmlhint:
+      enabled: false
+    checkmake:
+      enabled: false
+    blinter:
+      enabled: false
+    emberTemplateLint:
+      enabled: false
+
+chat:
+  allow_non_org_members: false
+  integrations:
+    jira:
+      usage: disabled
+    linear:
+      usage: disabled
+
+knowledge_base:
+  learnings:
+    scope: local
+  issues:
+    scope: local
+  jira:
+    usage: disabled
+  linear:
+    usage: disabled
+  pull_requests:
+    scope: local
+  mcp:
+    usage: enabled
+
+issue_enrichment:
+  auto_enrich:
+    enabled: true
+  planning:
+    enabled: false
+    auto_planning:
+      enabled: false
+  labeling:
+    auto_apply_labels: true
