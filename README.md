@@ -126,14 +126,14 @@ src/
   domain/            # firearms, magazines, summary, csv, bulkadd, reference,
                      #   validation — plain TypeScript, no Next.js imports
   data/              # curated caliber/manufacturer lists
-docs/                # plan, parity reference specs, deployment guide
+docs/                # deployment guide, architecture decision records, images
 ```
 
 Authorization is enforced server-side in `src/auth`, and reads are
 viewer-relative: anything you can't see drops out of lists, the summary, and
 exports before it reaches you. The parity behaviors are pinned to exact values
-in `docs/reference/` and covered by the test suite, including two-user tests that
-try to break the sharing rules.
+and covered by the test suite, including two-user tests that try to break the
+sharing rules.
 
 ## License
 
