@@ -101,12 +101,9 @@ reviews:
       enabled: true
   pre_merge_checks:
     title:
-      requirements:
+      requirements: |
         "All commits must follow [Conventional Commits](https://www.conventionalcommits.org): `<type>(<scope>):
-        knowledge_base: opt_out: false web_search: enabled: true code_guidelines: enabled: true filePatterns: # Project
-        documentation (AGENTS.md included by default) - 'ARCHITECTURE.md' - 'CONTRIBUTING.md' - 'GOTCHAS.md' -
-        'docs/development.md' - 'docs/testing.md' # Authoritative steering docs - '.kiro/steering/**/*.md' -
-        '.kiro/specs/**/*.md' issue_enrichment: auto_enrich: enabled: true planning: enabled: true <description>`"
+
   tools:
     ruff:
       enabled: false
@@ -174,8 +171,20 @@ chat:
       usage: disabled
     linear:
       usage: disabled
-
 knowledge_base:
+  opt_out: false
+  web_search:
+    enabled: true
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "ARCHITECTURE.md"
+      - "CONTRIBUTING.md"
+      - "GOTCHAS.md"
+      - "docs/development.md"
+      - "docs/testing.md"
+      - ".kiro/steering/**/*.md"
+      - ".kiro/specs/**/*.md"
   learnings:
     scope: local
   issues:
