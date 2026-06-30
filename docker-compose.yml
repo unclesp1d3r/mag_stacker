@@ -1,5 +1,14 @@
 # Self-hosted MagStacker stack: Next.js app + Postgres.
 #
+# Image source — two supported flows:
+#   • Run a published release (no source needed):
+#       docker compose pull && docker compose up -d
+#     Pulls ghcr.io/unclesp1d3r/mag_stacker:${MAGSTACKER_VERSION:-latest}
+#     (set MAGSTACKER_VERSION in .env to pin a version, or use `edge` for main).
+#   • Build from this checkout:
+#       docker compose up --build -d
+#     Builds the Dockerfile and tags it with the same image name.
+#
 # Secrets (POSTGRES_PASSWORD, BETTER_AUTH_SECRET, ...) are supplied at runtime
 # via a gitignored `.env` file or the host environment — never committed here
 # or baked into the image. Copy `.env.example` to `.env` and fill it in.
@@ -28,6 +37,7 @@ services:
       retries: 10
 
   migrate:
+    image: ghcr.io/unclesp1d3r/mag_stacker:${MAGSTACKER_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -40,6 +50,7 @@ services:
     restart: "no"
 
   app:
+    image: ghcr.io/unclesp1d3r/mag_stacker:${MAGSTACKER_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile
