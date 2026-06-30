@@ -8,6 +8,15 @@ spreadsheet or somebody else's cloud.
 You run it on your own server, behind your own login, and the data stays with
 you.
 
+![MagStacker walkthrough: adding a magazine, mapping firearm compatibility, the caliber summary, and switching themes](docs/images/demo.gif)
+
+It ships a two-mode interface that follows your system by default — a dark
+"Field Console" and a light "Machined Instrument":
+
+|                          Dark                           |                          Light                           |
+| :-----------------------------------------------------: | :------------------------------------------------------: |
+| ![Magazines list, dark theme](docs/images/magazines-dark.png) | ![Magazines list, light theme](docs/images/magazines-light.png) |
+
 ## Who it's for
 
 - **Individuals** keeping a personal collection straight. Label your mags, see
