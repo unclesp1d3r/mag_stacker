@@ -8,6 +8,8 @@ early_access: true
 inheritance: true
 
 reviews:
+  profile: chill
+  poem: false
   high_level_summary_instructions: |-
     Provide a concise summary (3-5 bullets) covering:
         1. What changed (components, features, fixes)
@@ -92,6 +94,33 @@ reviews:
     - "!*.tmp"
     - "!*.temp"
     - "!*.bak"
+  path_instructions:
+    - path: "src/auth/**"
+      instructions: |
+        The single server-side authorization layer. Verify reads stay viewer-relative
+        (anything not visible drops out of lists, summary, and export), owner-scoping and
+        per-item grants are enforced, and no path trusts client-supplied authorization.
+    - path: "src/domain/**"
+      instructions: |
+        Plain TypeScript domain logic with no Next.js imports. Validators return ALL failure
+        codes together, not first-fail. Prefer immutable updates. Behavior is pinned to the
+        parity spec encoded in the test suite — flag changes that could drift parity without a
+        corresponding test.
+    - path: "app/**/actions.ts"
+      instructions: |
+        Server Actions must resolve the session and authorization server-side (never trust the
+        client), validate input, and return non-leaking errors via the ActionResult envelope.
+    - path: "src/db/**"
+      instructions: |
+        Drizzle schema, client, and migrations. Check migration safety (no destructive change
+        without intent), parameterized queries only, and that the DB client stays import-safe —
+        it must connect lazily (no eager DATABASE_URL access at module load) so `next build`
+        works without a database.
+    - path: "{app,components}/**/*.{ts,tsx}"
+      instructions: |
+        Frontend. Hold to WCAG 2.2 AA (labelled controls, visible focus ring,
+        prefers-reduced-motion), correct Next.js Server/Client component boundaries, and the
+        design-token system (no hard-coded colors). Tailwind v4 and Biome conventions.
   slop_detection:
     label: slop
   finishing_touches:
@@ -110,7 +139,7 @@ reviews:
     ruff:
       enabled: false
     hadolint:
-      enabled: false
+      enabled: true
     swiftlint:
       enabled: false
     phpstan:
