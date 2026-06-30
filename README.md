@@ -132,8 +132,7 @@ docs/                # deployment guide, architecture decision records, images
 Authorization is enforced server-side in `src/auth`, and reads are
 viewer-relative: anything you can't see drops out of lists, the summary, and
 exports before it reaches you. The parity behaviors are pinned to exact values
-and covered by the test suite, including two-user tests that try to break the
-sharing rules.
+in the test suite, including two-user tests that try to break the sharing rules.
 
 ## License
 

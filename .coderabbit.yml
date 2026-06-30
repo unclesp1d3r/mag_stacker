@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 tone_instructions:
   "Technical, professional, concise. Focus on actionable feedback. Match project culture: decisive,
-  production-focused, pattern-driven. Reference ARCHITECTURE.md and GOTCHAS.md. Be direct, avoid editorializing."
+  production-focused, pattern-driven. Reference AGENTS.md for stack and conventions. Be direct, avoid editorializing."
 
 early_access: true
 
@@ -36,13 +36,13 @@ reviews:
     - label: enhancement
       instructions: Apply when PR improves existing features or adds new functionality.
     - label: backend
-      instructions: Apply when PR modifies packages/backend/ (Hono routes, services, middleware, Drizzle queries).
+      instructions: Apply when PR modifies server-side code — src/ (Drizzle schema/queries, auth scoping, domain logic), app/api/, server actions, auth.ts, proxy.ts.
     - label: frontend
-      instructions: Apply when PR modifies packages/frontend/ (React components, pages, stores, hooks).
+      instructions: Apply when PR modifies UI — app/ routes and views, and components/ (React components, design-system primitives).
     - label: shared
-      instructions: Apply when PR modifies packages/shared/ (Drizzle schema, Zod schemas, shared types).
+      instructions: Apply when PR modifies cross-cutting code — src/db/ schema and src/domain/ validation and plain-TypeScript types.
     - label: documentation
-      instructions: Apply when PR changes docs/, ARCHITECTURE.md, CONTRIBUTING.md, GOTCHAS.md, or AGENTS.md.
+      instructions: Apply when PR changes docs/, AGENTS.md, or README.md.
     - label: security
       instructions: "Apply when PR addresses security: auth, RBAC, input validation, secrets, XSS/injection prevention."
     - label: testing
@@ -102,7 +102,9 @@ reviews:
   pre_merge_checks:
     title:
       requirements: |
-        "All commits must follow [Conventional Commits](https://www.conventionalcommits.org): `<type>(<scope>):
+        The PR title must follow Conventional Commits
+        (https://www.conventionalcommits.org): `<type>(<scope>): <description>`.
+        Types: feat, fix, refactor, docs, test, chore, style, perf, ci.
 
   tools:
     ruff:
@@ -178,13 +180,9 @@ knowledge_base:
   code_guidelines:
     enabled: true
     filePatterns:
-      - "ARCHITECTURE.md"
-      - "CONTRIBUTING.md"
-      - "GOTCHAS.md"
-      - "docs/development.md"
-      - "docs/testing.md"
-      - ".kiro/steering/**/*.md"
-      - ".kiro/specs/**/*.md"
+      - "AGENTS.md"
+      - "README.md"
+      - "docs/deployment.md"
   learnings:
     scope: local
   issues:
