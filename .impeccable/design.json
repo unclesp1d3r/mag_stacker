@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 2,
+  "title": "Design System: The Machined Console",
+  "extensions": {
+    "colorMeta": {
+      "anodized": {
+        "role": "primary",
+        "displayName": "Anodized Orange",
+        "canonical": "#ffb240 (dark) / #bd4620 (light)",
+        "tonalRamp": [
+          "#2a1a05",
+          "#5c3a0c",
+          "#8a5612",
+          "#b8741c",
+          "#e09433",
+          "#ffb240",
+          "#ffc874",
+          "#ffe0ad"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Console Graphite / Matte Paper",
+        "canonical": "#15181c (dark) / #f3f2ee (light)",
+        "tonalRamp": [
+          "#0d0f12",
+          "#15181c",
+          "#1a1e24",
+          "#252b33",
+          "#39414a",
+          "#5a6571",
+          "#8a929c",
+          "#c5ccd4"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#e9edf1 (dark) / #1e1c19 (light)",
+        "tonalRamp": [
+          "#11151a",
+          "#2a3037",
+          "#4a525c",
+          "#6b7682",
+          "#8a929c",
+          "#c5ccd4",
+          "#e9edf1",
+          "#f6f8fa"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Page titles only; fixed rem, never fluid."
+      },
+      "label": {
+        "displayName": "Mono Label",
+        "purpose": "Stamped uppercase kicker / column header; the machined tell."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Every number/serial; mono + tabular figures."
+      }
+    },
+    "shadows": [
+      {
+        "name": "raised",
+        "value": "0 1px 2px rgb(40 36 30 / 0.06), 0 2px 8px rgb(40 36 30 / 0.05)",
+        "purpose": "Whisper under cards/tables (light). Near-invisible on dark graphite."
+      },
+      {
+        "name": "glow-blaze",
+        "value": "0 0 16px rgb(255 178 64 / 0.30)",
+        "purpose": "Dark-mode state signal: the primary/lit control is energized."
+      },
+      {
+        "name": "inset-blaze",
+        "value": "0 1px 0 #9c3a18, 0 1px 3px rgb(0 0 0 / 0.18)",
+        "purpose": "Light-mode machined inset on the primary control (same token as glow)."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out-expo",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Default easing; confident exponential ease-out, no bounce."
+      },
+      {
+        "name": "icon-swap",
+        "value": "180ms ease-out, rotate -90/0/90 + opacity",
+        "purpose": "Theme-toggle icon crossfade (Motion). Reduced-motion: instant."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one anodized action; glows in dark, inset in light.",
+      "html": "<button class=\"ds-btn-primary\">Add magazine</button>",
+      "css": ".ds-btn-primary { display:inline-flex; align-items:center; height:40px; padding:0 16px; font:500 13px/1 system-ui,sans-serif; color:#1a1205; background:#ffb240; border:1px solid transparent; border-radius:6px; box-shadow:0 0 16px rgb(255 178 64 / .30); cursor:pointer; transition:filter .15s; } .ds-btn-primary:hover { filter:brightness(1.05); } .ds-btn-primary:active { filter:brightness(.95); } .ds-btn-primary:focus-visible { outline:2px solid #ffb240; outline-offset:2px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Low-emphasis row action (Edit / Share / Sign out).",
+      "html": "<button class=\"ds-btn-ghost\">Edit</button>",
+      "css": ".ds-btn-ghost { display:inline-flex; align-items:center; height:32px; padding:0 12px; font:500 13px/1 system-ui,sans-serif; color:#c5ccd4; background:transparent; border:1px solid transparent; border-radius:6px; cursor:pointer; transition:background .15s,color .15s; } .ds-btn-ghost:hover { background:#11151a; color:#e9edf1; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Field shell; mono+tabular value, anodized focus.",
+      "html": "<input class=\"ds-input\" value=\"9mm\" />",
+      "css": ".ds-input { height:40px; padding:0 12px; width:220px; font:400 13px/1 ui-monospace,monospace; font-variant-numeric:tabular-nums; color:#e9edf1; background:#1a1e24; border:1px solid #39414a; border-radius:6px; } .ds-input:hover { border-color:#8a929c; } .ds-input:focus-visible { outline:none; border-color:#ffb240; box-shadow:0 0 0 1px #ffb240; }"
+    },
+    {
+      "name": "Compatibility Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Compatible-firearm / permission chip.",
+      "html": "<span class=\"ds-badge\">Glock 19</span>",
+      "css": ".ds-badge { display:inline-flex; align-items:center; padding:4px 8px; font:600 11px/1 ui-monospace,monospace; letter-spacing:.04em; color:#ffb240; background:#2a2415; border:1px solid rgb(255 178 64 / .32); border-radius:999px; }"
+    },
+    {
+      "name": "Stat",
+      "kind": "card",
+      "refersTo": "table-header",
+      "description": "Tonal panel with the signature anodized tick-mark + mono label + tabular value.",
+      "html": "<div class=\"ds-stat\"><div class=\"ds-stat-k\">Total mags</div><div class=\"ds-stat-v\">24</div></div>",
+      "css": ".ds-stat { position:relative; overflow:hidden; padding:20px; min-width:160px; background:#1a1e24; border:1px solid #2a3037; border-radius:10px; } .ds-stat::before { content:''; position:absolute; left:20px; top:0; width:14px; height:2px; background:#ffb240; } .ds-stat-k { font:600 10.4px/1 ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:#8a929c; } .ds-stat-v { margin-top:6px; font:600 30px/1 system-ui,sans-serif; letter-spacing:-.02em; font-variant-numeric:tabular-nums; color:#f3f6f9; }"
+    },
+    {
+      "name": "Table Row (lit)",
+      "kind": "custom",
+      "refersTo": "table-header",
+      "description": "Inventory row; the active/current row is 'lit' with a fill + accent dot, never a side stripe.",
+      "html": "<table class=\"ds-tbl\"><tr class=\"lit\"><td><span class=\"dot\"></span>Magpul PMAG</td><td>9mm</td><td class=\"num\">17</td></tr><tr><td style=\"padding-left:29px\">OEM USGI</td><td>5.56</td><td class=\"num\">30</td></tr></table>",
+      "css": ".ds-tbl { border-collapse:collapse; width:100%; font:400 13.5px/1 system-ui,sans-serif; color:#c5ccd4; background:#1a1e24; } .ds-tbl td { padding:11px 14px; border-bottom:1px solid #232a31; } .ds-tbl .num { font-family:ui-monospace,monospace; font-variant-numeric:tabular-nums; text-align:right; color:#f3f6f9; } .ds-tbl tr.lit td { background:#1f242b; color:#eef2f6; } .ds-tbl tr:hover td { background:#20262d; } .ds-tbl .dot { display:inline-block; width:7px; height:7px; margin-right:8px; border-radius:50%; background:#ffb240; box-shadow:0 0 8px #ffb240; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Machined Console",
+    "overview": "One instrument with two faces. Dark (default) = Field Console: graphite readout, high-contrast, the anodized accent runs bright and lights up active state. Light = Machined Instrument: matte near-white tool surface, deeper burnt-orange accent, primary controls carry a machined inset. Precision gear you trust; rejects both the generic-SaaS-dashboard and the sterile-corporate-tool, and never goes cute. Delight is earned through craft.",
+    "keyCharacteristics": [
+      "Two modes, one identity: dark Field Console (default) / light Machined Instrument",
+      "Anodized-orange accent for action/selection/lit state only, never decoration",
+      "Tabular monospace for every number, label, and serial",
+      "Tonal layering + 1px hairlines carry structure; shadow is incidental",
+      "Dense, scannable tables over airy marketing space"
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "body": "Anodized orange is the only routine chromatic color and appears on ≤10% of a screen — the live control, current selection, lit row. Its rarity makes 'lit' read as signal.",
+        "section": "colors"
+      },
+      {
+        "name": "The No-Cream Rule",
+        "body": "The light surface is matte paper at near-zero warmth, not cream/sand/beige. Warmth lives in the accent.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "Every number is mono with tabular figures. Numbers that don't line up vertically are a defect.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-Until-Lit Rule",
+        "body": "Surfaces are flat at rest, separated by tone and hairline. Only the accent visibly energizes, and only when it marks live state.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep anodized orange to ≤10% of a screen.",
+      "Do set every number, label kicker, and serial in mono with tabular figures.",
+      "Do build depth from tonal layers + 1px hairlines first; shadow last.",
+      "Do let the accent glow in dark only as a state signal; machined inset in light.",
+      "Do ship empty states that teach (the 'add your first…' CTAs)."
+    ],
+    "donts": [
+      "Don't build a generic SaaS dashboard: no gradient cards, hero-metric template, or identical icon-card grids.",
+      "Don't ship a sterile corporate panel — restraint is not boring.",
+      "Don't go cute: no pastels, mascots, emoji, bounce, or elastic motion.",
+      "Don't use border-left/right > 1px as a colored accent stripe; mark active state with a lit fill + accent dot.",
+      "Don't use gradient text, decorative glassmorphism, or the accent as a background fill.",
+      "Don't put the light body on cream/sand/beige."
+    ]
+  }
+}

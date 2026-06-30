@@ -1,0 +1,21 @@
+# Keep secrets and local cruft out of the build context.
+.env
+.env.*
+!.env.example
+
+node_modules
+.next
+out
+build
+coverage
+
+.git
+.github
+.vscode
+.claude
+.agents
+docs
+
+*.tsbuildinfo
+npm-debug.log*
+.DS_Store
