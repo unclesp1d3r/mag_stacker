@@ -39,14 +39,37 @@ services:
       timeout: 5s
       retries: 10
 
+  # One-shot bootstrap: apply migrations, then seed the first admin. Both steps
+  # are idempotent — already-applied migrations are skipped, and the seed no-ops
+  # when the admin already exists — so this is safe to re-run on every `up`. The
+  # seed is skipped (not failed) when ADMIN_EMAIL/ADMIN_PASSWORD are unset, so an
+  # operator who hasn't chosen admin credentials yet still gets a running stack.
+  # Admin credentials live only in this short-lived container, never in the
+  # long-running app process.
   migrate:
     image: ghcr.io/unclesp1d3r/mag_stacker:${MAGSTACKER_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["bun", "run", "db:migrate"]
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        bun run db:migrate
+        if [ -n "$$ADMIN_EMAIL" ] && [ -n "$$ADMIN_PASSWORD" ]; then
+          bun run seed:admin
+        else
+          echo "ADMIN_EMAIL/ADMIN_PASSWORD unset — skipping first-admin seed."
+        fi
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-magstacker}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-magstacker}
+      # seed:admin imports `@/auth`, which needs the secret at module load.
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      # Optional: when set, the first admin is created on an empty DB.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     depends_on:
       db:
         condition: service_healthy
