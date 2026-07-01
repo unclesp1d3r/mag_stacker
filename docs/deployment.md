@@ -14,17 +14,24 @@ control — a homelab server, a NAS, a small VPS behind your own network.
    ```
 
 2. Build and start the stack. The `migrate` service applies the database
-   migrations before the `app` service starts:
+   migrations and — when `ADMIN_EMAIL` / `ADMIN_PASSWORD` are set in `.env` —
+   seeds the first operator account, both before the `app` service starts:
 
    ```bash
    docker compose up --build -d
    ```
 
-3. Seed the first operator account (one time, on an empty database):
+   Seeding is idempotent: it creates the admin only on an empty database and
+   no-ops afterward, so it is safe to re-run on every `up`. Confirm it ran with:
 
    ```bash
-   docker compose exec app bun run seed:admin
+   docker compose logs migrate    # "Created admin account for <email>."
    ```
+
+   If you start the stack before choosing admin credentials, the seed is
+   skipped (the stack still comes up). Set `ADMIN_EMAIL` / `ADMIN_PASSWORD` in
+   `.env` and re-run `docker compose up -d` to seed — changing `.env` recreates
+   the one-shot so it picks up the new values.
 
    Sign in at `http://<host>:${APP_HOST_PORT}/login`. All other accounts are
    created by an operator from the **Accounts** screen — there is no public
