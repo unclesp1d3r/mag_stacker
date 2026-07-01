@@ -21,9 +21,9 @@ const NEXT_LABEL: Record<ThemeLabel, string> = {
 test("theme toggle cycles the three modes without console errors", async ({
   page,
 }) => {
-  // Ignore incidental noise unrelated to the theme toggle (e.g. a favicon 404
-  // some production builds emit) so it can't masquerade as a theme regression.
-  const BENIGN = [/favicon\.ico/i, /ERR_/];
+  // Ignore only the specific favicon 404 some production builds emit — a
+  // narrow allowlist so genuine runtime errors (incl. net::ERR_*) still fail.
+  const BENIGN = [/favicon\.ico/i];
   const isBenign = (text: string) =>
     BENIGN.some((pattern) => pattern.test(text));
   const consoleErrors: string[] = [];
@@ -54,10 +54,18 @@ test("theme toggle cycles the three modes without console errors", async ({
   }
   await expect(toggle).toHaveAttribute("aria-label", labelOf("Light"));
 
-  // Now assert the full forward cycle and the resolved attribute after each.
+  // Assert the full forward cycle AND the exact resolved data-theme after each
+  // (with the OS preference pinned to light: Light→light, Dark→dark, and
+  // System resolves back to light). Asserting the exact value — not just
+  // "not system" — proves the DOM actually followed the label.
+  const RESOLVED: Record<ThemeLabel, "light" | "dark"> = {
+    Light: "light",
+    Dark: "dark",
+    System: "light",
+  };
   for (const current of ["Light", "Dark", "System"] as const) {
     await expect(toggle).toHaveAttribute("aria-label", labelOf(current));
-    await expect(html).toHaveAttribute("data-theme", /^(light|dark)$/);
+    await expect(html).toHaveAttribute("data-theme", RESOLVED[current]);
     await toggle.click();
   }
   // One full lap returns to Light.

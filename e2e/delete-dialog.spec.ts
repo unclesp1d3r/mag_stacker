@@ -10,6 +10,10 @@ import { authTest, expect } from "./fixtures/auth";
  */
 const test = authTest("delete-dialog");
 
+// Never retry: each test seeds rows into the shared per-spec account with no
+// cleanup, so a retry would leave duplicate brands and break strict locators.
+test.describe.configure({ retries: 0 });
+
 /** Create a magazine with a unique brand. */
 async function seedMagazine(page: Page, brand: string): Promise<void> {
   await page.goto("/magazines");

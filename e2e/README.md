@@ -18,7 +18,7 @@ container (and its Ryuk reaper) over Docker. The first run also downloads the
 Chromium build if it is missing:
 
 ```bash
-bunx playwright install chromium
+bunx playwright install --with-deps chromium
 ```
 
 ## How the harness works

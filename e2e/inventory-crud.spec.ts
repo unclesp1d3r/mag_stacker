@@ -8,6 +8,11 @@ import { authTest, expect } from "./fixtures/auth";
  */
 const test = authTest("inventory-crud");
 
+// Never retry: this stateful test mutates the shared per-spec account (creates
+// a firearm + magazines) with no cleanup, so a retry would start from a dirty
+// account and its "empty inventory" steps would fail.
+test.describe.configure({ retries: 0 });
+
 const MAG_BRAND = "Magpul PMAG 17";
 const BULK_BRAND = "BulkBatch Mag";
 const SEARCH_LABEL = /Search brand \/ model/;

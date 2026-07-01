@@ -9,7 +9,7 @@
  * `baseURL`, so the session passes Better Auth's origin check (R3).
  *
  * Usage in a spec:
- *   import { authTest as test, expect } from "./fixtures/auth";
+ *   import { authTest, expect } from "./fixtures/auth";
  *   const test = authTest("onboarding");
  */
 import { readFileSync } from "node:fs";

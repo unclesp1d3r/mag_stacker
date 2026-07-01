@@ -92,8 +92,16 @@ function readSetCookie(headers: Headers): string {
 function extractSessionToken(setCookie: string): string {
   const match = setCookie.match(/better-auth\.session_token=([^;]+)/);
   if (!match) {
+    // Report only the cookie names present — never the raw header, which would
+    // leak session tokens into CI logs/artifacts.
+    const names =
+      setCookie
+        .split(/,(?=[^;]+=)/)
+        .map((c) => c.trim().split("=")[0])
+        .filter(Boolean)
+        .join(", ") || "(none)";
     throw new Error(
-      `Sign-in did not return a better-auth.session_token cookie. Set-Cookie: ${setCookie}`,
+      `Sign-in did not return a better-auth.session_token cookie. Cookies present: ${names}`,
     );
   }
   return match[1];
@@ -211,12 +219,22 @@ async function main(): Promise<void> {
       admin: { email: adminEmail, password: adminPassword },
       users,
     };
-    mkdirSync(dirname(ARTIFACT_PATH), { recursive: true });
-    writeFileSync(ARTIFACT_PATH, JSON.stringify(artifact, null, 2));
+    // Restrictive modes: the artifact holds generated admin creds + session
+    // tokens, so keep it owner-only (0700 dir / 0600 file), not world-readable.
+    mkdirSync(dirname(ARTIFACT_PATH), { recursive: true, mode: 0o700 });
+    writeFileSync(ARTIFACT_PATH, JSON.stringify(artifact, null, 2), {
+      mode: 0o600,
+    });
     console.log(`[e2e] wrote ${ARTIFACT_PATH}.`);
 
-    // 5. Ensure a production build, then serve it as a supervised child.
-    if (!existsSync(".next/BUILD_ID")) {
+    // 5. Ensure a fresh production build, then serve it as a supervised child.
+    //    Locally, always rebuild — `.next/BUILD_ID` only proves *some* build
+    //    exists, so after app edits it would serve a stale bundle. In CI the
+    //    workflow already ran an explicit build step, so skip the double build.
+    if (!process.env.CI) {
+      console.log("[e2e] building the app…");
+      runScript(["run", "build"], "Build");
+    } else if (!existsSync(".next/BUILD_ID")) {
       console.log("[e2e] no production build found; running next build…");
       runScript(["run", "build"], "Build");
     }

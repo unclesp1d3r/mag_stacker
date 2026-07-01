@@ -56,7 +56,9 @@ export default defineConfig({
     url: baseURL,
     // Hand the reserved port to the launcher (it binds it + sets BETTER_AUTH_URL).
     env: { E2E_PORT: String(port) },
-    reuseExistingServer: !process.env.CI,
+    // Never reuse: the launcher does essential setup (provisions Postgres,
+    // writes the auth artifact the fixtures read), not just `next start`.
+    reuseExistingServer: false,
     // 5-minute budget covers a cold `next build` plus container start on CI.
     timeout: 300_000,
     stdout: "pipe",
