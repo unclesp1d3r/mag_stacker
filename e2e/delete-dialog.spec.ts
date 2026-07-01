@@ -10,11 +10,12 @@ import { authTest, expect } from "./fixtures/auth";
  */
 const test = authTest("delete-dialog");
 
-/** Create a magazine with a unique brand and return its name. */
+/** Create a magazine with a unique brand. */
 async function seedMagazine(page: Page, brand: string): Promise<void> {
   await page.goto("/magazines");
   const coldStart = page.getByRole("button", { name: "Start with a magazine" });
-  if (await coldStart.isVisible().catch(() => false)) {
+  // isVisible() returns false for a missing element without throwing.
+  if (await coldStart.isVisible()) {
     await coldStart.click();
   } else {
     await page.getByRole("button", { name: "Add magazine" }).click();

@@ -37,9 +37,10 @@ the launcher that owns the whole backend lifecycle. Playwright starts
 4. Pre-seeds one throwaway user per spec and mints each session **in-process**
    (via `auth.handler`, rotating `x-forwarded-for` so the sign-in rate limit
    never trips), writing the tokens to `e2e/.artifacts/env.json`.
-5. Serves a production build (`next start`) on port **3210**, with
-   `BETTER_AUTH_URL` set to the same origin as the Playwright `baseURL` (Better
-   Auth rejects a mismatched origin with a 403).
+5. Serves a production build (`next start`) on a **free port reserved by
+   `playwright.config.ts`** and passed in via `webServer.env` (so runs never
+   clash with a dev server), with `BETTER_AUTH_URL` set to the same origin as
+   the Playwright `baseURL` (Better Auth rejects a mismatched origin with a 403).
 
 Teardown: the launcher stops the container on `SIGTERM`, and the Testcontainers
 Ryuk reaper removes it when the launcher process exits regardless — so there are

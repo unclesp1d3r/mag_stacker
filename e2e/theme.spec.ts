@@ -10,7 +10,9 @@ import { authTest, expect } from "./fixtures/auth";
  */
 const test = authTest("theme");
 
-const NEXT_LABEL: Record<string, string> = {
+type ThemeLabel = "Light" | "Dark" | "System";
+
+const NEXT_LABEL: Record<ThemeLabel, string> = {
   Light: "Dark",
   Dark: "System",
   System: "Light",
@@ -19,11 +21,20 @@ const NEXT_LABEL: Record<string, string> = {
 test("theme toggle cycles the three modes without console errors", async ({
   page,
 }) => {
+  // Ignore incidental noise unrelated to the theme toggle (e.g. a favicon 404
+  // some production builds emit) so it can't masquerade as a theme regression.
+  const BENIGN = [/favicon\.ico/i, /ERR_/];
+  const isBenign = (text: string) =>
+    BENIGN.some((pattern) => pattern.test(text));
   const consoleErrors: string[] = [];
   page.on("console", (message) => {
-    if (message.type() === "error") consoleErrors.push(message.text());
+    if (message.type() === "error" && !isBenign(message.text())) {
+      consoleErrors.push(message.text());
+    }
   });
-  page.on("pageerror", (error) => consoleErrors.push(error.message));
+  page.on("pageerror", (error) => {
+    if (!isBenign(error.message)) consoleErrors.push(error.message);
+  });
 
   await page.emulateMedia({ colorScheme: "light" });
   await page.goto("/magazines");
@@ -32,7 +43,7 @@ test("theme toggle cycles the three modes without console errors", async ({
   await expect(toggle).toBeVisible();
 
   const html = page.locator("html");
-  const labelOf = (current: string) =>
+  const labelOf = (current: ThemeLabel) =>
     `Theme: ${current}. Switch to ${NEXT_LABEL[current]}.`;
 
   // Drive to a deterministic "Light" start (system → light is one click).

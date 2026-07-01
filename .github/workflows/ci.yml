@@ -66,13 +66,13 @@ jobs:
       - name: Install Playwright browser
         run: bunx playwright install --with-deps chromium
 
-      # Pull postgres:17 up front so it's cached for Testcontainers and a pull
-      # failure surfaces as a clear step, not a webServer startup timeout.
-      # NOTE: an unauthenticated pull is still subject to Docker Hub's per-IP
-      # rate limit on shared runner IPs — if CI hits it, add a
-      # docker/login-action step with a Docker Hub token, or mirror the image.
+      # Pull Postgres up front so it's cached for Testcontainers and a pull
+      # failure surfaces as a clear step, not a webServer startup timeout. Uses
+      # the AWS ECR Public mirror of the Docker Official image (same bytes) so
+      # it isn't subject to Docker Hub's unauthenticated per-IP pull limit on
+      # shared runner IPs. Must match POSTGRES_IMAGE in e2e/start-test-server.ts.
       - name: Pre-pull Postgres image
-        run: docker pull postgres:17
+        run: docker pull public.ecr.aws/docker/library/postgres:17
 
       # Build ahead of the suite so the launcher finds .next and skips the cold
       # build inside the webServer startup timeout.

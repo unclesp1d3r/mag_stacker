@@ -25,7 +25,10 @@ import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { PostgreSqlContainer } from "@testcontainers/postgresql";
+import {
+  PostgreSqlContainer,
+  type StartedPostgreSqlContainer,
+} from "@testcontainers/postgresql";
 import {
   ARTIFACT_PATH,
   type RunArtifact,
@@ -33,19 +36,52 @@ import {
   SPEC_USER_KEYS,
 } from "./fixtures/user-pool";
 
-const PORT = 3210;
+// playwright.config.ts reserves a free port and passes it here via
+// webServer.env. The launcher is only ever run as that webServer command.
+const PORT = Number(process.env.E2E_PORT);
+if (!Number.isInteger(PORT) || PORT <= 0) {
+  throw new Error(
+    "E2E_PORT must be set by playwright.config.ts (webServer.env). Run the suite via `bun run test:e2e`.",
+  );
+}
 const BASE_URL = `http://localhost:${PORT}`;
-const POSTGRES_IMAGE = "postgres:17";
+// AWS ECR Public mirror of the Docker Official postgres image (byte-identical,
+// same tags). It is not subject to Docker Hub's unauthenticated per-IP pull
+// limit, which otherwise 429s on shared CI runner IPs.
+const POSTGRES_IMAGE = "public.ecr.aws/docker/library/postgres:17";
+const E2E_DB_NAME = "magstacker_test";
 
 function randomHex(bytes: number): string {
   return randomBytes(bytes).toString("hex");
 }
 
-/** Rotate the client IP per sign-in so the DB rate-limit bucket never trips. */
-let ipCounter = 0;
-function freshIp(): string {
-  ipCounter += 1;
-  return `198.51.100.${(ipCounter % 250) + 1}`;
+/**
+ * A client-IP rotator: each call returns a fresh RFC 5737 test-net IP so the
+ * DB-stored `/sign-in/email` rate-limit bucket (keyed on x-forwarded-for) never
+ * trips while the pool mints its N sessions. State is closure-local, not module
+ * scope.
+ */
+function makeIpRotator(): () => string {
+  let n = 0;
+  return () => {
+    n += 1;
+    return `198.51.100.${(n % 250) + 1}`;
+  };
+}
+const freshIp = makeIpRotator();
+
+/**
+ * Read all Set-Cookie values, spec-safely. Per WHATWG Fetch, `headers.get` must
+ * not combine multiple Set-Cookie headers — `getSetCookie()` (an array) is the
+ * correct API. Fall back to `get` for runtimes without it.
+ */
+function readSetCookie(headers: Headers): string {
+  const withGetSetCookie = headers as Headers & { getSetCookie?(): string[] };
+  return (
+    withGetSetCookie.getSetCookie?.().join(", ") ??
+    headers.get("set-cookie") ??
+    ""
+  );
 }
 
 /** Extract the raw `better-auth.session_token` cookie value from a Set-Cookie. */
@@ -80,11 +116,23 @@ async function main(): Promise<void> {
   process.env.ADMIN_EMAIL = adminEmail;
   process.env.ADMIN_PASSWORD = adminPassword;
 
-  // 2. Ephemeral Postgres (built-in wait strategy; Ryuk reaps on exit).
+  // 2. Ephemeral Postgres (built-in wait strategy; Ryuk reaps on exit). Fail
+  //    fast with a clear message if it can't start — otherwise the error escapes
+  //    main() as an unhandled rejection and Playwright only reports a generic
+  //    5-minute webServer timeout. No container exists yet, so nothing to stop.
   console.log(`[e2e] starting ${POSTGRES_IMAGE} container…`);
-  const container = await new PostgreSqlContainer(POSTGRES_IMAGE)
-    .withDatabase("magstacker_test")
-    .start();
+  let container: StartedPostgreSqlContainer;
+  try {
+    container = await new PostgreSqlContainer(POSTGRES_IMAGE)
+      .withDatabase(E2E_DB_NAME)
+      .start();
+  } catch (error) {
+    console.error(
+      "[e2e] container failed to start (is Docker running?):",
+      error,
+    );
+    process.exit(1);
+  }
   process.env.DATABASE_URL = container.getConnectionUri();
   console.log("[e2e] container up; DATABASE_URL set.");
 
@@ -96,6 +144,16 @@ async function main(): Promise<void> {
     shuttingDown = true;
     if (child && child.exitCode === null) {
       child.kill("SIGTERM");
+      // Let the Next child drain before cutting the DB connection, so teardown
+      // doesn't leave "terminating connection" noise in the container log.
+      // Bounded so a stuck child can't hang teardown.
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 5_000);
+        child?.once("exit", () => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
     }
     try {
       await container.stop();
@@ -140,10 +198,8 @@ async function main(): Promise<void> {
           `Sign-in for ${email} returned ${signIn.status}; expected 200.`,
         );
       }
-      const sessionToken = extractSessionToken(
-        signIn.headers.get("set-cookie") ?? "",
-      );
-      users.push({ key, email, password, sessionToken });
+      const sessionToken = extractSessionToken(readSetCookie(signIn.headers));
+      users.push({ key, email, sessionToken });
     }
 
     const artifact: RunArtifact = {
@@ -181,4 +237,7 @@ async function main(): Promise<void> {
   }
 }
 
-void main();
+main().catch((error) => {
+  console.error("[e2e] launcher crashed:", error);
+  process.exit(1);
+});

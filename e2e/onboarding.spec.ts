@@ -7,6 +7,8 @@ import { authTest, expect } from "./fixtures/auth";
  */
 const test = authTest("onboarding");
 
+const SEARCH_LABEL = /Search brand \/ model/;
+
 test.describe("onboarding cold-start (R5)", () => {
   test("empty magazines shows onboarding CTAs and hides inventory controls", async ({
     page,
@@ -24,7 +26,7 @@ test.describe("onboarding cold-start (R5)", () => {
     ).toBeVisible();
 
     // Controls only make sense once inventory exists — absent on a cold start.
-    await expect(page.getByLabel(/Search brand \/ model/)).toHaveCount(0);
+    await expect(page.getByLabel(SEARCH_LABEL)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Export CSV" })).toHaveCount(
       0,
     );

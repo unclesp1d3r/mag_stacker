@@ -13,13 +13,35 @@
  *   const test = authTest("onboarding");
  */
 import { readFileSync } from "node:fs";
-import { test as base, expect } from "@playwright/test";
+import {
+  test as base,
+  expect,
+  type PlaywrightTestArgs,
+  type PlaywrightTestOptions,
+  type PlaywrightWorkerArgs,
+  type PlaywrightWorkerOptions,
+  type TestType,
+} from "@playwright/test";
 import { ARTIFACT_PATH, type RunArtifact, type SpecUserKey } from "./user-pool";
+
+/** The base Playwright `test` type (no added fixtures), returned by authTest. */
+type E2ETest = TestType<
+  PlaywrightTestArgs & PlaywrightTestOptions,
+  PlaywrightWorkerArgs & PlaywrightWorkerOptions
+>;
+
+// The launcher writes the artifact once before any test runs and it never
+// changes, so parse it at most once per worker process.
+let cachedArtifact: RunArtifact | undefined;
 
 /** Read the launcher's resolved-env artifact (baseURL, admin creds, users). */
 export function readArtifact(): RunArtifact {
+  if (cachedArtifact) return cachedArtifact;
   try {
-    return JSON.parse(readFileSync(ARTIFACT_PATH, "utf8")) as RunArtifact;
+    cachedArtifact = JSON.parse(
+      readFileSync(ARTIFACT_PATH, "utf8"),
+    ) as RunArtifact;
+    return cachedArtifact;
   } catch (error) {
     throw new Error(
       `Could not read the e2e run artifact at ${ARTIFACT_PATH}. The launcher ` +
@@ -61,7 +83,7 @@ function storageStateFor(userKey: SpecUserKey) {
  * Returns a `test` bound to the given pre-seeded user. Each spec calls this once
  * at module scope with its own key so its pages start authenticated.
  */
-export function authTest(userKey: SpecUserKey) {
+export function authTest(userKey: SpecUserKey): E2ETest {
   return base.extend({
     // biome-ignore lint/correctness/noEmptyPattern: Playwright fixtures require the fixtures arg; this one depends on none.
     storageState: async ({}, use) => {

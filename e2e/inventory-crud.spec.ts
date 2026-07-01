@@ -10,6 +10,7 @@ const test = authTest("inventory-crud");
 
 const MAG_BRAND = "Magpul PMAG 17";
 const BULK_BRAND = "BulkBatch Mag";
+const SEARCH_LABEL = /Search brand \/ model/;
 
 test("inventory CRUD, completion feedback, and controls-gating", async ({
   page,
@@ -29,7 +30,7 @@ test("inventory CRUD, completion feedback, and controls-gating", async ({
 
   await test.step("empty magazines still hides the inventory controls", async () => {
     await page.goto("/magazines");
-    await expect(page.getByLabel(/Search brand \/ model/)).toHaveCount(0);
+    await expect(page.getByLabel(SEARCH_LABEL)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Export CSV" })).toHaveCount(
       0,
     );
@@ -50,7 +51,7 @@ test("inventory CRUD, completion feedback, and controls-gating", async ({
     ).toHaveCount(1);
 
     // Now that inventory exists, the gated controls render.
-    await expect(page.getByLabel(/Search brand \/ model/)).toBeVisible();
+    await expect(page.getByLabel(SEARCH_LABEL)).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Export CSV" }),
     ).toBeVisible();
@@ -96,11 +97,11 @@ test("inventory CRUD, completion feedback, and controls-gating", async ({
   });
 
   await test.step("filter with no matches keeps the bar and shows the no-match state", async () => {
-    await page.getByLabel(/Search brand \/ model/).fill("zzz-no-such-magazine");
+    await page.getByLabel(SEARCH_LABEL).fill("zzz-no-such-magazine");
 
     await expect(
       page.getByRole("heading", { name: "No magazines match your filters" }),
     ).toBeVisible();
-    await expect(page.getByLabel(/Search brand \/ model/)).toBeVisible();
+    await expect(page.getByLabel(SEARCH_LABEL)).toBeVisible();
   });
 });

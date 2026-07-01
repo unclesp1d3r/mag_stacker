@@ -23,8 +23,11 @@ export const ARTIFACT_PATH = "e2e/.artifacts/env.json";
 export interface SeededUser {
   key: SpecUserKey;
   email: string;
-  password: string;
-  /** Raw `better-auth.session_token` cookie value, loaded as storageState. */
+  /**
+   * Raw `better-auth.session_token` cookie value, loaded as storageState. The
+   * per-user password is intentionally NOT persisted — nothing reads it, so it
+   * stays out of the artifact's secret footprint.
+   */
   sessionToken: string;
 }
 

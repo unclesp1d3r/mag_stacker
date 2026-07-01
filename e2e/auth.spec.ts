@@ -6,11 +6,19 @@ import { readArtifact } from "./fixtures/auth";
  * and touches the live /sign-in/email endpoint — every other spec loads a
  * pre-seeded session (KTD3/KTD4). It uses the seeded admin from the run
  * artifact and keeps total sign-in attempts under the 5/60s rate-limit cap.
+ *
+ * The artifact is read inside each test (not at module scope) so test
+ * collection — e.g. `--list`, which doesn't boot the launcher — never depends
+ * on it existing yet.
  */
-const { admin } = readArtifact();
+// Never retry: this is the one spec that hits the live /sign-in/email endpoint
+// (5/60s per IP). Its 2 tests make 2 attempts from the CI loopback IP; a retry
+// could push a run toward the cap and turn a 429 into a misleading auth failure.
+test.describe.configure({ retries: 0 });
 
 test.describe("login form (R4)", () => {
   test("valid credentials redirect to /magazines", async ({ page }) => {
+    const { admin } = readArtifact();
     await page.goto("/login");
     await page.getByLabel("Email").fill(admin.email);
     await page.getByLabel("Password").fill(admin.password);
@@ -22,6 +30,7 @@ test.describe("login form (R4)", () => {
   test("wrong password shows an inline, non-revealing error and stays on /login", async ({
     page,
   }) => {
+    const { admin } = readArtifact();
     await page.goto("/login");
     await page.getByLabel("Email").fill(admin.email);
     await page.getByLabel("Password").fill("wrong-password-attempt");
