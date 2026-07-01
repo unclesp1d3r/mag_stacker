@@ -1,0 +1,82 @@
+name: Docker Release
+
+# Builds the production image from the repo Dockerfile and publishes it to the
+# GitHub Container Registry (GHCR). No extra secrets needed — auth uses the
+# built-in GITHUB_TOKEN.
+#
+#   - Push a semver tag (e.g. `v1.2.3`) — or publish a GitHub Release, which
+#     creates the tag — to cut a release: pushes `1.2.3`, `1.2`, `1`, `latest`.
+#   - Pushes to `main` publish a rolling `edge` image.
+#   - `workflow_dispatch` lets you trigger a build manually.
+#
+# Image: ghcr.io/<owner>/<repo>  (e.g. ghcr.io/unclesp1d3r/mag_stacker)
+
+"on":
+  push:
+    tags: ["v*.*.*"]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write # push images + SBOM/provenance to GHCR
+
+concurrency:
+  group: docker-release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # QEMU enables the linux/arm64 build below (homelab hardware: Pi, Apple
+      # Silicon mini-servers). Emulated arm64 builds are slower — drop arm64 from
+      # `platforms` if build time matters more than reach.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tags and labels
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=edge,branch=main
+            type=sha,format=short
+          # `latest` only on a semver tag, never on main/sha.
+          flavor: latest=auto
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true # SLSA build provenance attestation
+          sbom: true # SBOM attestation (pairs with the repo's syft usage)
