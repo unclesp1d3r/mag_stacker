@@ -16,7 +16,8 @@ import { readFileSync } from "node:fs";
 import { test as base, expect } from "@playwright/test";
 import { ARTIFACT_PATH, type RunArtifact, type SpecUserKey } from "./user-pool";
 
-function readArtifact(): RunArtifact {
+/** Read the launcher's resolved-env artifact (baseURL, admin creds, users). */
+export function readArtifact(): RunArtifact {
   try {
     return JSON.parse(readFileSync(ARTIFACT_PATH, "utf8")) as RunArtifact;
   } catch (error) {
