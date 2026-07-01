@@ -8,6 +8,15 @@ spreadsheet or somebody else's cloud.
 You run it on your own server, behind your own login, and the data stays with
 you.
 
+![MagStacker walkthrough: adding a magazine, mapping firearm compatibility, the caliber summary, and switching themes](docs/images/demo.gif)
+
+It ships a two-mode interface that follows your system by default — a dark
+"Field Console" and a light "Machined Instrument":
+
+|                          Dark                           |                          Light                           |
+| :-----------------------------------------------------: | :------------------------------------------------------: |
+| ![Magazines list, dark theme](docs/images/magazines-dark.png) | ![Magazines list, light theme](docs/images/magazines-light.png) |
+
 ## Who it's for
 
 - **Individuals** keeping a personal collection straight. Label your mags, see
@@ -117,15 +126,14 @@ src/
   domain/            # firearms, magazines, summary, csv, bulkadd, reference,
                      #   validation — plain TypeScript, no Next.js imports
   data/              # curated caliber/manufacturer lists
-docs/                # plan, parity reference specs, deployment guide
+docs/                # deployment guide, architecture decision records, images
 ```
 
 Authorization is enforced server-side in `src/auth`, and reads are
 viewer-relative: anything you can't see drops out of lists, the summary, and
 exports before it reaches you. The parity behaviors are pinned to exact values
-in `docs/reference/` and covered by the test suite, including two-user tests that
-try to break the sharing rules.
+in the test suite, including two-user tests that try to break the sharing rules.
 
 ## License
 
-See repository.
+MagStacker is licensed under the [Apache License 2.0](LICENSE).

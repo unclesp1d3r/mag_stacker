@@ -5,7 +5,7 @@ This repo runs a **trimmed ECC surface**, not the full bundle. Full map + ration
 
 - **Stack:** TypeScript · Next.js 16 (App Router) · React 19 · **Bun** · **Biome** (not ESLint/Prettier) · Tailwind v4. Planned: Postgres + Drizzle + Docker + Shadcn; multi-user auth + per-item sharing.
 - **DAILY (load by default):** frontend/react/next patterns, `docs-lookup`, `bun-runtime`, backend/postgres/migrations, `security-review`, TDD + e2e, code-review + on-stack reviewers (react/typescript/database/security), coding-standards, git-workflow, a11y, docker-patterns.
-- **LIBRARY (search on demand, never auto-load):** all other languages (incl. **C#/.NET** — the former `.cs` snapshot is gone; behaviors distilled to `docs/reference/dotnet-extensions.md`), other web frameworks, domain verticals, network/homelab, content/marketing, research, heavy orchestration.
+- **LIBRARY (search on demand, never auto-load):** all other languages (incl. **C#/.NET** — the former `.cs` snapshot is gone), other web frameworks, domain verticals, network/homelab, content/marketing, research, heavy orchestration.
 - **Hooks:** never wire ESLint/Prettier/pnpm hooks here — use `bun biome check`, `bun biome format`, `bun tsc --noEmit`.
 
 <!-- BEGIN:nextjs-agent-rules -->
