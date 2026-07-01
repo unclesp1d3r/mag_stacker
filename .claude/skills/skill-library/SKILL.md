@@ -16,11 +16,10 @@ from the codebase (see `/ecc:agent-sort` output that produced this).
 
 TypeScript 5 · Next.js 16 (App Router, React Compiler) · React 19 · **Bun** · **Biome** (not
 ESLint/Prettier) · Tailwind v4. Planned: Postgres + Drizzle + Docker + Shadcn; multi-user
-auth + owner-scoping + per-item sharing. See `docs/brainstorms/2026-06-27-homelab-web-replatform-requirements.md`.
+auth + owner-scoping + per-item sharing.
 
-> The 33 `.cs` references were a vendored .NET snapshot and have been removed; their
-> beyond-parity behaviors live in `docs/reference/dotnet-extensions.md`. **C#/.NET tooling is
-> LIBRARY, never DAILY.**
+> The 33 `.cs` references were a vendored .NET snapshot and have been removed.
+> **C#/.NET tooling is LIBRARY, never DAILY.**
 
 ## DAILY — load by default
 
