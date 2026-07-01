@@ -37,3 +37,52 @@ jobs:
 
       - name: Build
         run: bun run build
+
+  e2e:
+    runs-on: ubuntu-latest # ships a Docker daemon for Testcontainers
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # Guard: resolved run credentials/tokens live under e2e/.artifacts/ and are
+      # gitignored — fail loudly if any were ever force-added to the repo.
+      - name: Guard against committed e2e artifacts
+        run: |
+          if git ls-files --error-unmatch 'e2e/.artifacts/*' 2>/dev/null; then
+            echo "::error::e2e/.artifacts/ must never be committed (it holds generated secrets)."
+            exit 1
+          fi
+
+      - name: Set up mise tools
+        uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+        with:
+          install: true
+          cache: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: bunx playwright install --with-deps chromium
+
+      # Pre-pull the Postgres image so Testcontainers doesn't hit Docker Hub's
+      # unauthenticated pull rate limit on shared runner IPs.
+      - name: Pre-pull Postgres image
+        run: docker pull postgres:17
+
+      # Build ahead of the suite so the launcher finds .next and skips the cold
+      # build inside the webServer startup timeout.
+      - name: Build
+        run: bun run build
+
+      - name: Run E2E suite
+        run: bun run test:e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
