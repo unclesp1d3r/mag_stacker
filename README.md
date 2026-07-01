@@ -64,9 +64,13 @@ cp .env.example .env
 # (try `openssl rand -base64 32`), your first admin email and password, and
 # BETTER_AUTH_URL set to the address you'll actually open it at.
 
-docker compose up --build -d                  # starts Postgres and the app
-docker compose exec app bun run seed:admin    # creates your first admin account
+docker compose up --build -d                  # migrates, seeds your first admin, starts the app
 ```
+
+The bootstrap runs migrations and creates your first admin account (from the
+`ADMIN_EMAIL` / `ADMIN_PASSWORD` you set in `.env`) before the app starts —
+`docker compose logs migrate` shows `Created admin account for <email>.` It's
+idempotent, so re-running `up` never duplicates the admin.
 
 Open `http://<your-server>:3000/login`, sign in, and add the rest of the
 accounts (staff, members, family) from the **Accounts** screen.
