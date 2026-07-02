@@ -14,6 +14,8 @@ export type SessionUser = {
   email: string;
   name: string;
   role: string | null | undefined;
+  /** Per-account Magpul mode (label dot-matrix constraint opt-in). */
+  magpulMode: boolean;
 };
 
 /** Full DB-backed session, or null when missing/invalid. */
@@ -28,8 +30,8 @@ export async function getSession() {
 export async function getCurrentUser(): Promise<SessionUser | null> {
   const session = await getSession();
   if (!session?.user) return null;
-  const { id, email, name, role } = session.user as SessionUser;
-  return { id, email, name, role };
+  const { id, email, name, role, magpulMode } = session.user as SessionUser;
+  return { id, email, name, role, magpulMode: magpulMode ?? false };
 }
 
 /** True when the resolved user holds the admin role. */
