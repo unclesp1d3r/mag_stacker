@@ -31,7 +31,11 @@ export function SettingsForm({
           setMagpulMode(!enabled);
           setError(result.error ?? "Could not save settings.");
         }
-      } catch {
+      } catch (err) {
+        // Only unexpected transport/RPC failures reach here (the action itself
+        // resolves to an ActionResult). Surface it so a real failure leaves a
+        // trace instead of vanishing behind the generic message.
+        console.error("Failed to update Magpul mode setting", err);
         setMagpulMode(!enabled);
         setError("Could not save settings.");
       }

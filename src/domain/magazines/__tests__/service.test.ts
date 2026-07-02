@@ -249,6 +249,31 @@ live("Magpul mode label constraint — service integration (U3/U4)", () => {
       caughtError = e;
     }
     expect(caughtError).toBeInstanceOf(ValidationError);
+    // "AR.15" is both out-of-charset (".") and too long (5 chars); assert both
+    // so a regression dropping either check on the create-on-behalf path fails.
+    expect((caughtError as ValidationError).codes).toContain(
+      "invalidMagpulLabel",
+    );
+    expect((caughtError as ValidationError).codes).toContain(
+      "magpulLabelTooLong",
+    );
+  });
+
+  test("AE7/R11 (magpul, service): update CHANGING label to an invalid value is rejected", async () => {
+    const existing = await makeMagazine(ownerUser, { label: "range gun" });
+    let caughtError: unknown;
+    try {
+      await updateMagazine(ownerUser, existing.id, {
+        brandModel: "Test MG",
+        caliber: ".45 ACP",
+        baseCapacity: 15,
+        extensionRounds: 0,
+        label: "A.1",
+      });
+    } catch (e) {
+      caughtError = e;
+    }
+    expect(caughtError).toBeInstanceOf(ValidationError);
     expect((caughtError as ValidationError).codes).toContain(
       "invalidMagpulLabel",
     );

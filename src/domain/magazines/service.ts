@@ -104,7 +104,11 @@ export async function createMagazine(
       .from(user)
       .where(eq(user.id, ownerId))
       .limit(1);
-    const ownerMagpulMode = ownerRow?.magpulMode ?? false;
+    // The owner was just resolved/authorized; a missing row means corrupt
+    // state, not "mode off" — fail loudly rather than silently skipping the
+    // constraint.
+    if (!ownerRow) throw new NotFoundError();
+    const ownerMagpulMode = ownerRow.magpulMode ?? false;
 
     const codes = validateMagazine(input, 1, {
       ownerMagpulMode,
@@ -148,7 +152,10 @@ export async function updateMagazine(
       .from(user)
       .where(eq(user.id, existing.ownerId))
       .limit(1);
-    const ownerMagpulMode = ownerRow?.magpulMode ?? false;
+    // A magazine always has a valid owner (FK); a missing row is corrupt state,
+    // not "mode off" — fail loudly rather than silently skipping the check.
+    if (!ownerRow) throw new NotFoundError();
+    const ownerMagpulMode = ownerRow.magpulMode ?? false;
 
     const codes = validateMagazine(input, 1, {
       ownerMagpulMode,

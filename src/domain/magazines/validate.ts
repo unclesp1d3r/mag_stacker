@@ -36,16 +36,18 @@ export interface MagazineFields {
 }
 
 /**
- * Optional context for Magpul label constraint (U3, KTD-2).
+ * Context for the Magpul label constraint (U3, KTD-2).
  *
+ * - `ownerMagpulMode`: the magazine owner's Magpul mode flag. Required — a
+ *   caller that supplies this context must state the governing mode, so the
+ *   label check can never be silently skipped by forgetting to pass it.
  * - `label`: the submitted label value (undefined → label not being changed)
- * - `ownerMagpulMode`: the magazine owner's Magpul mode flag
  * - `previousLabel`: stored label on update; undefined on create (any defined
  *   label is treated as a change)
  */
 export interface MagazineValidationContext {
+  ownerMagpulMode: boolean;
   label?: string;
-  ownerMagpulMode?: boolean;
   previousLabel?: string;
 }
 

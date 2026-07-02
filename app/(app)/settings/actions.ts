@@ -30,10 +30,17 @@ export async function updateMagpulModeAction(
       return { ok: false, error: "Invalid setting value." };
     }
     const userId = await requireUserId();
-    await db
+    const [updated] = await db
       .update(userTable)
       .set({ magpulMode: enabled })
-      .where(eq(userTable.id, userId));
+      .where(eq(userTable.id, userId))
+      .returning({ id: userTable.id });
+    // Guard against a zero-row write (stale session, deleted account) being
+    // silently reported as success — mirrors the .returning() check on the
+    // magazine service's update path.
+    if (!updated) {
+      return { ok: false, error: "Could not save settings." };
+    }
     revalidatePath("/settings");
     revalidatePath("/magazines");
     return { ok: true };

@@ -136,6 +136,41 @@ describe("validateMagazine — Magpul label constraint (U3)", () => {
       previousLabel: "AR.15",
       expected: [],
     },
+    {
+      desc: "AE7 (magpul): editing a grandfathered label to a NEW invalid value → rejected",
+      label: "A.1",
+      ownerMagpulMode: true,
+      previousLabel: "range gun",
+      expected: ["invalidMagpulLabel"],
+    },
+    {
+      desc: "magpul: editing to a new valid value → passes",
+      label: "AR-2",
+      ownerMagpulMode: true,
+      previousLabel: "AR-1",
+      expected: [],
+    },
+    {
+      desc: "R3/AE4 (magpul): empty label with mode on → valid",
+      label: "",
+      ownerMagpulMode: true,
+      previousLabel: undefined,
+      expected: [],
+    },
+    {
+      desc: 'R4 (magpul): outer whitespace trimmed before validation (" ar1 " → "AR1")',
+      label: " ar1 ",
+      ownerMagpulMode: true,
+      previousLabel: undefined,
+      expected: [],
+    },
+    {
+      desc: "R5 (magpul): internal space is not stripped → invalidMagpulLabel",
+      label: "A B",
+      ownerMagpulMode: true,
+      previousLabel: undefined,
+      expected: ["invalidMagpulLabel"],
+    },
   ];
 
   for (const {

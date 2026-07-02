@@ -200,14 +200,20 @@ async function main(): Promise<void> {
       await auth.api.createUser({
         body: { email, password, name: key, role: "user" },
       });
-      // "magpul-mode" needs Magpul mode pre-enabled. Better Auth's
-      // `input: false` blocks this field in createUser, so we write it
-      // directly via Drizzle after account creation.
+      // "magpul-mode" needs Magpul mode pre-enabled. We set it with a follow-up
+      // Drizzle write (parity with the settings-toggle path) rather than via
+      // createUser's `data` passthrough, and assert a row was actually updated
+      // so a mismatched email fails loudly here instead of as a confusing
+      // downstream spec failure.
       if (key === "magpul-mode") {
-        await db
+        const updated = await db
           .update(userTable)
           .set({ magpulMode: true })
-          .where(eq(userTable.email, email));
+          .where(eq(userTable.email, email))
+          .returning({ id: userTable.id });
+        if (updated.length === 0) {
+          throw new Error(`Failed to enable magpulMode for ${email}`);
+        }
       }
       const signIn = await auth.handler(
         new Request(`${BASE_URL}/api/auth/sign-in/email`, {

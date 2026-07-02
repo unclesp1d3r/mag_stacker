@@ -4,9 +4,8 @@ import { authTest, expect } from "./fixtures/auth";
  * Magpul mode label input mask in the magazine form (U5, R9).
  *
  * The "magpul-mode" user has Magpul mode pre-enabled by the launcher via a
- * direct Drizzle update after account creation (input:false blocks the
- * Better Auth createUser API). All assertions use ARIA roles / accessible
- * names / visible text — no data-testid.
+ * direct Drizzle update after account creation. All assertions use ARIA roles
+ * / accessible names / visible text — no data-testid.
  */
 const test = authTest("magpul-mode");
 
@@ -34,6 +33,14 @@ test("label input mask is active when Magpul mode is on", async ({ page }) => {
   await test.step("fill beyond 4 characters → truncated to 4", async () => {
     const labelInput = page.locator("form").getByLabel("Label");
     await labelInput.fill("ABCDE");
+    await expect(labelInput).toHaveValue("ABCD");
+  });
+
+  await test.step("filter runs before cap: 'AB.CDE' → 'ABCD' (not 'ABC')", async () => {
+    // Distinguishes filter-then-cap from cap-then-filter: dropping the '.' first
+    // yields "ABCDE" → capped "ABCD"; capping first would give "AB.C" → "ABC".
+    const labelInput = page.locator("form").getByLabel("Label");
+    await labelInput.fill("AB.CDE");
     await expect(labelInput).toHaveValue("ABCD");
   });
 
