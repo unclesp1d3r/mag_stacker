@@ -41,9 +41,14 @@ describe("database health surface (U12, R74)", () => {
   });
 
   test("a pure validation call succeeds with no database (R74)", () => {
-    expect(validateFirearm({ name: "", caliber: "9mm" })).toEqual([
-      "emptyName",
-    ]);
+    expect(
+      validateFirearm({
+        name: "",
+        caliber: "9mm",
+        type: "pistol",
+        action: "semi-auto",
+      }),
+    ).toEqual(["emptyName"]);
   });
 
   const live = process.env.DATABASE_URL ? test : test.skip;

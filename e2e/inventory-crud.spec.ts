@@ -25,6 +25,10 @@ test("inventory CRUD, completion feedback, and controls-gating", async ({
     await page.getByRole("button", { name: "Add your first firearm" }).click();
     await page.getByLabel("Name").fill("Glock 19");
     await page.getByLabel("Caliber").fill("9mm");
+    // Type/Action are required on write (R7) — select real values or the client
+    // blocks the submit.
+    await page.getByLabel(/^Type/).selectOption("pistol");
+    await page.getByLabel("Action").selectOption("semi-auto");
     await page.getByRole("button", { name: "Add firearm" }).click();
 
     await expect(page.getByText("Firearm logged")).toBeVisible();

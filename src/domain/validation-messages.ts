@@ -12,6 +12,10 @@ import {
 export const VALIDATION_MESSAGES: Record<string, string> = {
   emptyName: "Name is required",
   emptyCaliber: "Caliber is required",
+  invalidType: "Select a valid firearm type",
+  invalidAction: "Select a valid firearm action",
+  typeRequired: "Choose a firearm type",
+  actionRequired: "Choose a firearm action",
   emptyBrandModel: "Brand/model is required",
   baseCapacityTooLow: "Base capacity must be at least 1",
   negativeExtensionRounds: "Extension rounds cannot be negative",
