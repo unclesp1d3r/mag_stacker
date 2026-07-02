@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createGrant } from "@/src/auth/grants";
 import { db } from "@/src/db/client";
-import { magazine } from "@/src/db/schema";
+import { magazine, user } from "@/src/db/schema";
 import { ValidationError } from "@/src/domain/errors";
 import {
   createUser,
@@ -124,6 +124,63 @@ live("bulkAddMagazines (U10)", () => {
     });
     expect(replay.map((m) => m.id)).toEqual(first.map((m) => m.id));
     expect(await ownerMagCount(owner)).toBe(4); // not 8
+    await deleteUsers(owner);
+  });
+});
+
+live("bulkAddMagazines — Magpul mode (owner-governed)", () => {
+  async function magpulOwner(name: string): Promise<string> {
+    const id = await createUser(name);
+    await db.update(user).set({ magpulMode: true }).where(eq(user.id, id));
+    return id;
+  }
+
+  async function codesFrom(promise: Promise<unknown>): Promise<string[]> {
+    try {
+      await promise;
+    } catch (e) {
+      if (e instanceof ValidationError) return e.codes;
+      throw e;
+    }
+    throw new Error("expected a ValidationError, but none was thrown");
+  }
+
+  test("mode on: conforming prefix generates uppercased labels within the cap", async () => {
+    const owner = await magpulOwner("mp-ok");
+    const created = await bulkAddMagazines(owner, template(), 3, "ab");
+    expect(created.map((m) => m.label)).toEqual(["AB01", "AB02", "AB03"]);
+    await deleteUsers(owner);
+  });
+
+  test("mode on: prefix that pushes labels past 4 chars is rejected (magpulLabelTooLong)", async () => {
+    const owner = await magpulOwner("mp-long");
+    const codes = await codesFrom(
+      bulkAddMagazines(owner, template(), 2, "ABC"),
+    );
+    expect(codes).toContain("magpulLabelTooLong");
+    expect(await ownerMagCount(owner)).toBe(0); // atomic: nothing written
+    await deleteUsers(owner);
+  });
+
+  test("mode on: prefix with a disallowed character is rejected (invalidMagpulLabel)", async () => {
+    const owner = await magpulOwner("mp-bad");
+    const codes = await codesFrom(bulkAddMagazines(owner, template(), 2, "A."));
+    expect(codes).toContain("invalidMagpulLabel");
+    expect(await ownerMagCount(owner)).toBe(0);
+    await deleteUsers(owner);
+  });
+
+  test("mode on: empty prefix produces empty labels and is allowed", async () => {
+    const owner = await magpulOwner("mp-empty");
+    const created = await bulkAddMagazines(owner, template(), 2, "");
+    expect(created.map((m) => m.label)).toEqual(["", ""]);
+    await deleteUsers(owner);
+  });
+
+  test("mode off: a nonconforming prefix is stored verbatim (unconstrained)", async () => {
+    const owner = await createUser("mp-off");
+    const created = await bulkAddMagazines(owner, template(), 2, "ABC");
+    expect(created.map((m) => m.label)).toEqual(["ABC01", "ABC02"]);
     await deleteUsers(owner);
   });
 });

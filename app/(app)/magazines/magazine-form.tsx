@@ -168,6 +168,25 @@ export function MagazineForm({
     set("label", masked);
   }
 
+  function handlePrefixChange(e: ChangeEvent<HTMLInputElement>) {
+    const raw = e.target.value;
+    if (!magpulMode) {
+      setLabelPrefix(raw);
+      return;
+    }
+    // Uppercase + filter to the allowed set. The 4-char cap spans prefix + the
+    // auto-number, so it's enforced authoritatively in the domain layer on
+    // submit (sequence width is #22's concern), not by a fixed length here.
+    const upper = raw.toUpperCase();
+    const filtered = upper.replace(MAGPUL_LABEL_DISALLOWED_CHAR_RE, "");
+    if (filtered !== upper) {
+      if (announceTimer.current) clearTimeout(announceTimer.current);
+      setLiveAnnounce(`Filtered to ${MAGPUL_LABEL_ALLOWED_DESCRIPTION}`);
+      announceTimer.current = setTimeout(() => setLiveAnnounce(""), 2_000);
+    }
+    setLabelPrefix(filtered);
+  }
+
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setServerError(null);
@@ -368,12 +387,38 @@ export function MagazineForm({
           <Field
             label="Label prefix"
             controlId={prefixId}
-            hint={labelPreview ?? undefined}
+            hint={
+              magpulMode
+                ? [
+                    `Max ${MAX_LABEL_LENGTH} incl. number · ${MAGPUL_LABEL_ALLOWED_DESCRIPTION}`,
+                    labelPreview,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                : (labelPreview ?? undefined)
+            }
+            error={
+              magpulMode
+                ? firstMessage(codes, [
+                    "invalidMagpulLabel",
+                    "magpulLabelTooLong",
+                  ])
+                : undefined
+            }
           >
             <Input
               id={prefixId}
               value={labelPrefix}
-              onChange={(e) => setLabelPrefix(e.target.value)}
+              onChange={
+                magpulMode
+                  ? handlePrefixChange
+                  : (e) => setLabelPrefix(e.target.value)
+              }
+              aria-invalid={
+                magpulMode &&
+                (codes.includes("invalidMagpulLabel") ||
+                  codes.includes("magpulLabelTooLong"))
+              }
             />
           </Field>
         </div>
