@@ -4,7 +4,8 @@ import { useId, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/feedback";
 import { Field } from "@/components/ui/field";
-import { Input, Select, Textarea } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import {
   FIREARM_ACTIONS,
@@ -13,7 +14,10 @@ import {
   firearmTypeLabel,
   UNSPECIFIED,
 } from "@/src/domain/firearms/constants";
-import { validateFirearm } from "@/src/domain/firearms/validate";
+import {
+  type FirearmValidationCode,
+  validateFirearm,
+} from "@/src/domain/firearms/validate";
 import { firstMessage } from "@/src/domain/validation-messages";
 import { createFirearmAction, updateFirearmAction } from "./actions";
 
@@ -50,8 +54,58 @@ const EMPTY: FirearmFormValues = {
   notes: "",
 };
 
-const TYPE_CODES = ["invalidType", "typeRequired"];
-const ACTION_CODES = ["invalidAction", "actionRequired"];
+const TYPE_CODES: FirearmValidationCode[] = ["invalidType", "typeRequired"];
+const ACTION_CODES: FirearmValidationCode[] = [
+  "invalidAction",
+  "actionRequired",
+];
+
+interface ClassificationSelectProps {
+  id: string;
+  label: string;
+  options: readonly string[];
+  labelFor: (value: string) => string;
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+  codes: string[];
+  fieldCodes: FirearmValidationCode[];
+}
+
+/** A required taxonomy select (Type / Action) with its placeholder option. */
+function ClassificationSelect({
+  id,
+  label,
+  options,
+  labelFor,
+  placeholder,
+  value,
+  onChange,
+  codes,
+  fieldCodes,
+}: ClassificationSelectProps) {
+  return (
+    <Field
+      label={label}
+      controlId={id}
+      required
+      error={firstMessage(codes, fieldCodes)}
+    >
+      <Select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-invalid={fieldCodes.some((c) => codes.includes(c))}
+      >
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o === UNSPECIFIED ? placeholder : labelFor(o)}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
 
 export function FirearmForm({
   initial,
@@ -177,46 +231,28 @@ export function FirearmForm({
         </Field>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field
+        <ClassificationSelect
+          id={typeId}
           label="Type"
-          controlId={typeId}
-          required
-          error={firstMessage(codes, TYPE_CODES)}
-        >
-          <Select
-            id={typeId}
-            value={values.type}
-            onChange={(e) => set("type", e.target.value)}
-            aria-invalid={TYPE_CODES.some((c) => codes.includes(c))}
-          >
-            {FIREARM_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t === UNSPECIFIED ? "Select a type…" : firearmTypeLabel(t)}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field
+          options={FIREARM_TYPES}
+          labelFor={firearmTypeLabel}
+          placeholder="Select a type…"
+          value={values.type}
+          onChange={(v) => set("type", v)}
+          codes={codes}
+          fieldCodes={TYPE_CODES}
+        />
+        <ClassificationSelect
+          id={actionId}
           label="Action"
-          controlId={actionId}
-          required
-          error={firstMessage(codes, ACTION_CODES)}
-        >
-          <Select
-            id={actionId}
-            value={values.action}
-            onChange={(e) => set("action", e.target.value)}
-            aria-invalid={ACTION_CODES.some((c) => codes.includes(c))}
-          >
-            {FIREARM_ACTIONS.map((a) => (
-              <option key={a} value={a}>
-                {a === UNSPECIFIED
-                  ? "Select an action…"
-                  : firearmActionLabel(a)}
-              </option>
-            ))}
-          </Select>
-        </Field>
+          options={FIREARM_ACTIONS}
+          labelFor={firearmActionLabel}
+          placeholder="Select an action…"
+          value={values.action}
+          onChange={(v) => set("action", v)}
+          codes={codes}
+          fieldCodes={ACTION_CODES}
+        />
       </div>
       <Field
         label="Subtype"

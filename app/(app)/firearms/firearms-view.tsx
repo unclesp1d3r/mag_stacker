@@ -6,7 +6,7 @@ import { ShareControl } from "@/app/(app)/grants/share-control";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/feedback";
-import { Select } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Card, PageHeader } from "@/components/ui/surface";
 import { DataTable, TD, TH, THead, TRow } from "@/components/ui/table";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";

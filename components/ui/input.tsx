@@ -1,9 +1,4 @@
-import type {
-  InputHTMLAttributes,
-  Ref,
-  SelectHTMLAttributes,
-  TextareaHTMLAttributes,
-} from "react";
+import type { InputHTMLAttributes, Ref, TextareaHTMLAttributes } from "react";
 import { cn } from "./cn";
 
 const BASE =
@@ -33,20 +28,6 @@ export function Textarea({
   return (
     <textarea
       className={cn(BASE, "min-h-20 py-2 text-sm leading-relaxed", className)}
-      {...props}
-    />
-  );
-}
-
-export function Select({
-  className,
-  ref,
-  ...props
-}: SelectHTMLAttributes<HTMLSelectElement> & { ref?: Ref<HTMLSelectElement> }) {
-  return (
-    <select
-      ref={ref}
-      className={cn(BASE, "h-10 text-sm", className)}
       {...props}
     />
   );

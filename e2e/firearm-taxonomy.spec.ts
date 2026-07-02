@@ -1,9 +1,10 @@
 import { authTest, expect } from "./fixtures/auth";
 
 /**
- * Firearms taxonomy (issue #17): required type/action on write, the list Type
- * column, and the client-side type filter. One sequential test on a fresh
- * "firearm-taxonomy" user — each step builds on the last, mirroring real usage.
+ * Firearms taxonomy: required type/action on write (R6/R7), the list Type
+ * column (R10), and the client-side type filter (R11). Covers AE1/AE2/AE4. One
+ * sequential test on a fresh "firearm-taxonomy" user — each step builds on the
+ * last, mirroring real usage.
  */
 const test = authTest("firearm-taxonomy");
 

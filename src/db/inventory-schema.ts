@@ -13,7 +13,11 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
-import { FIREARM_ACTIONS, FIREARM_TYPES } from "../domain/firearms/constants";
+import {
+  FIREARM_ACTIONS,
+  FIREARM_TYPES,
+  UNSPECIFIED,
+} from "../domain/firearms/constants";
 import { user } from "./auth-schema";
 
 /** Build a SQL `in ('a', 'b', ...)` literal list from a controlled value set. */
@@ -59,8 +63,8 @@ export const firearm = pgTable(
     // Controlled taxonomy (U2). NOT NULL DEFAULT 'unspecified' backfills existing
     // rows on ADD COLUMN (R12); domain validation rejects 'unspecified' on write
     // (R7). `subtype` is optional free text (empty-not-null, R18).
-    type: text("type").notNull().default("unspecified"),
-    action: text("action").notNull().default("unspecified"),
+    type: text("type").notNull().default(UNSPECIFIED),
+    action: text("action").notNull().default(UNSPECIFIED),
     subtype: text("subtype").notNull().default(""),
     serialNumber: text("serial_number").notNull().default(""),
     notes: text("notes").notNull().default(""),

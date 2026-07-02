@@ -5,7 +5,6 @@ import { listFirearms } from "@/src/domain/firearms/service";
 import {
   calibersForInput,
   manufacturers,
-  subtypesForInput,
 } from "@/src/domain/reference/reference";
 import { inventorySummary } from "@/src/domain/summary/summary";
 import { type FirearmListItem, FirearmsView } from "./firearms-view";
@@ -14,13 +13,18 @@ export default async function FirearmsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [firearms, summary, caliberSuggestions, subtypeSuggestions] =
-    await Promise.all([
-      listFirearms(user.id),
-      inventorySummary(user.id),
-      calibersForInput(db, user.id),
-      subtypesForInput(db, user.id),
-    ]);
+  const [firearms, summary, caliberSuggestions] = await Promise.all([
+    listFirearms(user.id),
+    inventorySummary(user.id),
+    calibersForInput(db, user.id),
+  ]);
+
+  // Subtype suggestions are the owner's in-use values, which are already on the
+  // fetched rows — derive them here rather than re-querying (unlike calibers,
+  // there is no curated master list to union in).
+  const subtypeSuggestions = [
+    ...new Set(firearms.map((f) => f.subtype).filter((s) => s !== "")),
+  ].sort((a, b) => a.localeCompare(b));
 
   const counts = new Map(summary.firearmCounts.map((f) => [f.id, f.count]));
   const items: FirearmListItem[] = firearms.map((f) => ({
