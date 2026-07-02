@@ -140,10 +140,16 @@ export async function updateMagazine(
   const row = await db.transaction(async (tx) => {
     await authorizeUpdate(tx, actorId, "magazine", id);
 
+    // Lock the row for the transaction so the read of `existing.label` and the
+    // later update are atomic. Without it, a concurrent edit (magazines support
+    // grant-based sharing) could commit between the two, leaving change-
+    // detection to compare against a stale previousLabel and skip Magpul
+    // normalization/validation — a lost update.
     const [existing] = await tx
       .select({ ownerId: magazine.ownerId, label: magazine.label })
       .from(magazine)
       .where(eq(magazine.id, id))
+      .for("update")
       .limit(1);
     if (!existing) throw new NotFoundError();
 

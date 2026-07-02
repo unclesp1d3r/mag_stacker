@@ -63,13 +63,17 @@ export function Badge({
 
 export function Callout({
   tone = "danger",
+  id,
   children,
 }: {
   tone?: Tone;
+  /** Optional id so the callout can be referenced via aria-describedby. */
+  id?: string;
   children: ReactNode;
 }) {
   return (
     <div
+      id={id}
       className={cn(
         "rounded-[var(--radius)] border px-3 py-2 text-sm",
         TONES[tone],

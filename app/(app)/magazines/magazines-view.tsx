@@ -88,15 +88,19 @@ export function MagazinesView({
     router.refresh();
   }
 
+  // New magazines are always owned by the current user, so the create form
+  // uses their own Magpul mode directly (editing gates on ownership instead).
+  function openCreate() {
+    setForm({ open: true, magpulMode });
+  }
+
   return (
     <div className="space-y-5">
       {/* When the inventory is truly empty the empty state owns the add CTA;
           show this toolbar button only once there are rows (or a filter). */}
       {!form.open && (magazines.length > 0 || filtered) ? (
         <div className="flex justify-end">
-          <Button onClick={() => setForm({ open: true, magpulMode })}>
-            Add magazine
-          </Button>
+          <Button onClick={openCreate}>Add magazine</Button>
         </div>
       ) : null}
 
@@ -133,10 +137,7 @@ export function MagazinesView({
                 <Button onClick={() => router.push("/firearms")}>
                   Add a firearm
                 </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => setForm({ open: true, magpulMode })}
-                >
+                <Button variant="ghost" onClick={openCreate}>
                   Start with a magazine
                 </Button>
               </div>
@@ -147,9 +148,7 @@ export function MagazinesView({
             title="No magazines yet"
             description="Add a magazine — single, or bulk-add a labeled batch."
             action={
-              <Button onClick={() => setForm({ open: true, magpulMode })}>
-                Add your first magazine
-              </Button>
+              <Button onClick={openCreate}>Add your first magazine</Button>
             }
           />
         )

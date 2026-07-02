@@ -9,8 +9,9 @@ import { authTest, expect } from "./fixtures/auth";
  */
 const test = authTest("magpul-mode");
 
-// No retries: the user account accumulates state (a magazine is created in
-// step 2 and re-used in later steps).
+// No retries: this test mutates shared form/session state across test.step
+// blocks (it opens the add form and exercises the mask), with no isolation
+// between attempts.
 test.describe.configure({ retries: 0 });
 
 test("label input mask is active when Magpul mode is on", async ({ page }) => {

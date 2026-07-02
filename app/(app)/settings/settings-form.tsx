@@ -50,13 +50,19 @@ export function SettingsForm({
       >
         Label constraints
       </h2>
-      {error ? <Callout tone="danger">{error}</Callout> : null}
+      {error ? (
+        <Callout id="magpul-mode-error" tone="danger">
+          {error}
+        </Callout>
+      ) : null}
       <label className="flex cursor-pointer items-center gap-3">
         <input
           type="checkbox"
           checked={magpulMode}
           onChange={handleToggle}
           disabled={pending}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? "magpul-mode-error" : undefined}
           className="size-4 accent-[var(--blaze)]"
         />
         <span className="text-sm text-ink">
