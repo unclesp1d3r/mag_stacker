@@ -1,7 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useMemo, useState, useTransition } from "react";
+import {
+  type ChangeEvent,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Callout } from "@/components/ui/feedback";
@@ -10,6 +18,11 @@ import { Input, Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import type { ActionResult } from "@/src/domain/action-result";
 import { generateLabels } from "@/src/domain/bulkadd/labels";
+import {
+  MAGPUL_LABEL_ALLOWED_DESCRIPTION,
+  MAGPUL_LABEL_DISALLOWED_CHAR_RE,
+  MAX_LABEL_LENGTH,
+} from "@/src/domain/magazines/constants";
 import { validateMagazine } from "@/src/domain/magazines/validate";
 import { firstMessage } from "@/src/domain/validation-messages";
 import {
@@ -59,6 +72,8 @@ interface MagazineFormProps {
   initial?: MagazineFormValues;
   firearmOptions: FirearmOption[];
   caliberSuggestions: string[];
+  /** When true the label field enforces PMAG dot-matrix character constraints. */
+  magpulMode: boolean;
   /** `touchedId` flashes the just-created/edited row; omitted for bulk adds. */
   onDone: (touchedId?: string) => void;
   onCancel: () => void;
@@ -68,6 +83,7 @@ export function MagazineForm({
   initial,
   firearmOptions,
   caliberSuggestions,
+  magpulMode,
   onDone,
   onCancel,
 }: MagazineFormProps) {
@@ -80,6 +96,14 @@ export function MagazineForm({
   const [codes, setCodes] = useState<string[]>([]);
   const [serverError, setServerError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [liveAnnounce, setLiveAnnounce] = useState("");
+  const announceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (announceTimer.current) clearTimeout(announceTimer.current);
+    };
+  }, []);
 
   const brandId = useId();
   const calId = useId();
@@ -122,6 +146,45 @@ export function MagazineForm({
         ? v.compatibleFirearmIds.filter((x) => x !== id)
         : [...v.compatibleFirearmIds, id],
     }));
+  }
+
+  function handleLabelChange(e: ChangeEvent<HTMLInputElement>) {
+    const raw = e.target.value;
+    if (!magpulMode) {
+      set("label", raw);
+      return;
+    }
+    const upper = raw.toUpperCase();
+    const filtered = upper.replace(MAGPUL_LABEL_DISALLOWED_CHAR_RE, "");
+    const masked = filtered.slice(0, MAX_LABEL_LENGTH);
+    const hadDrop = filtered !== upper || masked !== filtered;
+    if (hadDrop) {
+      if (announceTimer.current) clearTimeout(announceTimer.current);
+      setLiveAnnounce(
+        `Filtered to ${MAGPUL_LABEL_ALLOWED_DESCRIPTION}, max ${MAX_LABEL_LENGTH} characters`,
+      );
+      announceTimer.current = setTimeout(() => setLiveAnnounce(""), 2_000);
+    }
+    set("label", masked);
+  }
+
+  function handlePrefixChange(e: ChangeEvent<HTMLInputElement>) {
+    const raw = e.target.value;
+    if (!magpulMode) {
+      setLabelPrefix(raw);
+      return;
+    }
+    // Uppercase + filter to the allowed set. The 4-char cap spans prefix + the
+    // auto-number, so it's enforced authoritatively in the domain layer on
+    // submit (sequence width is #22's concern), not by a fixed length here.
+    const upper = raw.toUpperCase();
+    const filtered = upper.replace(MAGPUL_LABEL_DISALLOWED_CHAR_RE, "");
+    if (filtered !== upper) {
+      if (announceTimer.current) clearTimeout(announceTimer.current);
+      setLiveAnnounce(`Filtered to ${MAGPUL_LABEL_ALLOWED_DESCRIPTION}`);
+      announceTimer.current = setTimeout(() => setLiveAnnounce(""), 2_000);
+    }
+    setLabelPrefix(filtered);
   }
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -281,11 +344,27 @@ export function MagazineForm({
       </div>
 
       {mode === "single" ? (
-        <Field label="Label" controlId={labelId}>
+        <Field
+          label="Label"
+          controlId={labelId}
+          hint={
+            magpulMode
+              ? `Max ${MAX_LABEL_LENGTH} · ${MAGPUL_LABEL_ALLOWED_DESCRIPTION}`
+              : undefined
+          }
+          error={firstMessage(codes, [
+            "invalidMagpulLabel",
+            "magpulLabelTooLong",
+          ])}
+        >
           <Input
             id={labelId}
             value={values.label}
-            onChange={(e) => set("label", e.target.value)}
+            onChange={handleLabelChange}
+            aria-invalid={
+              codes.includes("invalidMagpulLabel") ||
+              codes.includes("magpulLabelTooLong")
+            }
           />
         </Field>
       ) : (
@@ -308,12 +387,38 @@ export function MagazineForm({
           <Field
             label="Label prefix"
             controlId={prefixId}
-            hint={labelPreview ?? undefined}
+            hint={
+              magpulMode
+                ? [
+                    `Max ${MAX_LABEL_LENGTH} incl. number · ${MAGPUL_LABEL_ALLOWED_DESCRIPTION}`,
+                    labelPreview,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                : (labelPreview ?? undefined)
+            }
+            error={
+              magpulMode
+                ? firstMessage(codes, [
+                    "invalidMagpulLabel",
+                    "magpulLabelTooLong",
+                  ])
+                : undefined
+            }
           >
             <Input
               id={prefixId}
               value={labelPrefix}
-              onChange={(e) => setLabelPrefix(e.target.value)}
+              onChange={
+                magpulMode
+                  ? handlePrefixChange
+                  : (e) => setLabelPrefix(e.target.value)
+              }
+              aria-invalid={
+                magpulMode &&
+                (codes.includes("invalidMagpulLabel") ||
+                  codes.includes("magpulLabelTooLong"))
+              }
             />
           </Field>
         </div>
@@ -395,6 +500,9 @@ export function MagazineForm({
           Cancel
         </Button>
       </div>
+      <span aria-live="polite" aria-atomic="true" className="sr-only">
+        {liveAnnounce}
+      </span>
     </form>
   );
 }

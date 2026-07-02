@@ -1,4 +1,4 @@
-> **Vendored snapshot — not this project's source.** Read-only copy from the Avalonia/.NET MagStacker project, kept here so the web re-platform requirements stay self-contained. Any relative links below (e.g. `docs/plans/…`, `docs/ergonomics-verdict.md`, `../MagStacker`) refer to that original project and are **not** part of this repository.
+> **Carried over from the original Avalonia/.NET MagStacker project.** This decision predates the Next.js/Bun re-platform but **still holds** here: the `magazine_firearm.ordinal` column lives in `src/db/inventory-schema.ts` and orders the compatible-firearms output (including CSV export). Historical references below (e.g. `docs/ergonomics-verdict.md`, `../MagStacker`) point at the original project and are not part of this repository.
 
 
 

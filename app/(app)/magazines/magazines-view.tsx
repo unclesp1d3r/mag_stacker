@@ -36,11 +36,20 @@ interface MagazinesViewProps {
   currentUserId: string;
   firearmOptions: FirearmOption[];
   caliberSuggestions: string[];
+  /** When true the magazine form enforces PMAG dot-matrix label constraints. */
+  magpulMode: boolean;
   /** True when a filter is active (distinguishes empty inventory from zero results). */
   filtered: boolean;
 }
 
-type FormState = { open: false } | { open: true; initial?: MagazineFormValues };
+// `magpulMode` is resolved per-open: the label mask applies only when the
+// current user OWNS the magazine being edited (self-owned → their session flag
+// is the owner's flag). Editing a shared magazine you don't own never masks —
+// the owner's mode governs and the domain layer stays authoritative (KTD-6),
+// so we never mangle another owner's label client-side.
+type FormState =
+  | { open: false }
+  | { open: true; initial?: MagazineFormValues; magpulMode: boolean };
 
 function toFormValues(item: MagazineListItem): MagazineFormValues {
   return {
@@ -61,6 +70,7 @@ export function MagazinesView({
   currentUserId,
   firearmOptions,
   caliberSuggestions,
+  magpulMode,
   filtered,
 }: MagazinesViewProps) {
   const router = useRouter();
@@ -78,13 +88,19 @@ export function MagazinesView({
     router.refresh();
   }
 
+  // New magazines are always owned by the current user, so the create form
+  // uses their own Magpul mode directly (editing gates on ownership instead).
+  function openCreate() {
+    setForm({ open: true, magpulMode });
+  }
+
   return (
     <div className="space-y-5">
       {/* When the inventory is truly empty the empty state owns the add CTA;
           show this toolbar button only once there are rows (or a filter). */}
       {!form.open && (magazines.length > 0 || filtered) ? (
         <div className="flex justify-end">
-          <Button onClick={() => setForm({ open: true })}>Add magazine</Button>
+          <Button onClick={openCreate}>Add magazine</Button>
         </div>
       ) : null}
 
@@ -97,6 +113,7 @@ export function MagazinesView({
             initial={form.initial}
             firearmOptions={firearmOptions}
             caliberSuggestions={caliberSuggestions}
+            magpulMode={form.magpulMode}
             onDone={refresh}
             onCancel={() => setForm({ open: false })}
           />
@@ -120,7 +137,7 @@ export function MagazinesView({
                 <Button onClick={() => router.push("/firearms")}>
                   Add a firearm
                 </Button>
-                <Button variant="ghost" onClick={() => setForm({ open: true })}>
+                <Button variant="ghost" onClick={openCreate}>
                   Start with a magazine
                 </Button>
               </div>
@@ -131,9 +148,7 @@ export function MagazinesView({
             title="No magazines yet"
             description="Add a magazine — single, or bulk-add a labeled batch."
             action={
-              <Button onClick={() => setForm({ open: true })}>
-                Add your first magazine
-              </Button>
+              <Button onClick={openCreate}>Add your first magazine</Button>
             }
           />
         )
@@ -178,7 +193,12 @@ export function MagazinesView({
                       variant="ghost"
                       size="sm"
                       onClick={() =>
-                        setForm({ open: true, initial: toFormValues(item) })
+                        setForm({
+                          open: true,
+                          initial: toFormValues(item),
+                          magpulMode:
+                            magpulMode && item.ownerId === currentUserId,
+                        })
                       }
                     >
                       Edit

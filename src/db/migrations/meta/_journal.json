@@ -22,6 +22,13 @@
       "when": 1782666701641,
       "tag": "0002_grant_cleanup_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1782950253736,
+      "tag": "0003_happy_pete_wisdom",
+      "breakpoints": true
     }
   ]
 }

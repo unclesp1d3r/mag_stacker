@@ -5,12 +5,18 @@ import { bulkAddCost, mutationLimiter } from "@/src/auth/rate-limit";
 import { getVisibleIds } from "@/src/auth/visibility";
 import { db, type Transaction } from "@/src/db/client";
 import { withIdempotency } from "@/src/db/idempotency";
-import { magazine, magazineFirearm } from "@/src/db/schema";
+import { magazine, magazineFirearm, user } from "@/src/db/schema";
 import { ValidationError } from "@/src/domain/errors";
 import { dedupeFirearmIds } from "@/src/domain/magazines/compatibility";
+import {
+  MAGPUL_LABEL_ALLOWED_RE,
+  MAX_LABEL_LENGTH,
+  normalizeMagpulLabel,
+} from "@/src/domain/magazines/constants";
 import type { MagazineWithCompatibility } from "@/src/domain/magazines/service";
 import {
   type MagazineFields,
+  type MagazineValidationCode,
   validateMagazine,
 } from "@/src/domain/magazines/validate";
 import { generateLabels, nextLabelStart } from "./labels";
@@ -53,6 +59,21 @@ export async function bulkAddMagazines(
   const run = async (tx: Transaction): Promise<MagazineWithCompatibility[]> => {
     const owner = await resolveCreateOwner(tx, actorId, options.ownerId);
 
+    // The owner's Magpul mode governs (KTD-2). When on, the generated labels
+    // must satisfy the same dot-matrix constraint as single add/edit.
+    const [ownerRow] = await tx
+      .select({ magpulMode: user.magpulMode })
+      .from(user)
+      .where(eq(user.id, owner))
+      .limit(1);
+    if (!ownerRow) throw new NotFoundError();
+    const ownerMagpulMode = ownerRow.magpulMode ?? false;
+    // Normalize the prefix (uppercase + outer-trim) so generated labels store
+    // and sequence-continue consistently with single add; off-mode is untouched.
+    const effectivePrefix = ownerMagpulMode
+      ? normalizeMagpulLabel(labelPrefix)
+      : labelPrefix;
+
     // Every template link must be visible to the acting user (R37), checked in
     // the same transaction so a concurrent revoke cannot race the create.
     if (firearmIds.length > 0) {
@@ -73,9 +94,29 @@ export async function bulkAddMagazines(
       .where(eq(magazine.ownerId, owner));
     const start = nextLabelStart(
       existing.map((r) => r.label),
-      labelPrefix,
+      effectivePrefix,
     );
-    const labels = generateLabels(labelPrefix, count, start);
+    const labels = generateLabels(effectivePrefix, count, start);
+
+    // Reject the whole batch (R57 atomicity) if Magpul mode is on and any
+    // generated label breaks the charset or 4-char cap — e.g. a prefix with
+    // disallowed characters, or a prefix+sequence that runs past 4 chars.
+    // Empty labels (blank prefix) stay valid. Reject, never truncate (R5).
+    if (ownerMagpulMode) {
+      const offending = labels.find(
+        (label) =>
+          !MAGPUL_LABEL_ALLOWED_RE.test(label) ||
+          label.length > MAX_LABEL_LENGTH,
+      );
+      if (offending !== undefined) {
+        const codes: MagazineValidationCode[] = [];
+        if (!MAGPUL_LABEL_ALLOWED_RE.test(offending))
+          codes.push("invalidMagpulLabel");
+        if (offending.length > MAX_LABEL_LENGTH)
+          codes.push("magpulLabelTooLong");
+        throw new ValidationError(codes);
+      }
+    }
 
     const created = await tx
       .insert(magazine)

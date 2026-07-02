@@ -19,6 +19,7 @@ const NAV: NavItem[] = [
   { href: "/magazines", label: "Magazines" },
   { href: "/firearms", label: "Firearms" },
   { href: "/summary", label: "Summary" },
+  { href: "/settings", label: "Settings" },
 ];
 
 export interface ShellUser {

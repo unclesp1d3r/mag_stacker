@@ -1,0 +1,1 @@
+ALTER TABLE "user" ADD COLUMN "magpul_mode" boolean DEFAULT false;

@@ -89,6 +89,7 @@ export default async function MagazinesPage({ searchParams }: PageProps) {
         currentUserId={user.id}
         firearmOptions={firearmOptions}
         caliberSuggestions={caliberSuggestions}
+        magpulMode={user.magpulMode}
         filtered={filtered}
       />
     </div>

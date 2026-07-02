@@ -24,6 +24,7 @@ export const user = pgTable("user", {
   banned: boolean("banned").default(false),
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires"),
+  magpulMode: boolean("magpul_mode").default(false),
 });
 
 export const session = pgTable(

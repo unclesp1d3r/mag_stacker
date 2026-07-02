@@ -27,6 +27,21 @@ export const auth = betterAuth({
     enabled: true,
     disableSignUp: true,
   },
+  user: {
+    additionalFields: {
+      // Per-account opt-in for the PMAG dot-matrix label constraint (default
+      // off). `input: false` blocks it from the client-facing updateUser and
+      // self-serve signup flows (not the admin createUser `data` passthrough);
+      // it is updated server-side by the settings toggle. Surfaces on the
+      // session.
+      magpulMode: {
+        type: "boolean",
+        required: false,
+        defaultValue: false,
+        input: false,
+      },
+    },
+  },
   rateLimit: {
     enabled: true,
     storage: "database",

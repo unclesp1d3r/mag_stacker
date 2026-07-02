@@ -3,12 +3,13 @@ import { eq } from "drizzle-orm";
 import { NotFoundError } from "@/src/auth/errors";
 import { createGrant } from "@/src/auth/grants";
 import { db } from "@/src/db/client";
-import { magazine } from "@/src/db/schema";
+import { magazine, user } from "@/src/db/schema";
 import { ValidationError } from "@/src/domain/errors";
 import {
   createUser,
   deleteUsers,
   makeFirearm,
+  makeMagazine,
 } from "@/src/test-support/factories";
 import {
   createMagazine,
@@ -137,6 +138,144 @@ live("magazines service (U6)", () => {
     });
     await expect(getMagazine(userB, mag.id)).rejects.toBeInstanceOf(
       NotFoundError,
+    );
+  });
+});
+
+live("Magpul mode label constraint — service integration (U3/U4)", () => {
+  let ownerUser = "";
+  let granteeUser = "";
+
+  beforeAll(async () => {
+    ownerUser = await createUser("magpul-owner");
+    granteeUser = await createUser("magpul-grantee");
+    await db
+      .update(user)
+      .set({ magpulMode: true })
+      .where(eq(user.id, ownerUser));
+  });
+
+  afterAll(async () => {
+    await deleteUsers(ownerUser, granteeUser);
+  });
+
+  test("R3/AE1 (magpul, service): mode on → ar-1 stored normalized as AR-1", async () => {
+    const mag = await createMagazine(ownerUser, {
+      brandModel: "Test",
+      caliber: "9mm",
+      baseCapacity: 15,
+      extensionRounds: 0,
+      label: "ar-1",
+    });
+    expect(mag.label).toBe("AR-1");
+  });
+
+  test("R4 (magpul, service): mode on → AR-15 (5 chars) rejects with magpulLabelTooLong", async () => {
+    let caughtError: unknown;
+    try {
+      await createMagazine(ownerUser, {
+        brandModel: "Test",
+        caliber: "9mm",
+        baseCapacity: 15,
+        extensionRounds: 0,
+        label: "AR-15",
+      });
+    } catch (e) {
+      caughtError = e;
+    }
+    expect(caughtError).toBeInstanceOf(ValidationError);
+    expect((caughtError as ValidationError).codes).toContain(
+      "magpulLabelTooLong",
+    );
+  });
+
+  test("R5 (magpul, service): mode off → label stored verbatim without constraint", async () => {
+    const mag = await createMagazine(granteeUser, {
+      brandModel: "Test",
+      caliber: "9mm",
+      baseCapacity: 15,
+      extensionRounds: 0,
+      label: "AR.15",
+    });
+    expect(mag.label).toBe("AR.15");
+  });
+
+  test("AE7/R11 (magpul, service): update passing same nonconforming label saves unchanged (KTD-3 grandfather)", async () => {
+    const existing = await makeMagazine(ownerUser, { label: "range gun" });
+    const updated = await updateMagazine(ownerUser, existing.id, {
+      brandModel: "Test MG",
+      caliber: ".45 ACP",
+      baseCapacity: 15,
+      extensionRounds: 0,
+      label: "range gun",
+    });
+    expect(updated.label).toBe("range gun");
+  });
+
+  test("R11 (magpul, service): caliber-only update (label omitted) preserves nonconforming label (KTD-3)", async () => {
+    const existing = await makeMagazine(ownerUser, { label: "range gun" });
+    const updated = await updateMagazine(ownerUser, existing.id, {
+      brandModel: "Test MG",
+      caliber: ".45 ACP",
+      baseCapacity: 15,
+      extensionRounds: 0,
+      // label intentionally omitted — should preserve stored "range gun"
+    });
+    expect(updated.label).toBe("range gun");
+  });
+
+  test("AE10 (magpul, service): grantee (mode off) creating for mode-on owner enforces owner constraint", async () => {
+    const anchorMag = await makeMagazine(ownerUser, {});
+    await createGrant(db, {
+      actorId: ownerUser,
+      granteeId: granteeUser,
+      parentType: "magazine",
+      parentId: anchorMag.id,
+      permission: "edit",
+      allowCreateOnBehalf: true,
+    });
+
+    let caughtError: unknown;
+    try {
+      await createMagazine(granteeUser, {
+        brandModel: "Test",
+        caliber: "9mm",
+        baseCapacity: 15,
+        extensionRounds: 0,
+        label: "AR.15",
+        ownerId: ownerUser,
+      });
+    } catch (e) {
+      caughtError = e;
+    }
+    expect(caughtError).toBeInstanceOf(ValidationError);
+    // "AR.15" is both out-of-charset (".") and too long (5 chars); assert both
+    // so a regression dropping either check on the create-on-behalf path fails.
+    expect((caughtError as ValidationError).codes).toContain(
+      "invalidMagpulLabel",
+    );
+    expect((caughtError as ValidationError).codes).toContain(
+      "magpulLabelTooLong",
+    );
+  });
+
+  test("AE7/R11 (magpul, service): update CHANGING label to an invalid value is rejected", async () => {
+    const existing = await makeMagazine(ownerUser, { label: "range gun" });
+    let caughtError: unknown;
+    try {
+      await updateMagazine(ownerUser, existing.id, {
+        brandModel: "Test MG",
+        caliber: ".45 ACP",
+        baseCapacity: 15,
+        extensionRounds: 0,
+        label: "A.1",
+      });
+    } catch (e) {
+      caughtError = e;
+    }
+    expect(caughtError).toBeInstanceOf(ValidationError);
+    expect((caughtError as ValidationError).codes).toContain(
+      "invalidMagpulLabel",
     );
   });
 });
