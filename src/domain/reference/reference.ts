@@ -136,3 +136,34 @@ export async function calibersForFilter(
 ): Promise<string[]> {
   return distinctCalibers(db, userId);
 }
+
+/**
+ * Returns distinct non-blank `subtype` values from the user's visible firearms,
+ * sorted ascending. Subtype suggestions are per-owner in-use values only —
+ * there is no curated seed list (KTD-F). Mirrors {@link distinctCalibers}.
+ */
+export async function distinctSubtypes(
+  db: DbOrTx,
+  userId: string,
+): Promise<string[]> {
+  const firearmIds = await getVisibleIds(db, userId, "firearm");
+  if (firearmIds.size === 0) return [];
+
+  const rows = await db
+    .selectDistinct({ subtype: firearm.subtype })
+    .from(firearm)
+    .where(and(inArray(firearm.id, [...firearmIds]), ne(firearm.subtype, "")));
+
+  return rows.map((r) => r.subtype).sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Subtype suggestions for the firearm form input (R9). Same as
+ * {@link distinctSubtypes} — no curated list to union in.
+ */
+export async function subtypesForInput(
+  db: DbOrTx,
+  userId: string,
+): Promise<string[]> {
+  return distinctSubtypes(db, userId);
+}

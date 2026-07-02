@@ -12,11 +12,7 @@
  * backfilled row).
  */
 
-import {
-  isFirearmAction,
-  isFirearmType,
-  UNSPECIFIED,
-} from "./constants";
+import { isFirearmAction, isFirearmType, UNSPECIFIED } from "./constants";
 
 export type FirearmValidationCode =
   | "emptyName"

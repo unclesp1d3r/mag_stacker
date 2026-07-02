@@ -5,6 +5,7 @@ import {
   calibersForFilter,
   calibersForInput,
   distinctCalibers,
+  distinctSubtypes,
   manufacturers,
   standardCalibers,
 } from "../reference";
@@ -300,6 +301,58 @@ live("calibersForFilter", () => {
     try {
       const calibers = await calibersForFilter(db, emptyUserId);
       expect(calibers).toEqual([]);
+    } finally {
+      await deleteUsers(emptyUserId);
+    }
+  });
+});
+
+live("distinctSubtypes", () => {
+  let db: Database;
+  let makeFirearm: typeof FactoriesType.makeFirearm;
+  let createUser: typeof FactoriesType.createUser;
+  let deleteUsers: typeof FactoriesType.deleteUsers;
+
+  let ownerAId: string;
+  let ownerBId: string;
+
+  beforeAll(async () => {
+    const clientMod = await import("@/src/db/client");
+    db = clientMod.db;
+    const factMod = await import("@/src/test-support/factories");
+    makeFirearm = factMod.makeFirearm;
+    createUser = factMod.createUser;
+    deleteUsers = factMod.deleteUsers;
+
+    ownerAId = await createUser("subtype-owner-a");
+    ownerBId = await createUser("subtype-owner-b");
+  });
+
+  afterAll(async () => {
+    await deleteUsers(ownerAId, ownerBId);
+  });
+
+  test("returns owner-visible distinct non-blank subtypes, sorted ascending", async () => {
+    await makeFirearm(ownerAId, { subtype: "Striker-fired" });
+    await makeFirearm(ownerAId, { subtype: "AR-pattern" });
+    await makeFirearm(ownerAId, { subtype: "Striker-fired" }); // dup
+    await makeFirearm(ownerAId, { subtype: "" }); // blank excluded
+
+    const subtypes = await distinctSubtypes(db, ownerAId);
+
+    expect(subtypes).toEqual(["AR-pattern", "Striker-fired"]);
+  });
+
+  test("excludes another owner's subtypes", async () => {
+    await makeFirearm(ownerBId, { subtype: "DA/SA" });
+    const subtypes = await distinctSubtypes(db, ownerAId);
+    expect(subtypes).not.toContain("DA/SA");
+  });
+
+  test("returns [] when the owner has no firearms", async () => {
+    const emptyUserId = await createUser("subtype-empty");
+    try {
+      expect(await distinctSubtypes(db, emptyUserId)).toEqual([]);
     } finally {
       await deleteUsers(emptyUserId);
     }

@@ -110,12 +110,8 @@
           "name": "account_user_id_user_id_fk",
           "tableFrom": "account",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -162,9 +158,7 @@
         "rate_limit_key_unique": {
           "name": "rate_limit_key_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "key"
-          ]
+          "columns": ["key"]
         }
       },
       "policies": {},
@@ -253,12 +247,8 @@
           "name": "session_user_id_user_id_fk",
           "tableFrom": "session",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -268,9 +258,7 @@
         "session_token_unique": {
           "name": "session_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {},
@@ -366,9 +354,7 @@
         "user_email_unique": {
           "name": "user_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -550,12 +536,8 @@
           "name": "firearm_owner_id_user_id_fk",
           "tableFrom": "firearm",
           "tableTo": "user",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -659,12 +641,8 @@
           "name": "grant_owner_id_user_id_fk",
           "tableFrom": "grant",
           "tableTo": "user",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -672,12 +650,8 @@
           "name": "grant_grantee_id_user_id_fk",
           "tableFrom": "grant",
           "tableTo": "user",
-          "columnsFrom": [
-            "grantee_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["grantee_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -687,11 +661,7 @@
         "grant_grantee_parent_unique": {
           "name": "grant_grantee_parent_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "grantee_id",
-            "parent_type",
-            "parent_id"
-          ]
+          "columns": ["grantee_id", "parent_type", "parent_id"]
         }
       },
       "policies": {},
@@ -765,12 +735,8 @@
           "name": "idempotency_user_id_user_id_fk",
           "tableFrom": "idempotency",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -778,10 +744,7 @@
       "compositePrimaryKeys": {
         "idempotency_user_id_idempotency_key_pk": {
           "name": "idempotency_user_id_idempotency_key_pk",
-          "columns": [
-            "user_id",
-            "idempotency_key"
-          ]
+          "columns": ["user_id", "idempotency_key"]
         }
       },
       "uniqueConstraints": {},
@@ -888,12 +851,8 @@
           "name": "magazine_owner_id_user_id_fk",
           "tableFrom": "magazine",
           "tableTo": "user",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -958,12 +917,8 @@
           "name": "magazine_firearm_magazine_id_magazine_id_fk",
           "tableFrom": "magazine_firearm",
           "tableTo": "magazine",
-          "columnsFrom": [
-            "magazine_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["magazine_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -971,12 +926,8 @@
           "name": "magazine_firearm_firearm_id_firearm_id_fk",
           "tableFrom": "magazine_firearm",
           "tableTo": "firearm",
-          "columnsFrom": [
-            "firearm_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["firearm_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -984,10 +935,7 @@
       "compositePrimaryKeys": {
         "magazine_firearm_magazine_id_firearm_id_pk": {
           "name": "magazine_firearm_magazine_id_firearm_id_pk",
-          "columns": [
-            "magazine_id",
-            "firearm_id"
-          ]
+          "columns": ["magazine_id", "firearm_id"]
         }
       },
       "uniqueConstraints": {},

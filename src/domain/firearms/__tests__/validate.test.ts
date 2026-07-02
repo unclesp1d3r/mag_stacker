@@ -21,9 +21,9 @@ describe("validateFirearm (parity §1)", () => {
   });
 
   test('("AR-15","  ") returns ["emptyCaliber"] (whitespace-only treated as empty)', () => {
-    expect(validateFirearm({ name: "AR-15", caliber: "  ", ...CLASS })).toEqual([
-      "emptyCaliber",
-    ]);
+    expect(validateFirearm({ name: "AR-15", caliber: "  ", ...CLASS })).toEqual(
+      ["emptyCaliber"],
+    );
   });
 
   test('("","") returns both failures, not first-only (R20)', () => {

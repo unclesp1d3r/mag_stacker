@@ -25,6 +25,7 @@ interface FirearmsViewProps {
   showSerial: boolean;
   caliberSuggestions: string[];
   manufacturerSuggestions: string[];
+  subtypeSuggestions: string[];
 }
 
 type FormState = { open: false } | { open: true; initial?: FirearmFormValues };
@@ -35,6 +36,7 @@ export function FirearmsView({
   showSerial,
   caliberSuggestions,
   manufacturerSuggestions,
+  subtypeSuggestions,
 }: FirearmsViewProps) {
   const router = useRouter();
   const [form, setForm] = useState<FormState>({ open: false });
@@ -74,6 +76,7 @@ export function FirearmsView({
             initial={form.initial}
             caliberSuggestions={caliberSuggestions}
             manufacturerSuggestions={manufacturerSuggestions}
+            subtypeSuggestions={subtypeSuggestions}
             onDone={refresh}
             onCancel={() => setForm({ open: false })}
           />

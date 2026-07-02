@@ -71,7 +71,10 @@ export const firearm = pgTable(
     index("firearm_owner_id_idx").on(t.ownerId),
     // R26 backstop — domain validation is the primary surface. Value lists come
     // from the single source in domain/firearms/constants.ts (KTD-A).
-    check("firearm_type_valid", sql`${t.type} in (${sql.raw(inList(FIREARM_TYPES))})`),
+    check(
+      "firearm_type_valid",
+      sql`${t.type} in (${sql.raw(inList(FIREARM_TYPES))})`,
+    ),
     check(
       "firearm_action_valid",
       sql`${t.action} in (${sql.raw(inList(FIREARM_ACTIONS))})`,

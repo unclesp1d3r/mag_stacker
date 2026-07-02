@@ -222,9 +222,12 @@ live("firearms service — taxonomy (U4)", () => {
 
     // Bypass the domain layer: the check constraint is the backstop (R4).
     await expectRejects(() =>
-      db
-        .insert(firearm)
-        .values({ ownerId: userA, name: "RawBad", caliber: "9mm", type: "blaster" }),
+      db.insert(firearm).values({
+        ownerId: userA,
+        name: "RawBad",
+        caliber: "9mm",
+        type: "blaster",
+      }),
     );
   });
 
