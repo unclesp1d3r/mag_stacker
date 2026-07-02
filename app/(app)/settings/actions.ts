@@ -26,6 +26,9 @@ export async function updateMagpulModeAction(
   enabled: boolean,
 ): Promise<ActionResult> {
   try {
+    if (typeof enabled !== "boolean") {
+      return { ok: false, error: "Invalid setting value." };
+    }
     const userId = await requireUserId();
     await db
       .update(userTable)

@@ -100,8 +100,7 @@ That over-generalizes. Not every owner marks magazines with a PMAG M3 dot matrix
 
 **Deferred to planning**
 
-- Where the Magpul-mode flag is stored — an extension of the Better Auth user record (via `additionalFields`) versus a separate owner-scoped settings row.
-- Exact wording of the helper text and the rejection error message.
+- Exact wording of the helper text and the rejection error message. (Storage location is resolved by KTD-1: a Better Auth `additionalFields` boolean on `user`.)
 
 **Deferred to follow-up work**
 

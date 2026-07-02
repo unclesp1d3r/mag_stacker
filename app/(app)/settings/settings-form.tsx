@@ -25,10 +25,15 @@ export function SettingsForm({
     setError(null);
     setMagpulMode(enabled);
     startTransition(async () => {
-      const result = await updateMagpulModeAction(enabled);
-      if (!result.ok) {
+      try {
+        const result = await updateMagpulModeAction(enabled);
+        if (!result.ok) {
+          setMagpulMode(!enabled);
+          setError(result.error ?? "Could not save settings.");
+        }
+      } catch {
         setMagpulMode(!enabled);
-        setError(result.error ?? "Could not save settings.");
+        setError("Could not save settings.");
       }
     });
   }

@@ -44,7 +44,15 @@ test("Settings toggle, grandfather behavior, and persistence", async ({
 
   await test.step("toggle Magpul mode on via Settings nav link", async () => {
     await page.getByRole("link", { name: "Settings" }).click();
-    await page.getByRole("checkbox", { name: /Magpul mode/ }).check();
+    // The toggle saves via a fire-and-forget transition; wait for the server
+    // action's POST to resolve so the write has committed before we navigate
+    // away and read the flag back (otherwise the next page can race the write).
+    await Promise.all([
+      page.waitForResponse(
+        (res) => res.request().method() === "POST" && res.status() === 200,
+      ),
+      page.getByRole("checkbox", { name: /Magpul mode/ }).check(),
+    ]);
     await expect(
       page.getByRole("checkbox", { name: /Magpul mode/ }),
     ).toBeChecked();
