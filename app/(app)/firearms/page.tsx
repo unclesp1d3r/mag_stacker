@@ -19,9 +19,10 @@ export default async function FirearmsPage() {
     calibersForInput(db, user.id),
   ]);
 
-  // Subtype suggestions are the owner's in-use values, which are already on the
-  // fetched rows — derive them here rather than re-querying (unlike calibers,
-  // there is no curated master list to union in).
+  // Subtype suggestions are the in-use values on the user's visible firearms
+  // (owned + shared, per listFirearms), already fetched above — derive them here
+  // rather than re-querying (unlike calibers, there is no curated master list to
+  // union in). Mirrors the visibility scope of distinctCalibers.
   const subtypeSuggestions = [
     ...new Set(firearms.map((f) => f.subtype).filter((s) => s !== "")),
   ].sort((a, b) => a.localeCompare(b));

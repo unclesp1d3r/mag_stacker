@@ -220,13 +220,22 @@ live("firearms service — taxonomy (U4)", () => {
       }),
     ).rejects.toBeInstanceOf(ValidationError);
 
-    // Bypass the domain layer: the check constraint is the backstop (R4).
+    // Bypass the domain layer: the check constraints are the backstop (R4) —
+    // one per column (firearm_type_valid / firearm_action_valid).
     await expectRejects(() =>
       db.insert(firearm).values({
         ownerId: userA,
-        name: "RawBad",
+        name: "RawBadType",
         caliber: "9mm",
         type: "blaster",
+      }),
+    );
+    await expectRejects(() =>
+      db.insert(firearm).values({
+        ownerId: userA,
+        name: "RawBadAction",
+        caliber: "9mm",
+        action: "phaser",
       }),
     );
   });

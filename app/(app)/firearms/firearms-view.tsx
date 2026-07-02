@@ -59,10 +59,19 @@ export function FirearmsView({
   const presentTypes = FIREARM_TYPES.filter((t) =>
     firearms.some((f) => f.type === t),
   );
+  // Reconcile the selected filter against the live list: after a mutation
+  // (delete/edit) the previously-selected type may no longer be present, and a
+  // `<select>` value with no matching option renders blank. Fall back to "all"
+  // so the control always shows a valid option and never strands the owner on a
+  // filter that hides everything.
+  const effectiveFilter =
+    typeFilter !== ALL_TYPES && !presentTypes.some((t) => t === typeFilter)
+      ? ALL_TYPES
+      : typeFilter;
   const filtered =
-    typeFilter === ALL_TYPES
+    effectiveFilter === ALL_TYPES
       ? firearms
-      : firearms.filter((f) => f.type === typeFilter);
+      : firearms.filter((f) => f.type === effectiveFilter);
   const del = useDeleteConfirmation<FirearmListItem>({
     entityLabel: "Firearm",
     getName: (item) => item.name,
@@ -71,7 +80,12 @@ export function FirearmsView({
 
   function refresh(touchedId?: string) {
     setForm({ open: false });
-    if (touchedId) flash(touchedId);
+    // Show the full list after a create/edit so the touched row (which may be a
+    // type the active filter would hide) is visible and its flash lands.
+    if (touchedId) {
+      setTypeFilter(ALL_TYPES);
+      flash(touchedId);
+    }
     router.refresh();
   }
 
@@ -123,7 +137,7 @@ export function FirearmsView({
             </label>
             <Select
               id={filterId}
-              value={typeFilter}
+              value={effectiveFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
               className="w-auto min-w-40"
             >
@@ -136,66 +150,63 @@ export function FirearmsView({
             </Select>
           </div>
 
-          {filtered.length === 0 ? (
-            // Filtered to zero — distinct from the cold-start empty state, which
-            // is reserved for owning no firearms at all.
-            <p className="rounded-[var(--radius)] border border-line bg-paper-raised px-4 py-6 text-center text-sm text-ink-faint">
-              No firearms match this filter.
-            </p>
-          ) : (
-            <DataTable>
-              <THead>
-                <TH>Name</TH>
-                <TH>Caliber</TH>
-                <TH>Type</TH>
-                <TH>Action</TH>
-                {showSerial ? <TH>Serial</TH> : null}
-                <TH className="text-right"># Mags</TH>
-                <TH className="text-right">Actions</TH>
-              </THead>
-              <tbody>
-                {filtered.map((item) => (
-                  <TRow key={item.id} flash={item.id === flashId}>
-                    <TD className="font-medium">{item.name}</TD>
-                    <TD className="tabular">{item.caliber}</TD>
-                    <TD>{firearmTypeLabel(item.type)}</TD>
-                    <TD>{firearmActionLabel(item.action)}</TD>
-                    {showSerial ? (
-                      <TD className="font-mono text-xs">{item.serialNumber}</TD>
-                    ) : null}
-                    <TD className="text-right tabular">{item.magazineCount}</TD>
-                    <TD className="text-right">
-                      <div className="flex justify-end gap-1">
-                        {item.ownerId === currentUserId ? (
-                          <ShareControl
-                            parentType="firearm"
-                            parentId={item.id}
-                            itemName={item.name}
-                          />
-                        ) : null}
+          {
+            // The filter only offers present types and reconciles a stale
+            // selection to "all" (see effectiveFilter), so a non-empty list can
+            // never filter to zero rows — no empty-match branch is needed.
+          }
+          <DataTable>
+            <THead>
+              <TH>Name</TH>
+              <TH>Caliber</TH>
+              <TH>Type</TH>
+              <TH>Action</TH>
+              {showSerial ? <TH>Serial</TH> : null}
+              <TH className="text-right"># Mags</TH>
+              <TH className="text-right">Actions</TH>
+            </THead>
+            <tbody>
+              {filtered.map((item) => (
+                <TRow key={item.id} flash={item.id === flashId}>
+                  <TD className="font-medium">{item.name}</TD>
+                  <TD className="tabular">{item.caliber}</TD>
+                  <TD>{firearmTypeLabel(item.type)}</TD>
+                  <TD>{firearmActionLabel(item.action)}</TD>
+                  {showSerial ? (
+                    <TD className="font-mono text-xs">{item.serialNumber}</TD>
+                  ) : null}
+                  <TD className="text-right tabular">{item.magazineCount}</TD>
+                  <TD className="text-right">
+                    <div className="flex justify-end gap-1">
+                      {item.ownerId === currentUserId ? (
+                        <ShareControl
+                          parentType="firearm"
+                          parentId={item.id}
+                          itemName={item.name}
+                        />
+                      ) : null}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setForm({ open: true, initial: item })}
+                      >
+                        Edit
+                      </Button>
+                      {item.ownerId === currentUserId ? (
                         <Button
-                          variant="ghost"
+                          variant="danger"
                           size="sm"
-                          onClick={() => setForm({ open: true, initial: item })}
+                          onClick={() => del.request(item)}
                         >
-                          Edit
+                          Delete
                         </Button>
-                        {item.ownerId === currentUserId ? (
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            onClick={() => del.request(item)}
-                          >
-                            Delete
-                          </Button>
-                        ) : null}
-                      </div>
-                    </TD>
-                  </TRow>
-                ))}
-              </tbody>
-            </DataTable>
-          )}
+                      ) : null}
+                    </div>
+                  </TD>
+                </TRow>
+              ))}
+            </tbody>
+          </DataTable>
         </div>
       ) : null}
 

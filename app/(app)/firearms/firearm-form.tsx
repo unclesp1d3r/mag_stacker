@@ -136,7 +136,7 @@ export function FirearmForm({
 
   // Focus the first failing field in document order — generalized from the
   // original two-way branch so the new required selects are reachable (R9).
-  const focusOrder: Array<{ codes: string[]; id: string }> = [
+  const focusOrder: Array<{ codes: FirearmValidationCode[]; id: string }> = [
     { codes: ["emptyName"], id: nameId },
     { codes: ["emptyCaliber"], id: calId },
     { codes: TYPE_CODES, id: typeId },

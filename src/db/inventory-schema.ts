@@ -20,7 +20,12 @@ import {
 } from "../domain/firearms/constants";
 import { user } from "./auth-schema";
 
-/** Build a SQL `in ('a', 'b', ...)` literal list from a controlled value set. */
+/**
+ * Build a SQL `in ('a', 'b', ...)` literal list from a controlled value set.
+ * Values are quoted naively (no escaping) — only ever call this with fixed,
+ * code-defined constant arrays (e.g. FIREARM_TYPES), never request/DB-sourced
+ * data, or a value containing a single quote would corrupt the DDL.
+ */
 function inList(values: readonly string[]): string {
   return values.map((v) => `'${v}'`).join(", ");
 }
