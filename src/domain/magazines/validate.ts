@@ -4,13 +4,25 @@
  * Returns ALL failure codes together (R26). `addCount` is a context parameter:
  * 1 for single add/edit, the requested count for bulk add (U10). Code order
  * matches the parity §12.2 multi-failure example.
+ *
+ * `context` carries owner-mode and label change-detection for Magpul label
+ * constraint (U3, KTD-2). The caller resolves owner mode from the DB; the
+ * validator stays pure.
  */
+
+import {
+  MAX_LABEL_LENGTH,
+  MAGPUL_LABEL_ALLOWED_RE,
+  normalizeMagpulLabel,
+} from "./constants";
 
 export type MagazineValidationCode =
   | "emptyBrandModel"
   | "emptyCaliber"
   | "baseCapacityTooLow"
   | "negativeExtensionRounds"
+  | "invalidMagpulLabel"
+  | "magpulLabelTooLong"
   | "addCountTooLow"
   | "addCountTooHigh";
 
@@ -23,15 +35,42 @@ export interface MagazineFields {
   extensionRounds: number;
 }
 
+/**
+ * Optional context for Magpul label constraint (U3, KTD-2).
+ *
+ * - `label`: the submitted label value (undefined → label not being changed)
+ * - `ownerMagpulMode`: the magazine owner's Magpul mode flag
+ * - `previousLabel`: stored label on update; undefined on create (any defined
+ *   label is treated as a change)
+ */
+export interface MagazineValidationContext {
+  label?: string;
+  ownerMagpulMode?: boolean;
+  previousLabel?: string;
+}
+
 export function validateMagazine(
   input: MagazineFields,
   addCount = 1,
+  context?: MagazineValidationContext,
 ): MagazineValidationCode[] {
   const codes: MagazineValidationCode[] = [];
   if (input.brandModel.trim() === "") codes.push("emptyBrandModel");
   if (input.caliber.trim() === "") codes.push("emptyCaliber");
   if (input.baseCapacity < 1) codes.push("baseCapacityTooLow");
   if (input.extensionRounds < 0) codes.push("negativeExtensionRounds");
+  if (context?.ownerMagpulMode === true && context.label !== undefined) {
+    const isChanged =
+      context.previousLabel === undefined ||
+      context.label !== context.previousLabel;
+    if (isChanged) {
+      const normalized = normalizeMagpulLabel(context.label);
+      if (!MAGPUL_LABEL_ALLOWED_RE.test(normalized))
+        codes.push("invalidMagpulLabel");
+      if (normalized.length > MAX_LABEL_LENGTH)
+        codes.push("magpulLabelTooLong");
+    }
+  }
   if (addCount < 1) codes.push("addCountTooLow");
   if (addCount > MAX_BULK_ADD_COUNT) codes.push("addCountTooHigh");
   return codes;

@@ -3,12 +3,20 @@
  * client-side (live feedback, R67) and server-side (re-validation, KTD-2); this
  * maps their codes to text so both surfaces speak identically.
  */
+
+import {
+  MAGPUL_LABEL_ALLOWED_DESCRIPTION,
+  MAX_LABEL_LENGTH,
+} from "./magazines/constants";
+
 export const VALIDATION_MESSAGES: Record<string, string> = {
   emptyName: "Name is required",
   emptyCaliber: "Caliber is required",
   emptyBrandModel: "Brand/model is required",
   baseCapacityTooLow: "Base capacity must be at least 1",
   negativeExtensionRounds: "Extension rounds cannot be negative",
+  invalidMagpulLabel: `Label may only contain ${MAGPUL_LABEL_ALLOWED_DESCRIPTION}`,
+  magpulLabelTooLong: `Label must be ${MAX_LABEL_LENGTH} characters or fewer`,
   addCountTooLow: "Count must be at least 1",
   addCountTooHigh: "Count is too large (max 1000)",
 };

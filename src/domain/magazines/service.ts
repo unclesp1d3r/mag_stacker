@@ -7,9 +7,10 @@ import {
 import { NotFoundError } from "@/src/auth/errors";
 import { getVisibleIds, resolvePermission } from "@/src/auth/visibility";
 import { type DbOrTx, db } from "@/src/db/client";
-import { magazine } from "@/src/db/schema";
+import { magazine, user } from "@/src/db/schema";
 import { ValidationError } from "../errors";
 import { loadCompatibilityBatch, replaceCompatibility } from "./compatibility";
+import { normalizeMagpulLabel } from "./constants";
 import { type MagazineFields, validateMagazine } from "./validate";
 
 /**
@@ -37,13 +38,36 @@ export interface MagazineCreateInput extends MagazineInput {
   ownerId?: string;
 }
 
-function scalarFields(input: MagazineInput) {
+/**
+ * Build the scalar columns to write for a create or update.
+ *
+ * When `ownerMagpulMode` is true and the incoming label differs from
+ * `previousLabel` (undefined → first create, so any defined label is new),
+ * the label is normalized before storage (KTD-4).
+ *
+ * When `input.label` is undefined the label key is omitted entirely so Drizzle
+ * skips it on updates, preserving the stored value (R11 / KTD-3 grandfather).
+ * On inserts the DB column default ("") applies instead.
+ */
+function scalarFields(
+  input: MagazineInput,
+  ownerMagpulMode: boolean,
+  previousLabel?: string,
+) {
+  const isLabelDefined = input.label !== undefined;
+  const isLabelChanged = isLabelDefined && input.label !== previousLabel;
+  const labelValue = isLabelDefined
+    ? ownerMagpulMode && isLabelChanged
+      ? normalizeMagpulLabel(input.label as string)
+      : (input.label as string)
+    : undefined;
+
   return {
     brandModel: input.brandModel,
     caliber: input.caliber,
     baseCapacity: input.baseCapacity,
     extensionRounds: input.extensionRounds,
-    label: input.label ?? "",
+    ...(labelValue !== undefined ? { label: labelValue } : {}),
     acquiredDate: input.acquiredDate ?? null,
     notes: input.notes ?? "",
   };
@@ -72,14 +96,25 @@ export async function createMagazine(
   actorId: string,
   input: MagazineCreateInput,
 ): Promise<MagazineWithCompatibility> {
-  const codes = validateMagazine(input, 1);
-  if (codes.length > 0) throw new ValidationError(codes);
-
   const row = await db.transaction(async (tx) => {
     const ownerId = await resolveCreateOwner(tx, actorId, input.ownerId);
+
+    const [ownerRow] = await tx
+      .select({ magpulMode: user.magpulMode })
+      .from(user)
+      .where(eq(user.id, ownerId))
+      .limit(1);
+    const ownerMagpulMode = ownerRow?.magpulMode ?? false;
+
+    const codes = validateMagazine(input, 1, {
+      ownerMagpulMode,
+      label: input.label,
+    });
+    if (codes.length > 0) throw new ValidationError(codes);
+
     const [created] = await tx
       .insert(magazine)
-      .values({ ownerId, ...scalarFields(input) })
+      .values({ ownerId, ...scalarFields(input, ownerMagpulMode) })
       .returning();
     await replaceCompatibility(
       tx,
@@ -98,14 +133,36 @@ export async function updateMagazine(
   id: string,
   input: MagazineInput,
 ): Promise<MagazineWithCompatibility> {
-  const codes = validateMagazine(input, 1);
-  if (codes.length > 0) throw new ValidationError(codes);
-
   const row = await db.transaction(async (tx) => {
     await authorizeUpdate(tx, actorId, "magazine", id);
+
+    const [existing] = await tx
+      .select({ ownerId: magazine.ownerId, label: magazine.label })
+      .from(magazine)
+      .where(eq(magazine.id, id))
+      .limit(1);
+    if (!existing) throw new NotFoundError();
+
+    const [ownerRow] = await tx
+      .select({ magpulMode: user.magpulMode })
+      .from(user)
+      .where(eq(user.id, existing.ownerId))
+      .limit(1);
+    const ownerMagpulMode = ownerRow?.magpulMode ?? false;
+
+    const codes = validateMagazine(input, 1, {
+      ownerMagpulMode,
+      label: input.label,
+      previousLabel: existing.label,
+    });
+    if (codes.length > 0) throw new ValidationError(codes);
+
     const [updated] = await tx
       .update(magazine)
-      .set({ ...scalarFields(input), updatedAt: new Date() })
+      .set({
+        ...scalarFields(input, ownerMagpulMode, existing.label),
+        updatedAt: new Date(),
+      })
       .where(eq(magazine.id, id))
       .returning();
     if (!updated) throw new NotFoundError();
