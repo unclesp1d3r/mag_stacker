@@ -24,7 +24,7 @@ export default async function FirearmsPage() {
   // rather than re-querying (unlike calibers, there is no curated master list to
   // union in). Mirrors the visibility scope of distinctCalibers.
   const subtypeSuggestions = [
-    ...new Set(firearms.map((f) => f.subtype).filter((s) => s !== "")),
+    ...new Set(firearms.map((f) => f.subtype).filter((s) => s.trim() !== "")),
   ].sort((a, b) => a.localeCompare(b));
 
   const counts = new Map(summary.firearmCounts.map((f) => [f.id, f.count]));

@@ -97,11 +97,15 @@ function ClassificationSelect({
         onChange={(e) => onChange(e.target.value)}
         aria-invalid={fieldCodes.some((c) => codes.includes(c))}
       >
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o === UNSPECIFIED ? placeholder : labelFor(o)}
-          </option>
-        ))}
+        {/* Placeholder first (the sentinel is last in the value set). */}
+        <option value={UNSPECIFIED}>{placeholder}</option>
+        {options
+          .filter((o) => o !== UNSPECIFIED)
+          .map((o) => (
+            <option key={o} value={o}>
+              {labelFor(o)}
+            </option>
+          ))}
       </Select>
     </Field>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { ShareControl } from "@/app/(app)/grants/share-control";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -59,15 +59,19 @@ export function FirearmsView({
   const presentTypes = FIREARM_TYPES.filter((t) =>
     firearms.some((f) => f.type === t),
   );
-  // Reconcile the selected filter against the live list: after a mutation
-  // (delete/edit) the previously-selected type may no longer be present, and a
-  // `<select>` value with no matching option renders blank. Fall back to "all"
-  // so the control always shows a valid option and never strands the owner on a
-  // filter that hides everything.
-  const effectiveFilter =
-    typeFilter !== ALL_TYPES && !presentTypes.some((t) => t === typeFilter)
-      ? ALL_TYPES
-      : typeFilter;
+  // Reconcile the selected filter against the live list: after a mutation the
+  // previously-selected type may no longer be present, and a `<select>` value
+  // with no matching option renders blank.
+  const isFilterStale =
+    typeFilter !== ALL_TYPES && !presentTypes.some((t) => t === typeFilter);
+  // `effectiveFilter` keeps the transient render (before the effect fires) from
+  // showing a blank control or filtering on a vanished type.
+  const effectiveFilter = isFilterStale ? ALL_TYPES : typeFilter;
+  // Clear the stale value in state too, so it can't silently snap back if that
+  // type later reappears (e.g. a newly-shared firearm) on an unrelated refresh.
+  useEffect(() => {
+    if (isFilterStale) setTypeFilter(ALL_TYPES);
+  }, [isFilterStale]);
   const filtered =
     effectiveFilter === ALL_TYPES
       ? firearms
