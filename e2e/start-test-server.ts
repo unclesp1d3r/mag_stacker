@@ -188,6 +188,11 @@ async function main(): Promise<void> {
     // 4. Per-spec user pool + in-process session minting.
     console.log(`[e2e] pre-seeding ${SPEC_USER_KEYS.length} spec users…`);
     const { auth } = await import("@/auth");
+    // Import Drizzle helpers for post-creation attribute updates. These must be
+    // loaded after DATABASE_URL is set (above), which is why they're dynamic.
+    const { db } = await import("@/src/db/client");
+    const { eq } = await import("drizzle-orm");
+    const { user: userTable } = await import("@/src/db/schema");
     const users: SeededUser[] = [];
     for (const key of SPEC_USER_KEYS) {
       const email = `${key}@e2e.local`;
@@ -195,6 +200,15 @@ async function main(): Promise<void> {
       await auth.api.createUser({
         body: { email, password, name: key, role: "user" },
       });
+      // "magpul-mode" needs Magpul mode pre-enabled. Better Auth's
+      // `input: false` blocks this field in createUser, so we write it
+      // directly via Drizzle after account creation.
+      if (key === "magpul-mode") {
+        await db
+          .update(userTable)
+          .set({ magpulMode: true })
+          .where(eq(userTable.email, email));
+      }
       const signIn = await auth.handler(
         new Request(`${BASE_URL}/api/auth/sign-in/email`, {
           method: "POST",

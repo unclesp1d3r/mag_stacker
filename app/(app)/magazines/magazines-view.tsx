@@ -36,6 +36,8 @@ interface MagazinesViewProps {
   currentUserId: string;
   firearmOptions: FirearmOption[];
   caliberSuggestions: string[];
+  /** When true the magazine form enforces PMAG dot-matrix label constraints. */
+  magpulMode: boolean;
   /** True when a filter is active (distinguishes empty inventory from zero results). */
   filtered: boolean;
 }
@@ -61,6 +63,7 @@ export function MagazinesView({
   currentUserId,
   firearmOptions,
   caliberSuggestions,
+  magpulMode,
   filtered,
 }: MagazinesViewProps) {
   const router = useRouter();
@@ -97,6 +100,7 @@ export function MagazinesView({
             initial={form.initial}
             firearmOptions={firearmOptions}
             caliberSuggestions={caliberSuggestions}
+            magpulMode={magpulMode}
             onDone={refresh}
             onCancel={() => setForm({ open: false })}
           />

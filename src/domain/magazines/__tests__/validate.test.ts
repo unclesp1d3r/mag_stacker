@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  type MagazineValidationCode,
   effectiveCapacity,
+  type MagazineValidationCode,
   validateMagazine,
 } from "../validate";
 

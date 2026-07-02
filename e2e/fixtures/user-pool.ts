@@ -13,6 +13,8 @@ export const SPEC_USER_KEYS = [
   "inventory-crud",
   "delete-dialog",
   "theme",
+  "magpul-mode",
+  "magpul-settings",
 ] as const;
 
 export type SpecUserKey = (typeof SPEC_USER_KEYS)[number];

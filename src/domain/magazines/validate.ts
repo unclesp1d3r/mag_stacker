@@ -11,8 +11,8 @@
  */
 
 import {
-  MAX_LABEL_LENGTH,
   MAGPUL_LABEL_ALLOWED_RE,
+  MAX_LABEL_LENGTH,
   normalizeMagpulLabel,
 } from "./constants";
 
