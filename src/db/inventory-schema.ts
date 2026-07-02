@@ -13,7 +13,22 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
+import {
+  FIREARM_ACTIONS,
+  FIREARM_TYPES,
+  UNSPECIFIED,
+} from "../domain/firearms/constants";
 import { user } from "./auth-schema";
+
+/**
+ * Build a SQL `in ('a', 'b', ...)` literal list from a controlled value set.
+ * Values are quoted naively (no escaping) — only ever call this with fixed,
+ * code-defined constant arrays (e.g. FIREARM_TYPES), never request/DB-sourced
+ * data, or a value containing a single quote would corrupt the DDL.
+ */
+function inList(values: readonly string[]): string {
+  return values.map((v) => `'${v}'`).join(", ");
+}
 
 /**
  * Inventory + sharing schema (U3).
@@ -50,12 +65,30 @@ export const firearm = pgTable(
     name: text("name").notNull(),
     manufacturer: text("manufacturer").notNull().default(""),
     caliber: text("caliber").notNull(),
+    // Controlled taxonomy (U2). NOT NULL DEFAULT 'unspecified' backfills existing
+    // rows on ADD COLUMN (R12); domain validation rejects 'unspecified' on write
+    // (R7). `subtype` is optional free text (empty-not-null, R18).
+    type: text("type").notNull().default(UNSPECIFIED),
+    action: text("action").notNull().default(UNSPECIFIED),
+    subtype: text("subtype").notNull().default(""),
     serialNumber: text("serial_number").notNull().default(""),
     notes: text("notes").notNull().default(""),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (t) => [index("firearm_owner_id_idx").on(t.ownerId)],
+  (t) => [
+    index("firearm_owner_id_idx").on(t.ownerId),
+    // R26 backstop — domain validation is the primary surface. Value lists come
+    // from the single source in domain/firearms/constants.ts (KTD-A).
+    check(
+      "firearm_type_valid",
+      sql`${t.type} in (${sql.raw(inList(FIREARM_TYPES))})`,
+    ),
+    check(
+      "firearm_action_valid",
+      sql`${t.action} in (${sql.raw(inList(FIREARM_ACTIONS))})`,
+    ),
+  ],
 );
 
 export const magazine = pgTable(

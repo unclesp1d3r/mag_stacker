@@ -21,6 +21,8 @@ export type Firearm = typeof firearm.$inferSelect;
 
 export interface FirearmCreateInput extends FirearmInput {
   manufacturer?: string;
+  /** Optional free-text subtype; empty-not-null when omitted (R3/R18). */
+  subtype?: string;
   serialNumber?: string;
   notes?: string;
   /** Create-on-behalf target owner; defaults to the acting user (KTD-5). */
@@ -34,6 +36,10 @@ function persistableFields(input: FirearmCreateInput | FirearmUpdateInput) {
     // Raw values persisted verbatim (R18/R19); optional text is empty-not-null.
     name: input.name,
     caliber: input.caliber,
+    // Controlled taxonomy — validated real by validateFirearm before persist (U3).
+    type: input.type,
+    action: input.action,
+    subtype: input.subtype ?? "",
     manufacturer: input.manufacturer ?? "",
     serialNumber: input.serialNumber ?? "",
     notes: input.notes ?? "",

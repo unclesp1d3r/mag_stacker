@@ -21,6 +21,26 @@ import {
 
 const live = process.env.DATABASE_URL ? describe : describe.skip;
 
+// A valid real classification, spread into create/update calls so the pre-
+// taxonomy assertions keep testing what they always tested (U4 made type/action
+// required on the create/update input).
+const CLASS = { type: "pistol", action: "semi-auto" } as const;
+
+/**
+ * Asserts a thenable rejects. Drizzle/pg query builders are thenables, not
+ * Promises, so bun's `.rejects` matcher is unreliable on them — use this helper
+ * for direct DB calls (see memory: bun-test-rejects-drizzle-thenable).
+ */
+async function expectRejects(fn: () => Promise<unknown>): Promise<void> {
+  let threw = false;
+  try {
+    await fn();
+  } catch {
+    threw = true;
+  }
+  expect(threw).toBe(true);
+}
+
 live("firearms service (U5)", () => {
   let userA = "";
   let userB = "";
@@ -36,14 +56,18 @@ live("firearms service (U5)", () => {
   test("covers AE1 path: invalid input throws ValidationError and writes no row (R21)", async () => {
     const before = await listFirearms(userA);
     await expect(
-      createFirearm(userA, { name: "", caliber: "" }),
+      createFirearm(userA, { name: "", caliber: "", ...CLASS }),
     ).rejects.toBeInstanceOf(ValidationError);
     const after = await listFirearms(userA);
     expect(after.length).toBe(before.length);
   });
 
   test("create assigns ownership to the acting user (R8)", async () => {
-    const fa = await createFirearm(userA, { name: "Glock 19", caliber: "9mm" });
+    const fa = await createFirearm(userA, {
+      name: "Glock 19",
+      caliber: "9mm",
+      ...CLASS,
+    });
     expect(fa.ownerId).toBe(userA);
     expect(fa.manufacturer).toBe("");
     expect(fa.notes).toBe("");
@@ -53,6 +77,7 @@ live("firearms service (U5)", () => {
     const fa = await createFirearm(userA, {
       name: "  Spacey  ",
       caliber: " 9mm ",
+      ...CLASS,
     });
     expect(fa.name).toBe("  Spacey  ");
     expect(fa.caliber).toBe(" 9mm ");
@@ -62,8 +87,8 @@ live("firearms service (U5)", () => {
     const empty = await listFirearms(userB);
     expect(empty).toEqual([]);
 
-    await createFirearm(userA, { name: "Zeta", caliber: "9mm" });
-    await createFirearm(userA, { name: "Alpha", caliber: "9mm" });
+    await createFirearm(userA, { name: "Zeta", caliber: "9mm", ...CLASS });
+    await createFirearm(userA, { name: "Alpha", caliber: "9mm", ...CLASS });
     const list = await listFirearms(userA);
     const names = list.map((f) => f.name);
     const sorted = [...names].sort((a, b) => a.localeCompare(b));
@@ -73,6 +98,7 @@ live("firearms service (U5)", () => {
     const shared = await createFirearm(userA, {
       name: "Shared",
       caliber: "9mm",
+      ...CLASS,
     });
     await createGrant(db, {
       actorId: userA,
@@ -91,17 +117,23 @@ live("firearms service (U5)", () => {
       caliber: "9mm",
       manufacturer: "Glock",
       notes: "some notes",
+      ...CLASS,
     });
     const updated = await updateFirearm(userA, fa.id, {
       name: "Clearable",
       caliber: "9mm",
+      ...CLASS,
     });
     expect(updated.manufacturer).toBe("");
     expect(updated.notes).toBe("");
   });
 
   test("deleting a firearm referenced by magazines succeeds; magazines survive with it dropped (R23)", async () => {
-    const fa = await createFirearm(userA, { name: "Linked", caliber: "9mm" });
+    const fa = await createFirearm(userA, {
+      name: "Linked",
+      caliber: "9mm",
+      ...CLASS,
+    });
     const mag = await makeMagazine(userA);
     await linkMagazineFirearm(mag.id, fa.id);
 
@@ -120,9 +152,145 @@ live("firearms service (U5)", () => {
   });
 
   test("get-by-id for another user's unshared firearm returns not-found (R9/R70)", async () => {
-    const fa = await createFirearm(userA, { name: "Private", caliber: "9mm" });
+    const fa = await createFirearm(userA, {
+      name: "Private",
+      caliber: "9mm",
+      ...CLASS,
+    });
     await expect(getFirearm(userB, fa.id)).rejects.toBeInstanceOf(
       NotFoundError,
     );
+  });
+});
+
+// Taxonomy persistence (U4, R3/R6/R7/R12).
+live("firearms service — taxonomy (U4)", () => {
+  let userA = "";
+  let userB = "";
+
+  beforeAll(async () => {
+    userA = await createUser("TaxA");
+    userB = await createUser("TaxB");
+  });
+  afterAll(async () => {
+    await deleteUsers(userA, userB);
+  });
+
+  test("covers AE2: create with unspecified type/action throws and writes no row", async () => {
+    const before = await listFirearms(userA);
+    await expect(
+      createFirearm(userA, {
+        name: "Unclassified",
+        caliber: "9mm",
+        type: "unspecified",
+        action: "unspecified",
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    const after = await listFirearms(userA);
+    expect(after.length).toBe(before.length);
+  });
+
+  test("create persists real type/action and subtype verbatim; omitted subtype is ''", async () => {
+    const withSubtype = await createFirearm(userA, {
+      name: "Carbine",
+      caliber: "9mm",
+      type: "pcc",
+      action: "semi-auto",
+      subtype: "  Roland Special  ",
+    });
+    expect(withSubtype.type).toBe("pcc");
+    expect(withSubtype.action).toBe("semi-auto");
+    expect(withSubtype.subtype).toBe("  Roland Special  ");
+
+    const noSubtype = await createFirearm(userA, {
+      name: "Plain",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    expect(noSubtype.subtype).toBe("");
+  });
+
+  test("covers AE3: out-of-set type throws in the domain and is rejected by the DB constraint", async () => {
+    await expect(
+      createFirearm(userA, {
+        name: "Bad",
+        caliber: "9mm",
+        type: "blaster",
+        action: "semi-auto",
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    // Bypass the domain layer: the check constraints are the backstop (R4) —
+    // one per column (firearm_type_valid / firearm_action_valid).
+    await expectRejects(() =>
+      db.insert(firearm).values({
+        ownerId: userA,
+        name: "RawBadType",
+        caliber: "9mm",
+        type: "blaster",
+      }),
+    );
+    await expectRejects(() =>
+      db.insert(firearm).values({
+        ownerId: userA,
+        name: "RawBadAction",
+        caliber: "9mm",
+        action: "phaser",
+      }),
+    );
+  });
+
+  test("covers AE5: a row created with column defaults reads back unspecified/'' and is valid", async () => {
+    // Insert bypassing the service, using only non-default fields — this is the
+    // shape a pre-feature (backfilled) row has after the migration's defaults.
+    const [row] = await db
+      .insert(firearm)
+      .values({ ownerId: userA, name: "Legacy", caliber: "9mm" })
+      .returning();
+    expect(row.type).toBe("unspecified");
+    expect(row.action).toBe("unspecified");
+    expect(row.subtype).toBe("");
+  });
+
+  test("covers AE1: editing a backfilled row without choosing a real type/action throws", async () => {
+    const [legacy] = await db
+      .insert(firearm)
+      .values({ ownerId: userA, name: "NeedsClass", caliber: "9mm" })
+      .returning();
+
+    // Saving the still-unspecified row is rejected (required-on-edit, R7).
+    await expect(
+      updateFirearm(userA, legacy.id, {
+        name: "NeedsClass",
+        caliber: "9mm",
+        type: "unspecified",
+        action: "unspecified",
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    // Supplying a real classification succeeds.
+    const fixed = await updateFirearm(userA, legacy.id, {
+      name: "NeedsClass",
+      caliber: "9mm",
+      type: "rifle",
+      action: "bolt",
+    });
+    expect(fixed.type).toBe("rifle");
+    expect(fixed.action).toBe("bolt");
+  });
+
+  test("owner-scoping unchanged: a non-owner cannot update another owner's firearm", async () => {
+    const fa = await createFirearm(userA, {
+      name: "OwnedByA",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    await expect(
+      updateFirearm(userB, fa.id, {
+        name: "Hijacked",
+        caliber: "9mm",
+        ...CLASS,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

@@ -5,8 +5,19 @@ import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/feedback";
 import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import { validateFirearm } from "@/src/domain/firearms/validate";
+import {
+  FIREARM_ACTIONS,
+  FIREARM_TYPES,
+  firearmActionLabel,
+  firearmTypeLabel,
+  UNSPECIFIED,
+} from "@/src/domain/firearms/constants";
+import {
+  type FirearmValidationCode,
+  validateFirearm,
+} from "@/src/domain/firearms/validate";
 import { firstMessage } from "@/src/domain/validation-messages";
 import { createFirearmAction, updateFirearmAction } from "./actions";
 
@@ -15,6 +26,9 @@ export interface FirearmFormValues {
   name: string;
   manufacturer: string;
   caliber: string;
+  type: string;
+  action: string;
+  subtype: string;
   serialNumber: string;
   notes: string;
 }
@@ -23,6 +37,7 @@ interface FirearmFormProps {
   initial?: FirearmFormValues;
   caliberSuggestions: string[];
   manufacturerSuggestions: string[];
+  subtypeSuggestions: string[];
   /** `touchedId` flashes the just-created/edited row. */
   onDone: (touchedId?: string) => void;
   onCancel: () => void;
@@ -32,14 +47,71 @@ const EMPTY: FirearmFormValues = {
   name: "",
   manufacturer: "",
   caliber: "",
+  type: UNSPECIFIED,
+  action: UNSPECIFIED,
+  subtype: "",
   serialNumber: "",
   notes: "",
 };
+
+const TYPE_CODES: FirearmValidationCode[] = ["invalidType", "typeRequired"];
+const ACTION_CODES: FirearmValidationCode[] = [
+  "invalidAction",
+  "actionRequired",
+];
+
+interface ClassificationSelectProps {
+  id: string;
+  label: string;
+  options: readonly string[];
+  labelFor: (value: string) => string;
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+  codes: string[];
+  fieldCodes: FirearmValidationCode[];
+}
+
+/** A required taxonomy select (Type / Action) with its placeholder option. */
+function ClassificationSelect({
+  id,
+  label,
+  options,
+  labelFor,
+  placeholder,
+  value,
+  onChange,
+  codes,
+  fieldCodes,
+}: ClassificationSelectProps) {
+  return (
+    <Field
+      label={label}
+      controlId={id}
+      required
+      error={firstMessage(codes, fieldCodes)}
+    >
+      <Select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-invalid={fieldCodes.some((c) => codes.includes(c))}
+      >
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o === UNSPECIFIED ? placeholder : labelFor(o)}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
 
 export function FirearmForm({
   initial,
   caliberSuggestions,
   manufacturerSuggestions,
+  subtypeSuggestions,
   onDone,
   onCancel,
 }: FirearmFormProps) {
@@ -52,12 +124,24 @@ export function FirearmForm({
   const nameId = useId();
   const mfrId = useId();
   const calId = useId();
-  const serialId = useId();
+  const typeId = useId();
+  const actionId = useId();
+  const subtypeId = useId();
   const notesId = useId();
+  const serialId = useId();
 
   function set<K extends keyof FirearmFormValues>(key: K, value: string) {
     setValues((v) => ({ ...v, [key]: value }));
   }
+
+  // Focus the first failing field in document order — generalized from the
+  // original two-way branch so the new required selects are reachable (R9).
+  const focusOrder: Array<{ codes: FirearmValidationCode[]; id: string }> = [
+    { codes: ["emptyName"], id: nameId },
+    { codes: ["emptyCaliber"], id: calId },
+    { codes: TYPE_CODES, id: typeId },
+    { codes: ACTION_CODES, id: actionId },
+  ];
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -65,8 +149,10 @@ export function FirearmForm({
     setCodes(found);
     setServerError(null);
     if (found.length > 0) {
-      const focusId = found.includes("emptyName") ? nameId : calId;
-      document.getElementById(focusId)?.focus();
+      const target = focusOrder.find((f) =>
+        found.some((c) => f.codes.includes(c)),
+      );
+      if (target) document.getElementById(target.id)?.focus();
       return;
     }
     startTransition(async () => {
@@ -99,6 +185,11 @@ export function FirearmForm({
       <datalist id="firearm-manufacturers">
         {manufacturerSuggestions.map((m) => (
           <option key={m} value={m} />
+        ))}
+      </datalist>
+      <datalist id="firearm-subtypes">
+        {subtypeSuggestions.map((s) => (
+          <option key={s} value={s} />
         ))}
       </datalist>
 
@@ -139,6 +230,42 @@ export function FirearmForm({
           />
         </Field>
       </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <ClassificationSelect
+          id={typeId}
+          label="Type"
+          options={FIREARM_TYPES}
+          labelFor={firearmTypeLabel}
+          placeholder="Select a type…"
+          value={values.type}
+          onChange={(v) => set("type", v)}
+          codes={codes}
+          fieldCodes={TYPE_CODES}
+        />
+        <ClassificationSelect
+          id={actionId}
+          label="Action"
+          options={FIREARM_ACTIONS}
+          labelFor={firearmActionLabel}
+          placeholder="Select an action…"
+          value={values.action}
+          onChange={(v) => set("action", v)}
+          codes={codes}
+          fieldCodes={ACTION_CODES}
+        />
+      </div>
+      <Field
+        label="Subtype"
+        controlId={subtypeId}
+        hint="Optional — e.g. striker-fired, DA/SA, AR-pattern."
+      >
+        <Input
+          id={subtypeId}
+          list="firearm-subtypes"
+          value={values.subtype}
+          onChange={(e) => set("subtype", e.target.value)}
+        />
+      </Field>
       <Field
         label="Serial number"
         controlId={serialId}
