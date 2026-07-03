@@ -23,6 +23,9 @@ export const VALIDATION_MESSAGES: Record<string, string> = {
   magpulLabelTooLong: `Label must be ${MAX_LABEL_LENGTH} characters or fewer`,
   addCountTooLow: "Count must be at least 1",
   addCountTooHigh: "Count is too large (max 1000)",
+  invalidRoundsFired: "Rounds fired must be a whole number of at least 1",
+  emptyDate: "Date is required",
+  invalidDate: "Enter a valid date",
 };
 
 export function messageForCode(code: string): string {

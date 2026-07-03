@@ -11,6 +11,7 @@ import { Card, PageHeader } from "@/components/ui/surface";
 import { DataTable, TD, TH, THead, TRow } from "@/components/ui/table";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import { useRowFlash } from "@/hooks/use-row-flash";
+import type { Permission } from "@/src/auth/visibility";
 import {
   FIREARM_TYPES,
   firearmActionLabel,
@@ -19,6 +20,7 @@ import {
 import { firearmDisplayName, hasNickname } from "@/src/domain/firearms/display";
 import { deleteFirearmAction } from "./actions";
 import { FirearmForm, type FirearmFormValues } from "./firearm-form";
+import { RangeSessionHistory } from "./range-session-history";
 
 /** Filter sentinel: show every type. */
 const ALL_TYPES = "all";
@@ -27,6 +29,10 @@ export interface FirearmListItem extends FirearmFormValues {
   id: string;
   ownerId: string;
   magazineCount: number;
+  /** Derived lifetime rounds fired across this firearm's sessions (#11). */
+  roundTotal: number;
+  /** The viewer's own permission on this firearm, for session-control gating. */
+  permission: Permission;
 }
 
 interface FirearmsViewProps {
@@ -50,7 +56,14 @@ export function FirearmsView({
 }: FirearmsViewProps) {
   const router = useRouter();
   const [form, setForm] = useState<FormState>({ open: false });
+  const [sessionsForId, setSessionsForId] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>(ALL_TYPES);
+  // Derive the panel's firearm from the live list, so a router.refresh() (a
+  // rename, a revoked grant, or a delete) reflects in the open panel instead of
+  // a stale snapshot taken when it was first opened.
+  const sessionsFor = sessionsForId
+    ? (firearms.find((f) => f.id === sessionsForId) ?? null)
+    : null;
   const filterId = useId();
   const { flashId, flash } = useRowFlash();
 
@@ -124,6 +137,19 @@ export function FirearmsView({
         </Card>
       ) : null}
 
+      {sessionsFor ? (
+        <RangeSessionHistory
+          firearmId={sessionsFor.id}
+          firearmName={firearmDisplayName(sessionsFor)}
+          canEdit={
+            sessionsFor.permission === "owner" ||
+            sessionsFor.permission === "edit"
+          }
+          onClose={() => setSessionsForId(null)}
+          onChange={() => router.refresh()}
+        />
+      ) : null}
+
       {firearms.length === 0 && !form.open ? (
         <EmptyState
           title="No firearms yet"
@@ -168,6 +194,7 @@ export function FirearmsView({
               <TH>Action</TH>
               {showSerial ? <TH>Serial</TH> : null}
               <TH className="text-right"># Mags</TH>
+              <TH className="text-right">Rounds</TH>
               <TH className="text-right">Actions</TH>
             </THead>
             <tbody>
@@ -188,6 +215,7 @@ export function FirearmsView({
                     <TD className="font-mono text-xs">{item.serialNumber}</TD>
                   ) : null}
                   <TD className="text-right tabular">{item.magazineCount}</TD>
+                  <TD className="text-right tabular">{item.roundTotal}</TD>
                   <TD className="text-right">
                     <div className="flex justify-end gap-1">
                       {item.ownerId === currentUserId ? (
@@ -197,6 +225,13 @@ export function FirearmsView({
                           itemName={firearmDisplayName(item)}
                         />
                       ) : null}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSessionsForId(item.id)}
+                      >
+                        Sessions
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
