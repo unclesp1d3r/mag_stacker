@@ -1,0 +1,57 @@
+# Pre-commit hooks configuration for HashHive
+# See https://pre-commit.com for more information
+#
+# Install: pip install pre-commit
+# Then run: pre-commit install
+# Update hooks: pre-commit autoupdate
+
+repos:
+    # General file quality checks (well-maintained by pre-commit team)
+    - repo: https://github.com/pre-commit/pre-commit-hooks
+      rev: v6.0.0
+      hooks:
+          - id: trailing-whitespace
+            # gatekeeper prompt is byte-verbatim from the n8n source — it carries
+            # one trailing space at end of the "Use the HTTP Request Tool…" paragraph
+            # that must be preserved (drift here changes tokenization → model behavior).
+            exclude: ^(node_modules/|dist/|coverage/|\.git/|package-lock\.json|packages/agents/src/prompts/gatekeeper\.ts$)
+            types: [text]
+          - id: end-of-file-fixer
+            exclude: ^(node_modules/|dist/|coverage/|\.git/|\.hook)
+            types: [text]
+          - id: check-yaml
+            args: [--unsafe] # Allow custom tags in YAML
+            types: [yaml]
+          - id: check-json
+            exclude: ^(node_modules/|dist/|coverage/|\.git/|package-lock\.json|\.oxlintrc\.json|\.oxfmtrc\.json)
+            types: [json]
+          - id: check-added-large-files
+            args: [--maxkb=1000] # Warn on files > 1MB
+          - id: check-merge-conflict
+          - id: detect-private-key
+            exclude: ^(\.env\.example|\.env\.local\.example)
+            types: [text]
+          - id: check-vcs-permalinks
+          - id: check-case-conflict
+          - id: check-illegal-windows-names
+          - id: check-shebang-scripts-are-executable
+          - id: check-symlinks
+
+    - repo: local
+      hooks:
+          - id: shellcheck
+            name: ShellCheck
+            entry: mise x -- shellcheck
+            language: system
+            types: [shell]
+
+    - repo: https://github.com/rhysd/actionlint
+      rev: v1.7.12
+      hooks:
+          - id: actionlint
+            files: "\\.github/workflows/"
+
+    - repo: https://github.com/biomejs/pre-commit
+      rev: v2.2.0 # Use the sha / tag you want to point at
+      hooks:
+          - id: biome-check
