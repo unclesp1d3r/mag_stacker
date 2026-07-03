@@ -17,6 +17,7 @@ export const SPEC_USER_KEYS = [
   "magpul-settings",
   "firearm-taxonomy",
   "firearm-nickname",
+  "range-sessions",
 ] as const;
 
 export type SpecUserKey = (typeof SPEC_USER_KEYS)[number];
