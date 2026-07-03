@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/src/db/client";
-import { firearm, magazine, magazineFirearm, user } from "@/src/db/schema";
+import {
+  firearm,
+  magazine,
+  magazineFirearm,
+  rangeSession,
+  user,
+} from "@/src/db/schema";
 
 /**
  * DB factories for integration tests (U4+). Each test creates isolated users
@@ -59,4 +65,15 @@ export async function linkMagazineFirearm(
   ordinal = 0,
 ): Promise<void> {
   await db.insert(magazineFirearm).values({ magazineId, firearmId, ordinal });
+}
+
+export async function makeRangeSession(
+  firearmId: string,
+  overrides: Partial<typeof rangeSession.$inferInsert> = {},
+): Promise<typeof rangeSession.$inferSelect> {
+  const [row] = await db
+    .insert(rangeSession)
+    .values({ firearmId, date: "2026-01-01", roundsFired: 50, ...overrides })
+    .returning();
+  return row;
 }
