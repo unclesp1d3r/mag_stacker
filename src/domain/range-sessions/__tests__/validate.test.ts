@@ -38,6 +38,15 @@ describe("validateRangeSession", () => {
     );
   });
 
+  test("rejects day-of-month overflow that Date.parse would normalize", () => {
+    // Date.parse normalizes these (e.g. 2026-02-31 → Mar 3) instead of NaN.
+    for (const date of ["2026-02-31", "2026-04-31", "2026-02-29"]) {
+      expect(validateRangeSession({ ...base, date })).toContain("invalidDate");
+    }
+    // A genuine leap day still passes (2028 is a leap year).
+    expect(validateRangeSession({ ...base, date: "2028-02-29" })).toEqual([]);
+  });
+
   test("returns multiple codes together, not first-only", () => {
     const codes = validateRangeSession({ ...base, roundsFired: 0, date: "" });
     expect(codes).toContain("invalidRoundsFired");

@@ -130,8 +130,10 @@ export async function lifetimeRoundTotals(
   if (visible.size === 0) return new Map();
   const rows = await db
     .select({
+      // sum(integer) is bigint; the pg driver returns it as a string. Keep it
+      // bigint (no ::int, which would overflow past int4) and parse at the edge.
       firearmId: rangeSession.firearmId,
-      total: sql<number>`coalesce(sum(${rangeSession.roundsFired}), 0)::int`,
+      total: sql<string>`coalesce(sum(${rangeSession.roundsFired}), 0)`,
     })
     .from(rangeSession)
     .where(inArray(rangeSession.firearmId, [...visible]))

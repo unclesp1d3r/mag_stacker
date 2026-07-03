@@ -20,6 +20,18 @@ export interface RangeSessionInput {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * True only for a real calendar date. `Date.parse` NORMALIZES day overflow
+ * (e.g. `2026-02-31` → Mar 3) instead of returning NaN, so a round-trip compare
+ * against the UTC-normalized ISO date is what rejects impossible days — the
+ * Postgres `date` cast would otherwise reject them downstream.
+ */
+function isRealCalendarDate(date: string): boolean {
+  const parsed = Date.parse(date);
+  if (Number.isNaN(parsed)) return false;
+  return new Date(parsed).toISOString().slice(0, 10) === date;
+}
+
 export function validateRangeSession(
   input: RangeSessionInput,
 ): RangeSessionValidationCode[] {
@@ -31,7 +43,7 @@ export function validateRangeSession(
 
   const date = (input.date ?? "").trim();
   if (date === "") codes.push("emptyDate");
-  else if (!ISO_DATE.test(date) || Number.isNaN(Date.parse(date))) {
+  else if (!ISO_DATE.test(date) || !isRealCalendarDate(date)) {
     codes.push("invalidDate");
   }
 

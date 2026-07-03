@@ -56,8 +56,14 @@ export function FirearmsView({
 }: FirearmsViewProps) {
   const router = useRouter();
   const [form, setForm] = useState<FormState>({ open: false });
-  const [sessionsFor, setSessionsFor] = useState<FirearmListItem | null>(null);
+  const [sessionsForId, setSessionsForId] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>(ALL_TYPES);
+  // Derive the panel's firearm from the live list, so a router.refresh() (a
+  // rename, a revoked grant, or a delete) reflects in the open panel instead of
+  // a stale snapshot taken when it was first opened.
+  const sessionsFor = sessionsForId
+    ? (firearms.find((f) => f.id === sessionsForId) ?? null)
+    : null;
   const filterId = useId();
   const { flashId, flash } = useRowFlash();
 
@@ -139,7 +145,7 @@ export function FirearmsView({
             sessionsFor.permission === "owner" ||
             sessionsFor.permission === "edit"
           }
-          onClose={() => setSessionsFor(null)}
+          onClose={() => setSessionsForId(null)}
           onChange={() => router.refresh()}
         />
       ) : null}
@@ -222,7 +228,7 @@ export function FirearmsView({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setSessionsFor(item)}
+                        onClick={() => setSessionsForId(item.id)}
                       >
                         Sessions
                       </Button>
