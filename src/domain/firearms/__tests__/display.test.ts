@@ -5,7 +5,10 @@ import { firearmDisplayName, hasNickname } from "../display";
 describe("firearmDisplayName (#18)", () => {
   test("returns the nickname when present (Covers AE1)", () => {
     expect(
-      firearmDisplayName({ name: "Glock 19 Gen 5", nickname: "Nightstand gun" }),
+      firearmDisplayName({
+        name: "Glock 19 Gen 5",
+        nickname: "Nightstand gun",
+      }),
     ).toBe("Nightstand gun");
   });
 
@@ -16,9 +19,9 @@ describe("firearmDisplayName (#18)", () => {
   });
 
   test("falls back to the product name when nickname is empty (Covers AE1)", () => {
-    expect(
-      firearmDisplayName({ name: "M&P Shield Plus", nickname: "" }),
-    ).toBe("M&P Shield Plus");
+    expect(firearmDisplayName({ name: "M&P Shield Plus", nickname: "" })).toBe(
+      "M&P Shield Plus",
+    );
   });
 
   test("treats a whitespace-only nickname as empty", () => {
