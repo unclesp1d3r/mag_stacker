@@ -19,14 +19,14 @@ test("nickname-primary display, fallback, and delete label", async ({
     await page.goto("/firearms");
     await page.getByRole("button", { name: "Add your first firearm" }).click();
     const form = page.locator("form");
-    await form.getByLabel("Name", { exact: true }).fill("Glock 19 Gen 5");
+    await form.getByLabel(/^Name/).fill("Glock 19 Gen 5");
     await form.getByLabel("Nickname", { exact: true }).fill("Nightstand gun");
     await form.getByLabel("Caliber").fill("9mm");
     await form.getByLabel(/^Type/).selectOption("pistol");
     await form.getByLabel("Action").selectOption("semi-auto");
     await page.getByRole("button", { name: "Add firearm" }).click();
 
-    await expect(page.getByText("Firearm logged")).toBeVisible();
+    await expect(page.getByText("Firearm logged").first()).toBeVisible();
     // The row leads with the nickname and carries the product name alongside it.
     const row = page.getByRole("row").filter({ hasText: "Nightstand gun" });
     await expect(row).toHaveCount(1);
@@ -36,13 +36,13 @@ test("nickname-primary display, fallback, and delete label", async ({
   await test.step("AE1: create without a nickname → product name only", async () => {
     await page.getByRole("button", { name: "Add firearm" }).click();
     const form = page.locator("form");
-    await form.getByLabel("Name", { exact: true }).fill("M&P Shield Plus");
+    await form.getByLabel(/^Name/).fill("M&P Shield Plus");
     await form.getByLabel("Caliber").fill("9mm");
     await form.getByLabel(/^Type/).selectOption("pistol");
     await form.getByLabel("Action").selectOption("semi-auto");
     await page.getByRole("button", { name: "Add firearm" }).click();
 
-    await expect(page.getByText("Firearm logged")).toBeVisible();
+    await expect(page.getByText("Firearm logged").first()).toBeVisible();
     await expect(
       page.getByRole("row").filter({ hasText: "M&P Shield Plus" }),
     ).toHaveCount(1);
@@ -51,14 +51,14 @@ test("nickname-primary display, fallback, and delete label", async ({
   await test.step("a whitespace-only nickname falls back to the product name", async () => {
     await page.getByRole("button", { name: "Add firearm" }).click();
     const form = page.locator("form");
-    await form.getByLabel("Name", { exact: true }).fill("Zulu Product");
+    await form.getByLabel(/^Name/).fill("Zulu Product");
     await form.getByLabel("Nickname", { exact: true }).fill("   ");
     await form.getByLabel("Caliber").fill("9mm");
     await form.getByLabel(/^Type/).selectOption("rifle");
     await form.getByLabel("Action").selectOption("bolt");
     await page.getByRole("button", { name: "Add firearm" }).click();
 
-    await expect(page.getByText("Firearm logged")).toBeVisible();
+    await expect(page.getByText("Firearm logged").first()).toBeVisible();
     await expect(
       page.getByRole("row").filter({ hasText: "Zulu Product" }),
     ).toHaveCount(1);
@@ -74,7 +74,7 @@ test("nickname-primary display, fallback, and delete label", async ({
     await form.getByLabel("Nickname", { exact: true }).fill("Backup");
     await page.getByRole("button", { name: "Save changes" }).click();
 
-    await expect(page.getByText("Changes saved")).toBeVisible();
+    await expect(page.getByText("Changes saved").first()).toBeVisible();
     const row = page.getByRole("row").filter({ hasText: "Backup" });
     await expect(row).toHaveCount(1);
     await expect(row).toContainText("M&P Shield Plus");

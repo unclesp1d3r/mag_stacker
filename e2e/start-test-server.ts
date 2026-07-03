@@ -261,7 +261,16 @@ async function main(): Promise<void> {
     console.log(`[e2e] starting next start on :${PORT}…`);
     child = spawn(
       process.execPath,
-      ["run", "start", "--", "-p", String(PORT)],
+      // Start via the shim so this run's DB/auth env wins over any local `.env`
+      // (or mise env_cache) that bun/Next would otherwise re-load in the app.
+      [
+        "e2e/start-app.ts",
+        process.env.DATABASE_URL ?? "",
+        process.env.BETTER_AUTH_URL ?? "",
+        process.env.BETTER_AUTH_SECRET ?? "",
+        "-p",
+        String(PORT),
+      ],
       {
         stdio: "inherit",
         env: process.env,

@@ -18,7 +18,7 @@ test("required classification, Type column, and type filter", async ({
     await page.goto("/firearms");
     await page.getByRole("button", { name: "Add your first firearm" }).click();
     const form = page.locator("form");
-    await form.getByLabel("Name", { exact: true }).fill("Glock 19");
+    await form.getByLabel(/^Name/).fill("Glock 19");
     await form.getByLabel("Caliber").fill("9mm");
     // Leave Type/Action at their placeholder and submit.
     await page.getByRole("button", { name: "Add firearm" }).click();
@@ -46,7 +46,7 @@ test("required classification, Type column, and type filter", async ({
   await test.step("add a second firearm of a different type", async () => {
     await page.getByRole("button", { name: "Add firearm" }).click();
     const form = page.locator("form");
-    await form.getByLabel("Name", { exact: true }).fill("Remington 700");
+    await form.getByLabel(/^Name/).fill("Remington 700");
     await form.getByLabel("Caliber").fill(".308");
     await form.getByLabel(/^Type/).selectOption("rifle");
     await form.getByLabel("Action").selectOption("bolt");
