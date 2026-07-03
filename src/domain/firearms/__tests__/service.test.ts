@@ -11,6 +11,7 @@ import {
   linkMagazineFirearm,
   makeMagazine,
 } from "@/src/test-support/factories";
+import { firearmDisplayName } from "../display";
 import {
   createFirearm,
   deleteFirearm,
@@ -292,5 +293,132 @@ live("firearms service — taxonomy (U4)", () => {
         ...CLASS,
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+// Nickname persistence + displayed-label sort (#18).
+live("firearms service — nickname (#18)", () => {
+  let userN = "";
+
+  beforeAll(async () => {
+    userN = await createUser("NickN");
+  });
+  afterAll(async () => {
+    await deleteUsers(userN);
+  });
+
+  test("create trims the nickname on write; omitted/whitespace-only is ''", async () => {
+    const withNick = await createFirearm(userN, {
+      name: "Glock 19 Gen 5",
+      nickname: "  Nightstand gun  ",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    // Trimmed on write (a display label, unlike the verbatim fields).
+    expect(withNick.nickname).toBe("Nightstand gun");
+    const noNick = await createFirearm(userN, {
+      name: "M&P Shield Plus",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    expect(noNick.nickname).toBe("");
+    // A whitespace-only nickname collapses to "" — i.e. no nickname.
+    const blankNick = await createFirearm(userN, {
+      name: "SIG P365",
+      nickname: "   ",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    expect(blankNick.nickname).toBe("");
+    await deleteFirearm(userN, withNick.id);
+    await deleteFirearm(userN, noNick.id);
+    await deleteFirearm(userN, blankNick.id);
+  });
+
+  test("update can add, change, and clear the nickname", async () => {
+    const fa = await createFirearm(userN, {
+      name: "SIG P320",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    const added = await updateFirearm(userN, fa.id, {
+      name: "SIG P320",
+      nickname: "Old Reliable",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    expect(added.nickname).toBe("Old Reliable");
+    const cleared = await updateFirearm(userN, fa.id, {
+      name: "SIG P320",
+      nickname: "",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    expect(cleared.nickname).toBe("");
+    await deleteFirearm(userN, fa.id);
+  });
+
+  test("covers AE2: listFirearms orders by the displayed label (nickname-or-name)", async () => {
+    const created = await Promise.all([
+      createFirearm(userN, {
+        name: "Glock 19 Gen 5",
+        nickname: "Nightstand gun",
+        caliber: "9mm",
+        ...CLASS,
+      }),
+      createFirearm(userN, {
+        name: "M&P Shield Plus",
+        caliber: "9mm",
+        ...CLASS,
+      }),
+      createFirearm(userN, {
+        name: "SIG P320",
+        nickname: "Old Reliable",
+        caliber: "9mm",
+        ...CLASS,
+      }),
+      createFirearm(userN, {
+        name: "Zulu Product",
+        nickname: "   ",
+        caliber: "9mm",
+        ...CLASS,
+      }),
+    ]);
+    const list = await listFirearms(userN);
+    // Order tracks the shown label, not the underlying field: "M&P…" (product
+    // name) sorts before "Nightstand gun" (a nickname on a "Glock…" row), and
+    // the whitespace-only nickname falls back to its product name "Zulu Product".
+    expect(list.map((f) => firearmDisplayName(f))).toEqual([
+      "M&P Shield Plus",
+      "Nightstand gun",
+      "Old Reliable",
+      "Zulu Product",
+    ]);
+    for (const f of created) await deleteFirearm(userN, f.id);
+  });
+
+  test("a tab-only nickname is trimmed to empty on write and sorts by product name", async () => {
+    const created = await Promise.all([
+      createFirearm(userN, {
+        name: "Alpha Product",
+        nickname: "\t",
+        caliber: "9mm",
+        ...CLASS,
+      }),
+      createFirearm(userN, {
+        name: "Bravo Product",
+        caliber: "9mm",
+        ...CLASS,
+      }),
+    ]);
+    const list = await listFirearms(userN);
+    // The tab-only nickname trims to "" on write, so it is "no nickname" to both
+    // firearmDisplayName and the sort key — both rows sort by their product
+    // names rather than the invisible whitespace.
+    expect(list.map((f) => firearmDisplayName(f))).toEqual([
+      "Alpha Product",
+      "Bravo Product",
+    ]);
+    for (const f of created) await deleteFirearm(userN, f.id);
   });
 });

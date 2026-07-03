@@ -3,6 +3,10 @@
     "impeccable@impeccable": true,
     "typescript-lsp@claude-plugins-official": true,
     "playwright@claude-plugins-official": true,
-    "chrome-devtools-mcp@claude-plugins-official": true
+    "chrome-devtools-mcp@claude-plugins-official": true,
+    "comprehensive-review@claude-code-workflows": true,
+    "compound-engineering@compound-engineering-plugin": true,
+    "ecc@ecc": true,
+    "pr-review-toolkit@claude-plugins-official": true
   }
 }

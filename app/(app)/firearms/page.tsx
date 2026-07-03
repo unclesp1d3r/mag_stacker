@@ -32,6 +32,7 @@ export default async function FirearmsPage() {
     id: f.id,
     ownerId: f.ownerId,
     name: f.name,
+    nickname: f.nickname,
     manufacturer: f.manufacturer,
     caliber: f.caliber,
     type: f.type,

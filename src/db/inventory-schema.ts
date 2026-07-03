@@ -63,6 +63,9 @@ export const firearm = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    // Optional owner nickname distinct from the canonical product name (#18).
+    // Empty-not-null (R18); ADD COLUMN backfills existing rows to '' (R12).
+    nickname: text("nickname").notNull().default(""),
     manufacturer: text("manufacturer").notNull().default(""),
     caliber: text("caliber").notNull(),
     // Controlled taxonomy (U2). NOT NULL DEFAULT 'unspecified' backfills existing
