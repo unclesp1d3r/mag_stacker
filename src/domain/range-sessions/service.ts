@@ -117,11 +117,16 @@ export async function listSessionsForFirearm(
  * grouped by firearm over the actor's visible set. A firearm with no sessions is
  * absent from the map (the page reads it as 0, R6). The sum is cast to a JS
  * number — the pg driver returns bigint as a string.
+ *
+ * Pass `visibleIds` when the caller already resolved the visible firearm set
+ * (e.g. the firearms page derives it from `visibleFirearmPermissions`) to avoid
+ * re-deriving owned∪granted a second time; omit it and it resolves its own.
  */
 export async function lifetimeRoundTotals(
   actorId: string,
+  visibleIds?: Set<string>,
 ): Promise<Map<string, number>> {
-  const visible = await getVisibleIds(db, actorId, "firearm");
+  const visible = visibleIds ?? (await getVisibleIds(db, actorId, "firearm"));
   if (visible.size === 0) return new Map();
   const rows = await db
     .select({

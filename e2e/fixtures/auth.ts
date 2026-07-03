@@ -50,8 +50,12 @@ export function readArtifact(): RunArtifact {
   }
 }
 
-/** Build a Playwright storageState carrying this user's session cookie. */
-function storageStateFor(userKey: SpecUserKey) {
+/**
+ * Build a Playwright storageState carrying this user's session cookie. Exported
+ * so a two-user spec can open a second `browser.newContext({ storageState })`
+ * for a different seeded user (the default context uses `authTest`'s user).
+ */
+export function storageStateFor(userKey: SpecUserKey) {
   const artifact = readArtifact();
   const user = artifact.users.find((candidate) => candidate.key === userKey);
   if (!user) {

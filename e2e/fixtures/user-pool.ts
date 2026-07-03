@@ -18,6 +18,8 @@ export const SPEC_USER_KEYS = [
   "firearm-taxonomy",
   "firearm-nickname",
   "range-sessions",
+  "range-sessions-share",
+  "range-sessions-viewer",
 ] as const;
 
 export type SpecUserKey = (typeof SPEC_USER_KEYS)[number];

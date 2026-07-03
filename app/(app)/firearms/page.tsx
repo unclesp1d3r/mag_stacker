@@ -15,14 +15,19 @@ export default async function FirearmsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [firearms, summary, caliberSuggestions, roundTotals, permissions] =
+  const [firearms, summary, caliberSuggestions, permissions] =
     await Promise.all([
       listFirearms(user.id),
       inventorySummary(user.id),
       calibersForInput(db, user.id),
-      lifetimeRoundTotals(user.id),
       visibleFirearmPermissions(db, user.id),
     ]);
+  // Reuse the permission map's keys (the visible firearm set) so the round-total
+  // aggregation doesn't re-derive owned∪granted a second time.
+  const roundTotals = await lifetimeRoundTotals(
+    user.id,
+    new Set(permissions.keys()),
+  );
 
   // Subtype suggestions are the in-use values on the user's visible firearms
   // (owned + shared, per listFirearms), already fetched above — derive them here
