@@ -52,12 +52,12 @@ repos:
             files: "\\.github/workflows/"
 
     - repo: https://github.com/biomejs/pre-commit
-      rev: v2.2.0 # Use the sha / tag you want to point at
+      rev: v2.2.0
       hooks:
           - id: biome-check
             types: [javascript, json, yaml]
     - repo: https://github.com/sqlfluff/sqlfluff
-      rev: 1c2ec52808fdc09efa1552437ec9d140749f98d0 # 4.2.2
+      rev: 4.2.2 # 4.2.2
       hooks:
           - id: sqlfluff-lint
             types: [sql]
