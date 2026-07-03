@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/src/auth/session";
+import { visibleFirearmPermissions } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
 import { listFirearms } from "@/src/domain/firearms/service";
+import { lifetimeRoundTotals } from "@/src/domain/range-sessions/service";
 import {
   calibersForInput,
   manufacturers,
@@ -13,11 +15,14 @@ export default async function FirearmsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [firearms, summary, caliberSuggestions] = await Promise.all([
-    listFirearms(user.id),
-    inventorySummary(user.id),
-    calibersForInput(db, user.id),
-  ]);
+  const [firearms, summary, caliberSuggestions, roundTotals, permissions] =
+    await Promise.all([
+      listFirearms(user.id),
+      inventorySummary(user.id),
+      calibersForInput(db, user.id),
+      lifetimeRoundTotals(user.id),
+      visibleFirearmPermissions(db, user.id),
+    ]);
 
   // Subtype suggestions are the in-use values on the user's visible firearms
   // (owned + shared, per listFirearms), already fetched above — derive them here
@@ -41,6 +46,8 @@ export default async function FirearmsPage() {
     serialNumber: f.serialNumber,
     notes: f.notes,
     magazineCount: counts.get(f.id) ?? 0,
+    roundTotal: roundTotals.get(f.id) ?? 0,
+    permission: permissions.get(f.id) ?? "view",
   }));
   // Serial column shows only when at least one visible firearm has a serial (R71).
   const showSerial = firearms.some((f) => f.serialNumber.trim() !== "");

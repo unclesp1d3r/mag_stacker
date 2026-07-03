@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import { authorizeUpdate } from "@/src/auth/authorize";
 import { NotFoundError } from "@/src/auth/errors";
 import { getVisibleIds, resolvePermission } from "@/src/auth/visibility";
