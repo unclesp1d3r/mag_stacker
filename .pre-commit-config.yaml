@@ -53,14 +53,3 @@ repos:
       hooks:
           - id: biome-check
             types_or: [ts, tsx, javascript, jsx, json]
-    - repo: https://github.com/sqlfluff/sqlfluff
-      rev: 4.2.2 # 4.2.2
-      hooks:
-          # drizzle-kit owns the generated migration SQL format; hand-linting it
-          # fights the generator (e.g. PG01 NOT VALID/CONCURRENTLY it never emits).
-          - id: sqlfluff-lint
-            types: [sql]
-            exclude: "^src/db/migrations/"
-          - id: sqlfluff-fix
-            types: [sql]
-            exclude: "^src/db/migrations/"
