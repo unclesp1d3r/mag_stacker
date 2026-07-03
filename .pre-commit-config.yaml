@@ -1,4 +1,4 @@
-# Pre-commit hooks configuration for HashHive
+# Pre-commit hooks configuration for mag_stacker
 # See https://pre-commit.com for more information
 #
 # Install: pip install pre-commit
@@ -11,10 +11,7 @@ repos:
       rev: v6.0.0
       hooks:
           - id: trailing-whitespace
-            # gatekeeper prompt is byte-verbatim from the n8n source — it carries
-            # one trailing space at end of the "Use the HTTP Request Tool…" paragraph
-            # that must be preserved (drift here changes tokenization → model behavior).
-            exclude: ^(node_modules/|dist/|coverage/|\.git/|package-lock\.json|packages/agents/src/prompts/gatekeeper\.ts$)
+            exclude: ^(node_modules/|dist/|coverage/|\.git/|package-lock\.json)
             types: [text]
           - id: end-of-file-fixer
             exclude: ^(node_modules/|dist/|coverage/|\.git/|\.hook)
@@ -55,7 +52,7 @@ repos:
       rev: v2.2.0
       hooks:
           - id: biome-check
-            types: [javascript, json, yaml]
+            types_or: [ts, tsx, javascript, jsx, json]
     - repo: https://github.com/sqlfluff/sqlfluff
       rev: 4.2.2 # 4.2.2
       hooks:
