@@ -87,3 +87,31 @@ export async function isVisible(
 ): Promise<boolean> {
   return (await resolvePermission(db, userId, parentType, parentId)) !== null;
 }
+
+/**
+ * The actor's own permission on each firearm they can see, resolved in one pass
+ * (#11, KTD7): owned ⇒ `owner`, otherwise the grant's `view`/`edit`. Firearms
+ * outside the visible set are absent from the map. Powers the firearms list's
+ * session-control gating — the write path still enforces the real check via
+ * `authorizeUpdate`.
+ */
+export async function visibleFirearmPermissions(
+  db: DbOrTx,
+  userId: string,
+): Promise<Map<string, Permission>> {
+  const owned = await db
+    .select({ id: firearm.id })
+    .from(firearm)
+    .where(eq(firearm.ownerId, userId));
+  const granted = await db
+    .select({ id: grant.parentId, permission: grant.permission })
+    .from(grant)
+    .where(and(eq(grant.granteeId, userId), eq(grant.parentType, "firearm")));
+  const map = new Map<string, Permission>();
+  for (const row of granted) {
+    map.set(row.id, row.permission === "edit" ? "edit" : "view");
+  }
+  // Ownership wins over any grant.
+  for (const row of owned) map.set(row.id, "owner");
+  return map;
+}
