@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import {
   authorizeAndDeleteParent,
   authorizeUpdate,
@@ -20,6 +20,8 @@ import { type FirearmInput, validateFirearm } from "./validate";
 export type Firearm = typeof firearm.$inferSelect;
 
 export interface FirearmCreateInput extends FirearmInput {
+  /** Optional owner nickname; empty-not-null when omitted (#18, R18). */
+  nickname?: string;
   manufacturer?: string;
   /** Optional free-text subtype; empty-not-null when omitted (R3/R18). */
   subtype?: string;
@@ -35,6 +37,7 @@ function persistableFields(input: FirearmCreateInput | FirearmUpdateInput) {
   return {
     // Raw values persisted verbatim (R18/R19); optional text is empty-not-null.
     name: input.name,
+    nickname: input.nickname ?? "",
     caliber: input.caliber,
     // Controlled taxonomy — validated real by validateFirearm before persist (U3).
     type: input.type,
@@ -107,7 +110,13 @@ export async function getFirearm(
   return row;
 }
 
-/** Owned + shared firearms ordered by name ascending; always an array (R22, R68). */
+/**
+ * Owned + shared firearms ordered by the displayed label ascending; always an
+ * array (R22, R68). The sort key is the nickname when present, else the product
+ * name (#18) — the same rule `firearmDisplayName` renders — so DB order matches
+ * what the list shows. `btrim`/`nullif` mirror the helper's trimmed presence
+ * test, so a whitespace-only nickname sorts by its product name.
+ */
 export async function listFirearms(actorId: string): Promise<Firearm[]> {
   const visible = await getVisibleIds(db, actorId, "firearm");
   if (visible.size === 0) return [];
@@ -115,5 +124,7 @@ export async function listFirearms(actorId: string): Promise<Firearm[]> {
     .select()
     .from(firearm)
     .where(inArray(firearm.id, [...visible]))
-    .orderBy(asc(firearm.name));
+    .orderBy(
+      sql`coalesce(nullif(btrim(${firearm.nickname}), ''), ${firearm.name})`,
+    );
 }
