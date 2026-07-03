@@ -96,7 +96,7 @@ A firearm today has a single `name`, which conflates two things owners hold sepa
 
 - KTD-1. **`nickname text not null default ''` on the `firearm` table.** Mirrors the existing empty-not-null optional fields (`manufacturer`, `subtype`, `serial_number`, `notes`) so the drizzle-kit-generated migration is a plain `ADD COLUMN` that backfills existing rows to `''` with no data step.
 - KTD-2. **One display-label helper, reused everywhere the firearm is named.** A pure `firearmDisplayName({ name, nickname })` returns the nickname (raw, verbatim) when it is non-empty after trimming, otherwise the product name. It drives the list-row primary label, the delete confirmation, the share-dialog title, and the save toast, so "nickname wins when present" lives in exactly one place on the client. Pair it with a `hasNickname({ nickname })` = `nickname.trim() !== ""` predicate so the row's secondary line and the primary label always agree on presence.
-- KTD-3. **Sort stays server-side in `listFirearms`, expressed to mirror KTD-2's rule.** Change `orderBy(asc(firearm.name))` to order by a nickname-or-name expression (directional: `coalesce(nullif(btrim(nickname), ''), name)`) so the DB order matches what the helper displays, including the whitespace-only-nickname fallback. A service test asserts the DB order agrees with `firearmDisplayName`.
+- KTD-3. **Sort stays server-side in `listFirearms`, expressed to mirror KTD-2's rule.** Change `orderBy(asc(firearm.name))` to order by the displayed label (directional: `case when <nickname is non-empty after a [[:space:]] trim> then nickname else name end`) — sorting by the **raw** nickname when present so the key equals `firearmDisplayName` character-for-character, with the trim used only for the presence test. DB order then matches what the helper displays, including any leading/trailing whitespace and the whitespace-only-nickname fallback. A service test asserts the DB order agrees with `firearmDisplayName`.
 - KTD-4. **No validation on `nickname`.** Optional, empty allowed, no length cap — consistent with the other optional text fields, which carry none. `validateFirearm` and its `FirearmInput` type are intentionally untouched; `nickname` rides only on the service's `FirearmCreateInput` and the form's `FirearmFormValues`.
 - KTD-5. **"Detail" is the list row plus the inline edit form.** No standalone firearm detail page exists, so R4's nickname-primary display lands in the table row and the edit form gains the nickname input; nothing else needs a "detail" treatment.
 
@@ -106,7 +106,7 @@ The change is a single field threaded through the existing firearm slice; no new
 
 ```mermaid
 flowchart TB
-  col["firearm.nickname (text not null default '')"] --> svc["listFirearms — order by coalesce(nullif(btrim(nickname),''), name)"]
+  col["firearm.nickname (text not null default '')"] --> svc["listFirearms — order by case when trimmed(nickname) then nickname else name"]
   col --> input["FirearmCreateInput.nickname / persistableFields"]
   helper["firearmDisplayName(name, nickname) — trimmed nickname or name"] --> row["list row: nickname bold + name secondary"]
   helper --> del["delete confirmation title"]
@@ -152,7 +152,7 @@ flowchart TB
 - **Requirements:** R3, R5.
 - **Dependencies:** U1, U2 (the sort-order test asserts the DB order matches `firearmDisplayName`).
 - **Files:** `src/domain/firearms/service.ts`, `src/domain/firearms/__tests__/service.test.ts`.
-- **Approach:** Add optional `nickname?: string` to `FirearmCreateInput`; in `persistableFields`, set `nickname: input.nickname ?? ""` (empty-not-null). Change `listFirearms`'s `orderBy(asc(firearm.name))` to order by the nickname-or-name expression from KTD-3 (`coalesce(nullif(btrim(nickname), ''), name)`) via a `sql` fragment. Leave `validateFirearm` and `FirearmInput` untouched (KTD-4).
+- **Approach:** Add optional `nickname?: string` to `FirearmCreateInput`; in `persistableFields`, set `nickname: input.nickname ?? ""` (empty-not-null). Change `listFirearms`'s `orderBy(asc(firearm.name))` to order by the KTD-3 expression (`case when <trimmed nickname non-empty> then nickname else name end`, sorting by the raw nickname) via a `sql` fragment. Leave `validateFirearm` and `FirearmInput` untouched (KTD-4).
 - **Patterns to follow:** the existing `persistableFields` empty-not-null defaults; the `sql`-fragment filter style in `src/domain/magazines/filter.ts`.
 - **Execution note:** Start with a failing integration test for the new sort order and nickname persistence (gates on `DATABASE_URL` per the repo's live/skip pattern; Testcontainers-backed).
 - **Test scenarios:**

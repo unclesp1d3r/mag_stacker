@@ -37,7 +37,11 @@ function persistableFields(input: FirearmCreateInput | FirearmUpdateInput) {
   return {
     // Raw values persisted verbatim (R18/R19); optional text is empty-not-null.
     name: input.name,
-    nickname: input.nickname ?? "",
+    // Nickname is a display label, so trim it on write (unlike the verbatim
+    // fields): a stored nickname never carries leading/trailing whitespace, which
+    // keeps the list sort key equal to firearmDisplayName without any SQL-side
+    // trimming, and collapses a whitespace-only entry to "" (no nickname) (#18).
+    nickname: (input.nickname ?? "").trim(),
     caliber: input.caliber,
     // Controlled taxonomy — validated real by validateFirearm before persist (U3).
     type: input.type,
@@ -112,15 +116,11 @@ export async function getFirearm(
 
 /**
  * Owned + shared firearms ordered by the displayed label ascending; always an
- * array (R22, R68). The sort key is the nickname when present, else the product
- * name (#18) — the same rule `firearmDisplayName` renders — so DB order matches
- * what the list shows. The `regexp_replace(… '[[:space:]]' …)` strips leading/
- * trailing whitespace to match the helper's JS `.trim()` across the ASCII
- * whitespace class (space, tab, newline, CR, FF, VT), so a whitespace-only
- * nickname sorts by its product name. (A degenerate nickname of only exotic
- * Unicode whitespace — e.g. a lone NBSP, which `[[:space:]]` does not strip but
- * JS `.trim()` does — is an accepted edge whose sort position may differ from
- * its fallback display.)
+ * array (R22, R68). The sort key is `firearmDisplayName`'s output: the nickname
+ * when present, else the product name (#18). Because the service trims the
+ * nickname on write (see `persistableFields`), a stored nickname is already
+ * whitespace-normalized, so a plain `coalesce(nullif(nickname, ''), name)`
+ * matches what the list shows without any SQL-side trimming.
  */
 export async function listFirearms(actorId: string): Promise<Firearm[]> {
   const visible = await getVisibleIds(db, actorId, "firearm");
@@ -129,7 +129,5 @@ export async function listFirearms(actorId: string): Promise<Firearm[]> {
     .select()
     .from(firearm)
     .where(inArray(firearm.id, [...visible]))
-    .orderBy(
-      sql`coalesce(nullif(regexp_replace(${firearm.nickname}, '^[[:space:]]+|[[:space:]]+$', '', 'g'), ''), ${firearm.name})`,
-    );
+    .orderBy(sql`coalesce(nullif(${firearm.nickname}, ''), ${firearm.name})`);
 }

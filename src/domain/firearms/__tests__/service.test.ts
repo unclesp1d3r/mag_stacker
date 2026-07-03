@@ -307,13 +307,14 @@ live("firearms service — nickname (#18)", () => {
     await deleteUsers(userN);
   });
 
-  test("create persists a nickname verbatim; omitted nickname is ''", async () => {
+  test("create trims the nickname on write; omitted/whitespace-only is ''", async () => {
     const withNick = await createFirearm(userN, {
       name: "Glock 19 Gen 5",
-      nickname: "Nightstand gun",
+      nickname: "  Nightstand gun  ",
       caliber: "9mm",
       ...CLASS,
     });
+    // Trimmed on write (a display label, unlike the verbatim fields).
     expect(withNick.nickname).toBe("Nightstand gun");
     const noNick = await createFirearm(userN, {
       name: "M&P Shield Plus",
@@ -321,8 +322,17 @@ live("firearms service — nickname (#18)", () => {
       ...CLASS,
     });
     expect(noNick.nickname).toBe("");
+    // A whitespace-only nickname collapses to "" — i.e. no nickname.
+    const blankNick = await createFirearm(userN, {
+      name: "SIG P365",
+      nickname: "   ",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    expect(blankNick.nickname).toBe("");
     await deleteFirearm(userN, withNick.id);
     await deleteFirearm(userN, noNick.id);
+    await deleteFirearm(userN, blankNick.id);
   });
 
   test("update can add, change, and clear the nickname", async () => {
@@ -387,7 +397,7 @@ live("firearms service — nickname (#18)", () => {
     for (const f of created) await deleteFirearm(userN, f.id);
   });
 
-  test("a tab-only nickname sorts by the product name (SQL trim matches JS trim)", async () => {
+  test("a tab-only nickname is trimmed to empty on write and sorts by product name", async () => {
     const created = await Promise.all([
       createFirearm(userN, {
         name: "Alpha Product",
@@ -402,9 +412,9 @@ live("firearms service — nickname (#18)", () => {
       }),
     ]);
     const list = await listFirearms(userN);
-    // The tab-only nickname is "empty" to firearmDisplayName (JS `.trim()`) AND
-    // to the SQL sort key, so both rows sort by their product names rather than
-    // the invisible whitespace — the two must not disagree.
+    // The tab-only nickname trims to "" on write, so it is "no nickname" to both
+    // firearmDisplayName and the sort key — both rows sort by their product
+    // names rather than the invisible whitespace.
     expect(list.map((f) => firearmDisplayName(f))).toEqual([
       "Alpha Product",
       "Bravo Product",
