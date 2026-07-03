@@ -386,4 +386,29 @@ live("firearms service — nickname (#18)", () => {
     ]);
     for (const f of created) await deleteFirearm(userN, f.id);
   });
+
+  test("a tab-only nickname sorts by the product name (SQL trim matches JS trim)", async () => {
+    const created = await Promise.all([
+      createFirearm(userN, {
+        name: "Alpha Product",
+        nickname: "\t",
+        caliber: "9mm",
+        ...CLASS,
+      }),
+      createFirearm(userN, {
+        name: "Bravo Product",
+        caliber: "9mm",
+        ...CLASS,
+      }),
+    ]);
+    const list = await listFirearms(userN);
+    // The tab-only nickname is "empty" to firearmDisplayName (JS `.trim()`) AND
+    // to the SQL sort key, so both rows sort by their product names rather than
+    // the invisible whitespace — the two must not disagree.
+    expect(list.map((f) => firearmDisplayName(f))).toEqual([
+      "Alpha Product",
+      "Bravo Product",
+    ]);
+    for (const f of created) await deleteFirearm(userN, f.id);
+  });
 });

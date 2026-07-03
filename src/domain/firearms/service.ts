@@ -114,8 +114,13 @@ export async function getFirearm(
  * Owned + shared firearms ordered by the displayed label ascending; always an
  * array (R22, R68). The sort key is the nickname when present, else the product
  * name (#18) — the same rule `firearmDisplayName` renders — so DB order matches
- * what the list shows. `btrim`/`nullif` mirror the helper's trimmed presence
- * test, so a whitespace-only nickname sorts by its product name.
+ * what the list shows. The `regexp_replace(… '[[:space:]]' …)` strips leading/
+ * trailing whitespace to match the helper's JS `.trim()` across the ASCII
+ * whitespace class (space, tab, newline, CR, FF, VT), so a whitespace-only
+ * nickname sorts by its product name. (A degenerate nickname of only exotic
+ * Unicode whitespace — e.g. a lone NBSP, which `[[:space:]]` does not strip but
+ * JS `.trim()` does — is an accepted edge whose sort position may differ from
+ * its fallback display.)
  */
 export async function listFirearms(actorId: string): Promise<Firearm[]> {
   const visible = await getVisibleIds(db, actorId, "firearm");
@@ -125,6 +130,6 @@ export async function listFirearms(actorId: string): Promise<Firearm[]> {
     .from(firearm)
     .where(inArray(firearm.id, [...visible]))
     .orderBy(
-      sql`coalesce(nullif(btrim(${firearm.nickname}), ''), ${firearm.name})`,
+      sql`coalesce(nullif(regexp_replace(${firearm.nickname}, '^[[:space:]]+|[[:space:]]+$', '', 'g'), ''), ${firearm.name})`,
     );
 }
