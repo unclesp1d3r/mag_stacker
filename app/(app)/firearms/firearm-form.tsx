@@ -14,6 +14,7 @@ import {
   firearmTypeLabel,
   UNSPECIFIED,
 } from "@/src/domain/firearms/constants";
+import { firearmDisplayName } from "@/src/domain/firearms/display";
 import {
   type FirearmValidationCode,
   validateFirearm,
@@ -24,6 +25,7 @@ import { createFirearmAction, updateFirearmAction } from "./actions";
 export interface FirearmFormValues {
   id?: string;
   name: string;
+  nickname: string;
   manufacturer: string;
   caliber: string;
   type: string;
@@ -45,6 +47,7 @@ interface FirearmFormProps {
 
 const EMPTY: FirearmFormValues = {
   name: "",
+  nickname: "",
   manufacturer: "",
   caliber: "",
   type: UNSPECIFIED,
@@ -126,6 +129,7 @@ export function FirearmForm({
   const [serverError, setServerError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const nameId = useId();
+  const nicknameId = useId();
   const mfrId = useId();
   const calId = useId();
   const typeId = useId();
@@ -167,7 +171,7 @@ export function FirearmForm({
       if (result.ok) {
         toast({
           message: isEdit ? "Changes saved" : "Firearm logged",
-          detail: values.name,
+          detail: firearmDisplayName(values),
         });
         onDone(result.data?.id);
       } else if (result.codes) {
@@ -208,6 +212,17 @@ export function FirearmForm({
           value={values.name}
           onChange={(e) => set("name", e.target.value)}
           aria-invalid={codes.includes("emptyName")}
+        />
+      </Field>
+      <Field
+        label="Nickname"
+        controlId={nicknameId}
+        hint="Optional — a personal name, shown first in your list."
+      >
+        <Input
+          id={nicknameId}
+          value={values.nickname}
+          onChange={(e) => set("nickname", e.target.value)}
         />
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">

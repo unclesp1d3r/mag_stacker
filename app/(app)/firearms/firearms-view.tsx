@@ -16,6 +16,7 @@ import {
   firearmActionLabel,
   firearmTypeLabel,
 } from "@/src/domain/firearms/constants";
+import { firearmDisplayName, hasNickname } from "@/src/domain/firearms/display";
 import { deleteFirearmAction } from "./actions";
 import { FirearmForm, type FirearmFormValues } from "./firearm-form";
 
@@ -78,7 +79,7 @@ export function FirearmsView({
       : firearms.filter((f) => f.type === effectiveFilter);
   const del = useDeleteConfirmation<FirearmListItem>({
     entityLabel: "Firearm",
-    getName: (item) => item.name,
+    getName: (item) => firearmDisplayName(item),
     remove: deleteFirearmAction,
   });
 
@@ -172,7 +173,14 @@ export function FirearmsView({
             <tbody>
               {filtered.map((item) => (
                 <TRow key={item.id} flash={item.id === flashId}>
-                  <TD className="font-medium">{item.name}</TD>
+                  <TD className="font-medium">
+                    {firearmDisplayName(item)}
+                    {hasNickname(item) ? (
+                      <span className="block text-xs font-normal text-ink-faint">
+                        {item.name}
+                      </span>
+                    ) : null}
+                  </TD>
                   <TD className="tabular">{item.caliber}</TD>
                   <TD>{firearmTypeLabel(item.type)}</TD>
                   <TD>{firearmActionLabel(item.action)}</TD>
@@ -186,7 +194,7 @@ export function FirearmsView({
                         <ShareControl
                           parentType="firearm"
                           parentId={item.id}
-                          itemName={item.name}
+                          itemName={firearmDisplayName(item)}
                         />
                       ) : null}
                       <Button
@@ -216,7 +224,7 @@ export function FirearmsView({
 
       <ConfirmDialog
         open={del.target !== null}
-        title={`Delete “${del.target?.name}”?`}
+        title={`Delete “${del.target ? firearmDisplayName(del.target) : ""}”?`}
         description="Linked magazines keep their other compatibility. This can’t be undone."
         pending={del.pending}
         onConfirm={del.confirm}
