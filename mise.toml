@@ -5,7 +5,7 @@ redactions = [ "*_SECRET", "*_KEY", "*_PASSWORD" ]
 "aqua:vercel-labs/agent-browser" = "0.31.1"
 bun                              = "latest"
 just                             = "latest"
-markdownlint-cli2                = "0.22.1"
+markdownlint-cli2                = "0.23.0"
 oxfmt                            = "latest"
 oxlint                           = "latest"
 "pipx:mdformat"                  = { version = "1.0.0", uvx_args = "--with mdformat-gfm --with mdformat-admon --with mdformat-config --with mdformat-footnote --with mdformat-simple-breaks --with mdformat-web --with mdformat-ruff --with mdformat-gfm-alerts --with mdformat-toc --with mdformat-front-matters" }
