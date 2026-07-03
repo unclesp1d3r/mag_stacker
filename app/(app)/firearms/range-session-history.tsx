@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState, Spinner } from "@/components/ui/feedback";
@@ -46,7 +46,7 @@ export function RangeSessionHistory({
   const [loading, startLoad] = useTransition();
   const [deleting, startDelete] = useTransition();
 
-  function load() {
+  const load = useCallback(() => {
     setError(null);
     startLoad(async () => {
       const result = await listRangeSessionsAction(firearmId);
@@ -57,13 +57,12 @@ export function RangeSessionHistory({
         setSessions([]);
       }
     });
-  }
+  }, [firearmId]);
 
   // Load on open and whenever the firearm changes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: load is stable for a fixed firearmId
   useEffect(() => {
     load();
-  }, [firearmId]);
+  }, [load]);
 
   function afterMutation() {
     setForm({ open: false });
@@ -87,7 +86,89 @@ export function RangeSessionHistory({
     });
   }
 
-  const total = (sessions ?? []).reduce((sum, s) => sum + s.roundsFired, 0);
+  const list = sessions ?? [];
+  const total = list.reduce((sum, s) => sum + s.roundsFired, 0);
+
+  function renderBody() {
+    if (loading && sessions === null) {
+      return (
+        <p className="flex items-center gap-2 text-sm text-ink-soft">
+          <Spinner /> Loading sessions…
+        </p>
+      );
+    }
+    if (error) {
+      return (
+        <div className="flex flex-col items-start gap-2">
+          <p className="text-sm text-danger">{error}</p>
+          <Button variant="ghost" size="sm" onClick={load}>
+            Try again
+          </Button>
+        </div>
+      );
+    }
+    if (list.length === 0) {
+      return (
+        <EmptyState
+          title="No sessions logged"
+          description={
+            canEdit
+              ? "Log a range session to start tracking rounds fired."
+              : "No range sessions have been logged for this firearm."
+          }
+        />
+      );
+    }
+    return (
+      <DataTable>
+        <THead>
+          <TH>Date</TH>
+          <TH className="text-right">Rounds</TH>
+          <TH>Notes</TH>
+          {canEdit ? <TH className="text-right">Actions</TH> : null}
+        </THead>
+        <tbody>
+          {list.map((session) => (
+            <TRow key={session.id}>
+              <TD className="tabular">{session.date}</TD>
+              <TD className="text-right tabular">{session.roundsFired}</TD>
+              <TD className="text-ink-soft">{session.notes}</TD>
+              {canEdit ? (
+                <TD className="text-right">
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setForm({
+                          open: true,
+                          initial: {
+                            id: session.id,
+                            date: session.date,
+                            roundsFired: String(session.roundsFired),
+                            notes: session.notes,
+                          },
+                        })
+                      }
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => setTarget(session)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </TD>
+              ) : null}
+            </TRow>
+          ))}
+        </tbody>
+      </DataTable>
+    );
+  }
 
   return (
     <Card>
@@ -97,8 +178,8 @@ export function RangeSessionHistory({
             Range sessions — {firearmName}
           </h2>
           <p className="text-xs text-ink-faint tabular">
-            {total} rounds fired over {(sessions ?? []).length} session
-            {(sessions ?? []).length === 1 ? "" : "s"}
+            {total} rounds fired over {list.length} session
+            {list.length === 1 ? "" : "s"}
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={onClose}>
@@ -120,6 +201,9 @@ export function RangeSessionHistory({
             {form.initial ? "Edit session" : "New session"}
           </h3>
           <RangeSessionForm
+            // Remount when the edit target changes so the form's initial-value
+            // state resets instead of reusing the previous session's values.
+            key={form.initial?.id ?? "new"}
             firearmId={firearmId}
             initial={form.initial}
             onDone={afterMutation}
@@ -128,75 +212,7 @@ export function RangeSessionHistory({
         </div>
       ) : null}
 
-      {loading && sessions === null ? (
-        <p className="flex items-center gap-2 text-sm text-ink-soft">
-          <Spinner /> Loading sessions…
-        </p>
-      ) : error ? (
-        <div className="flex flex-col items-start gap-2">
-          <p className="text-sm text-danger">{error}</p>
-          <Button variant="ghost" size="sm" onClick={load}>
-            Try again
-          </Button>
-        </div>
-      ) : sessions && sessions.length === 0 ? (
-        <EmptyState
-          title="No sessions logged"
-          description={
-            canEdit
-              ? "Log a range session to start tracking rounds fired."
-              : "No range sessions have been logged for this firearm."
-          }
-        />
-      ) : (
-        <DataTable>
-          <THead>
-            <TH>Date</TH>
-            <TH className="text-right">Rounds</TH>
-            <TH>Notes</TH>
-            {canEdit ? <TH className="text-right">Actions</TH> : null}
-          </THead>
-          <tbody>
-            {(sessions ?? []).map((session) => (
-              <TRow key={session.id}>
-                <TD className="tabular">{session.date}</TD>
-                <TD className="text-right tabular">{session.roundsFired}</TD>
-                <TD className="text-ink-soft">{session.notes}</TD>
-                {canEdit ? (
-                  <TD className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          setForm({
-                            open: true,
-                            initial: {
-                              id: session.id,
-                              date: session.date,
-                              roundsFired: String(session.roundsFired),
-                              notes: session.notes,
-                            },
-                          })
-                        }
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => setTarget(session)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </TD>
-                ) : null}
-              </TRow>
-            ))}
-          </tbody>
-        </DataTable>
-      )}
+      {renderBody()}
 
       <ConfirmDialog
         open={target !== null}

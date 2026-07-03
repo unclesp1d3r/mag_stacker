@@ -6,6 +6,7 @@ import { visibleFirearmPermissions } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
 import { firearm, rangeSession } from "@/src/db/schema";
 import { ValidationError } from "@/src/domain/errors";
+import { expectRejects } from "@/src/test-support/assertions";
 import {
   createUser,
   deleteUsers,
@@ -21,21 +22,6 @@ import {
 } from "../service";
 
 const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-/**
- * Asserts a thenable rejects. Drizzle/pg query builders are thenables, not
- * Promises, so bun's `.rejects` matcher is unreliable on them — use this helper
- * for direct DB calls (see memory: bun-test-rejects-drizzle-thenable).
- */
-async function expectRejects(fn: () => Promise<unknown>): Promise<void> {
-  let threw = false;
-  try {
-    await fn();
-  } catch {
-    threw = true;
-  }
-  expect(threw).toBe(true);
-}
 
 live("range-session service (#11)", () => {
   let owner = "";
@@ -179,6 +165,19 @@ live("range-session service (#11)", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
     await expect(
       deleteRangeSession(stranger, session.id),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  test("update with invalid input on an invisible session is not-found, not a validation leak", async () => {
+    const fa = await makeFirearm(owner);
+    const session = await makeRangeSession(fa.id, { roundsFired: 5 });
+    // Invalid input must NOT reach validation before authorization — a stranger
+    // probing with roundsFired: 0 still gets NotFound, never ValidationError.
+    await expect(
+      updateRangeSession(stranger, session.id, {
+        date: "2026-06-01",
+        roundsFired: 0,
+      }),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 

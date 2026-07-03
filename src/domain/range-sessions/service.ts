@@ -67,9 +67,12 @@ export async function updateRangeSession(
 ): Promise<RangeSession> {
   return db.transaction(async (tx) => {
     const firearmId = await firearmIdFor(tx, id);
+    // Authorize before validating so an invisible/forbidden firearm always
+    // yields NotFound/NotAuthorized — never a ValidationError that would reveal
+    // the session exists (R70 existence-hiding).
+    await authorizeUpdate(tx, actorId, "firearm", firearmId);
     const codes = validateRangeSession({ firearmId, ...input });
     if (codes.length > 0) throw new ValidationError(codes);
-    await authorizeUpdate(tx, actorId, "firearm", firearmId);
     const [row] = await tx
       .update(rangeSession)
       .set({ ...persistableFields(input), updatedAt: new Date() })

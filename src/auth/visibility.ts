@@ -20,6 +20,11 @@ function parentTable(parentType: ParentType) {
   return parentType === "firearm" ? firearm : magazine;
 }
 
+/** Narrow a stored grant permission string to the item-level Permission. */
+function toPermission(raw: string): Permission {
+  return raw === "edit" ? "edit" : "view";
+}
+
 /**
  * The set of parent IDs of `parentType` visible to `userId`: owned ∪ granted.
  */
@@ -73,7 +78,7 @@ export async function resolvePermission(
     )
     .limit(1);
   if (granted.length > 0) {
-    return granted[0].permission === "edit" ? "edit" : "view";
+    return toPermission(granted[0].permission);
   }
   return null;
 }
@@ -109,7 +114,7 @@ export async function visibleFirearmPermissions(
     .where(and(eq(grant.granteeId, userId), eq(grant.parentType, "firearm")));
   const map = new Map<string, Permission>();
   for (const row of granted) {
-    map.set(row.id, row.permission === "edit" ? "edit" : "view");
+    map.set(row.id, toPermission(row.permission));
   }
   // Ownership wins over any grant.
   for (const row of owned) map.set(row.id, "owner");
