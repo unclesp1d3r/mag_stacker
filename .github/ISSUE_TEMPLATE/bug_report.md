@@ -27,7 +27,7 @@ If applicable, add screenshots to help explain the problem.
 ## Environment
 
 - MagStacker version/tag (`MAGSTACKER_VERSION`, or commit SHA if built from source):
-- Deployment method: [ ] published image (`docker compose pull`)  [ ] built from source (`docker compose up --build`)  [ ] `bun run dev`
+- Deployment method: [ ] `./setup.sh`  [ ] published image (`docker compose pull`)  [ ] built from source (`docker compose up --build`)  [ ] `bun run dev`
 - Docker version (`docker --version`):
 - Browser + version:
 - OS:

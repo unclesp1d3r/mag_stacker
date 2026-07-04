@@ -61,6 +61,10 @@ echo ""
 # --- Environment file -----------------------------------------------------
 
 if [[ ! -f .env ]]; then
+  if [[ ! -f .env.example ]]; then
+    echo "Error: .env.example not found — run this from the project root." >&2
+    exit 1
+  fi
   cp .env.example .env
   echo "Created .env from .env.example."
   echo ""
