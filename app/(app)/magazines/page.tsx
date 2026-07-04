@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/src/auth/session";
 import { db } from "@/src/db/client";
 import { listFirearms } from "@/src/domain/firearms/service";
 import { listMagazinesFiltered } from "@/src/domain/magazines/filter";
+import { getPrefixData } from "@/src/domain/magazines/prefixes";
 import {
   calibersForFilter,
   calibersForInput,
@@ -28,12 +29,13 @@ export default async function MagazinesPage({ searchParams }: PageProps) {
     compatibleFirearmId: params.firearm,
   };
 
-  const [magazines, firearms, caliberSuggestions, filterCalibers] =
+  const [magazines, firearms, caliberSuggestions, filterCalibers, prefixData] =
     await Promise.all([
       listMagazinesFiltered(user.id, filter),
       listFirearms(user.id),
       calibersForInput(db, user.id),
       calibersForFilter(db, user.id),
+      getPrefixData(user.id),
     ]);
 
   const nameById = new Map(firearms.map((f) => [f.id, f.name]));
@@ -89,6 +91,8 @@ export default async function MagazinesPage({ searchParams }: PageProps) {
         currentUserId={user.id}
         firearmOptions={firearmOptions}
         caliberSuggestions={caliberSuggestions}
+        prefixOptions={prefixData.prefixes}
+        prefixNextStart={prefixData.nextStart}
         magpulMode={user.magpulMode}
         filtered={filtered}
       />

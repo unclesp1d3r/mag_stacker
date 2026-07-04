@@ -11,6 +11,7 @@ import { magazine, user } from "@/src/db/schema";
 import { ValidationError } from "../errors";
 import { loadCompatibilityBatch, replaceCompatibility } from "./compatibility";
 import { normalizeMagpulLabel } from "./constants";
+import { recordPrefix } from "./prefixes";
 import { type MagazineFields, validateMagazine } from "./validate";
 
 /**
@@ -36,6 +37,12 @@ export interface MagazineInput extends MagazineFields {
 export interface MagazineCreateInput extends MagazineInput {
   /** Create-on-behalf target owner; defaults to the acting user (KTD-5). */
   ownerId?: string;
+  /**
+   * The prefix the owner selected/typed for auto-numbering (#22). Recorded in
+   * the owner's prefix list when non-empty; does not affect the stored `label`
+   * (the client already prefilled/edited it). Create-only, never on updates.
+   */
+  labelPrefix?: string;
 }
 
 /**
@@ -126,6 +133,14 @@ export async function createMagazine(
       created.id,
       input.compatibleFirearmIds ?? [],
     );
+    // Remember the prefix the owner used (#22). Store the *effective* prefix so
+    // the list matches the labels actually written (Magpul-normalized when on).
+    if (input.labelPrefix) {
+      const effectivePrefix = ownerMagpulMode
+        ? normalizeMagpulLabel(input.labelPrefix)
+        : input.labelPrefix;
+      await recordPrefix(tx, ownerId, effectivePrefix);
+    }
     return created;
   });
   const [withCompat] = await attachCompatibility(db, actorId, [row]);

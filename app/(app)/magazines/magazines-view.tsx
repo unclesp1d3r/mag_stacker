@@ -36,6 +36,10 @@ interface MagazinesViewProps {
   currentUserId: string;
   firearmOptions: FirearmOption[];
   caliberSuggestions: string[];
+  /** The owner's used label prefixes, offered as single-add suggestions (#22). */
+  prefixOptions: string[];
+  /** `prefix -> next sequence number` for single-add label prefill (#22). */
+  prefixNextStart: Record<string, number>;
   /** When true the magazine form enforces PMAG dot-matrix label constraints. */
   magpulMode: boolean;
   /** True when a filter is active (distinguishes empty inventory from zero results). */
@@ -70,6 +74,8 @@ export function MagazinesView({
   currentUserId,
   firearmOptions,
   caliberSuggestions,
+  prefixOptions,
+  prefixNextStart,
   magpulMode,
   filtered,
 }: MagazinesViewProps) {
@@ -113,6 +119,8 @@ export function MagazinesView({
             initial={form.initial}
             firearmOptions={firearmOptions}
             caliberSuggestions={caliberSuggestions}
+            prefixOptions={prefixOptions}
+            prefixNextStart={prefixNextStart}
             magpulMode={form.magpulMode}
             onDone={refresh}
             onCancel={() => setForm({ open: false })}
