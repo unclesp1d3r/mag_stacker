@@ -13,6 +13,7 @@ import {
   MAX_LABEL_LENGTH,
   normalizeMagpulLabel,
 } from "@/src/domain/magazines/constants";
+import { recordPrefix } from "@/src/domain/magazines/prefixes";
 import type { MagazineWithCompatibility } from "@/src/domain/magazines/service";
 import {
   type MagazineFields,
@@ -133,6 +134,10 @@ export async function bulkAddMagazines(
         })),
       )
       .returning();
+
+    // Remember the prefix the owner used (#22), no-op when blank. Same tx, so a
+    // rolled-back batch leaves the list unchanged.
+    await recordPrefix(tx, owner, effectivePrefix);
 
     // Each magazine gets its own (deep-copied) compatibility rows (R56).
     if (firearmIds.length > 0) {

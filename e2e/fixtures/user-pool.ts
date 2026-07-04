@@ -15,6 +15,7 @@ export const SPEC_USER_KEYS = [
   "theme",
   "magpul-mode",
   "magpul-settings",
+  "label-prefix",
   "firearm-taxonomy",
   "firearm-nickname",
   "range-sessions",

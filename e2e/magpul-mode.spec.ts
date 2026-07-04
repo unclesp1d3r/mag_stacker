@@ -26,13 +26,17 @@ test("label input mask is active when Magpul mode is on", async ({ page }) => {
   });
 
   await test.step("fill with lowercase + invalid chars → transformed to uppercase A-Z/0-9/-", async () => {
-    const labelInput = page.locator("form").getByLabel("Label");
+    const labelInput = page
+      .locator("form")
+      .getByLabel("Label", { exact: true });
     await labelInput.fill("ar!15");
     await expect(labelInput).toHaveValue("AR15");
   });
 
   await test.step("fill beyond 4 characters → truncated to 4", async () => {
-    const labelInput = page.locator("form").getByLabel("Label");
+    const labelInput = page
+      .locator("form")
+      .getByLabel("Label", { exact: true });
     await labelInput.fill("ABCDE");
     await expect(labelInput).toHaveValue("ABCD");
   });
@@ -40,13 +44,17 @@ test("label input mask is active when Magpul mode is on", async ({ page }) => {
   await test.step("filter runs before cap: 'AB.CDE' → 'ABCD' (not 'ABC')", async () => {
     // Distinguishes filter-then-cap from cap-then-filter: dropping the '.' first
     // yields "ABCDE" → capped "ABCD"; capping first would give "AB.C" → "ABC".
-    const labelInput = page.locator("form").getByLabel("Label");
+    const labelInput = page
+      .locator("form")
+      .getByLabel("Label", { exact: true });
     await labelInput.fill("AB.CDE");
     await expect(labelInput).toHaveValue("ABCD");
   });
 
   await test.step("a valid label passes through unchanged", async () => {
-    const labelInput = page.locator("form").getByLabel("Label");
+    const labelInput = page
+      .locator("form")
+      .getByLabel("Label", { exact: true });
     await labelInput.fill("AR15");
     await expect(labelInput).toHaveValue("AR15");
   });

@@ -23,10 +23,13 @@ async function requireUserId(): Promise<string> {
 
 export async function createMagazineAction(
   input: MagazineInput,
+  labelPrefix?: string,
 ): Promise<ActionResult<{ id: string }>> {
   try {
     const userId = await requireUserId();
-    const created = await createMagazine(userId, input);
+    // `labelPrefix` is passed separately (not spread from a client object) so a
+    // client can't smuggle a create-on-behalf `ownerId` into the create input.
+    const created = await createMagazine(userId, { ...input, labelPrefix });
     revalidatePath("/magazines");
     return { ok: true, data: { id: created.id } };
   } catch (error) {

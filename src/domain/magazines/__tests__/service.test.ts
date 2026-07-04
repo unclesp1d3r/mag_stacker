@@ -11,6 +11,7 @@ import {
   makeFirearm,
   makeMagazine,
 } from "@/src/test-support/factories";
+import { listPrefixes } from "../prefixes";
 import {
   createMagazine,
   getMagazine,
@@ -277,5 +278,34 @@ live("Magpul mode label constraint — service integration (U3/U4)", () => {
     expect((caughtError as ValidationError).codes).toContain(
       "invalidMagpulLabel",
     );
+  });
+});
+
+live("createMagazine — prefix recording (#22)", () => {
+  test("records a non-empty labelPrefix in the owner's list (R1)", async () => {
+    const owner = await createUser("cp-rec");
+    await createMagazine(owner, {
+      brandModel: "PMAG",
+      caliber: "9mm",
+      baseCapacity: 15,
+      extensionRounds: 0,
+      label: "MP01",
+      labelPrefix: "MP",
+    });
+    expect(await listPrefixes(owner)).toEqual(["MP"]);
+    await deleteUsers(owner);
+  });
+
+  test("records nothing when no labelPrefix is supplied", async () => {
+    const owner = await createUser("cp-none");
+    await createMagazine(owner, {
+      brandModel: "PMAG",
+      caliber: "9mm",
+      baseCapacity: 15,
+      extensionRounds: 0,
+      label: "hand-typed",
+    });
+    expect(await listPrefixes(owner)).toEqual([]);
+    await deleteUsers(owner);
   });
 });
