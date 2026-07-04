@@ -70,10 +70,12 @@ export async function bulkAddMagazines(
     if (!ownerRow) throw new NotFoundError();
     const ownerMagpulMode = ownerRow.magpulMode ?? false;
     // Normalize the prefix (uppercase + outer-trim) so generated labels store
-    // and sequence-continue consistently with single add; off-mode is untouched.
+    // and sequence-continue consistently with single add. Off-mode still trims:
+    // an untrimmed prefix would generate "US 01" labels but record the trimmed
+    // "US", desyncing the sequence scan (R55) from what was written.
     const effectivePrefix = ownerMagpulMode
       ? normalizeMagpulLabel(labelPrefix)
-      : labelPrefix;
+      : labelPrefix.trim();
 
     // Every template link must be visible to the acting user (R37), checked in
     // the same transaction so a concurrent revoke cannot race the create.

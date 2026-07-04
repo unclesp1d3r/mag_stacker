@@ -27,8 +27,10 @@ export async function createMagazineAction(
 ): Promise<ActionResult<{ id: string }>> {
   try {
     const userId = await requireUserId();
-    // `labelPrefix` is passed separately (not spread from a client object) so a
-    // client can't smuggle a create-on-behalf `ownerId` into the create input.
+    // `labelPrefix` only feeds the prefix list (recordPrefix); it never affects
+    // ownership. Create-on-behalf `ownerId` is gated separately by
+    // resolveCreateOwner's grant check (KTD-5) — that is the trust boundary here,
+    // not this argument's shape.
     const created = await createMagazine(userId, { ...input, labelPrefix });
     revalidatePath("/magazines");
     return { ok: true, data: { id: created.id } };

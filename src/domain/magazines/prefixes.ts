@@ -27,7 +27,11 @@ export async function recordPrefix(
   await database
     .insert(magazineLabelPrefix)
     .values({ ownerId, prefix: trimmed })
-    .onConflictDoNothing();
+    // Target the composite PK explicitly so this only absorbs the intended
+    // duplicate-(owner, prefix) conflict, not some future constraint on the table.
+    .onConflictDoNothing({
+      target: [magazineLabelPrefix.ownerId, magazineLabelPrefix.prefix],
+    });
 }
 
 /** The owner's prefixes, alphabetical. */

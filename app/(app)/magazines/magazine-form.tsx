@@ -128,7 +128,7 @@ export function MagazineForm({
     if (labelPrefix.trim() === "")
       return "No label numbering (enter a prefix to auto-number).";
     const labels = generateLabels(
-      labelPrefix,
+      labelPrefix.trim(),
       Math.max(0, Math.min(num(count), 1000)),
       1,
     );
@@ -198,9 +198,14 @@ export function MagazineForm({
   // Compute the auto-numbered label for a prefix (#22): `prefix + next number`,
   // continuing past the owner's highest matching label. Empty prefix ⇒ no label.
   // A prefix not in the server-computed map starts at 1 (a freshly typed one).
-  function prefillLabel(prefix: string): string {
-    if (prefix.trim() === "") return "";
-    const start = prefixNextStart[prefix] ?? 1;
+  function prefillLabel(rawPrefix: string): string {
+    // Trim to match what the server stores and keys the next-start map by, so a
+    // pasted "US " resolves to the real next number instead of falling back to 1.
+    const prefix = rawPrefix.trim();
+    if (prefix === "") return "";
+    const start = Object.hasOwn(prefixNextStart, prefix)
+      ? prefixNextStart[prefix]
+      : 1;
     const [label] = generateLabels(prefix, 1, start);
     return label ?? "";
   }
@@ -243,7 +248,7 @@ export function MagazineForm({
         result = await bulkAddMagazinesAction(
           baseInput,
           addCount,
-          labelPrefix,
+          labelPrefix.trim(),
           {
             idempotencyKey: crypto.randomUUID(),
           },

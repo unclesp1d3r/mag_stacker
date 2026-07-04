@@ -56,8 +56,8 @@ export function nextLabelStart(
 /**
  * Map each prefix to its next sequence start (#22). Pure; drives the single-add
  * label prefill without a per-keystroke round-trip. A prefix with no matching
- * labels maps to 1 (via `nextLabelStart`); a prefix the client types that isn't
- * in this map defaults to 1 on the client side.
+ * labels maps to 1 (via `nextLabelStart`). Callers are expected to default any
+ * prefix absent from the map (e.g. a freshly typed one) to 1 themselves.
  */
 export function nextStartForPrefixes(
   existingLabels: string[],

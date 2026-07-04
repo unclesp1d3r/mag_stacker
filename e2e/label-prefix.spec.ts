@@ -49,4 +49,15 @@ test("prefix prefills the label, numbers continue, and the list grows (#22)", as
     await page.getByRole("button", { name: "Add magazine" }).click();
     await expect(page.getByRole("cell", { name: "SPARE" })).toBeVisible();
   });
+
+  await test.step("no prefix selected leaves the label blank (AE4)", async () => {
+    await page.getByRole("button", { name: "Add magazine" }).click();
+    // A fresh single-add form: no prefix chosen, so nothing is auto-numbered.
+    await expect(form.getByLabel("Label prefix")).toHaveValue("");
+    await expect(label).toHaveValue("");
+    await form.getByLabel("Brand / model").fill("PMAG");
+    await form.getByLabel("Caliber").fill("9mm");
+    await page.getByRole("button", { name: "Add magazine" }).click();
+    await expect(page.locator("form")).not.toBeVisible();
+  });
 });

@@ -308,4 +308,25 @@ live("createMagazine — prefix recording (#22)", () => {
     expect(await listPrefixes(owner)).toEqual([]);
     await deleteUsers(owner);
   });
+
+  test("a create that throws in-transaction records no prefix (rollback)", async () => {
+    const owner = await createUser("cp-rollback");
+    const other = await createUser("cp-other");
+    // An unseeable compatible firearm makes replaceCompatibility throw inside the
+    // create transaction, which must roll back the prefix write too (R32/KTD-5).
+    const unseen = await makeFirearm(other, { name: "private" });
+    await expect(
+      createMagazine(owner, {
+        brandModel: "PMAG",
+        caliber: "9mm",
+        baseCapacity: 15,
+        extensionRounds: 0,
+        label: "MP01",
+        labelPrefix: "MP",
+        compatibleFirearmIds: [unseen.id],
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(await listPrefixes(owner)).toEqual([]);
+    await deleteUsers(owner, other);
+  });
 });
