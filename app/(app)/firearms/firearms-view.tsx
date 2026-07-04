@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { ShareControl } from "@/app/(app)/grants/share-control";
@@ -27,6 +28,8 @@ export interface FirearmListItem extends FirearmFormValues {
   id: string;
   ownerId: string;
   magazineCount: number;
+  /** Derived lifetime rounds fired across this firearm's sessions (#11). */
+  roundTotal: number;
 }
 
 interface FirearmsViewProps {
@@ -38,7 +41,7 @@ interface FirearmsViewProps {
   subtypeSuggestions: string[];
 }
 
-type FormState = { open: false } | { open: true; initial?: FirearmFormValues };
+type FormState = { open: false } | { open: true };
 
 export function FirearmsView({
   firearms,
@@ -77,6 +80,22 @@ export function FirearmsView({
     effectiveFilter === ALL_TYPES
       ? firearms
       : firearms.filter((f) => f.type === effectiveFilter);
+
+  // Same-named firearms get a non-sensitive id-fragment suffix on the row link's
+  // accessible name so a screen-reader link list stays unambiguous (R17/R52).
+  // The fragment (not a visible column value) avoids colliding with other cells.
+  const nameCounts = new Map<string, number>();
+  for (const f of firearms) {
+    const n = firearmDisplayName(f);
+    nameCounts.set(n, (nameCounts.get(n) ?? 0) + 1);
+  }
+  function linkLabel(item: FirearmListItem): string | undefined {
+    const name = firearmDisplayName(item);
+    return (nameCounts.get(name) ?? 0) > 1
+      ? `${name} (#${item.id.slice(0, 6)})`
+      : undefined;
+  }
+
   const del = useDeleteConfirmation<FirearmListItem>({
     entityLabel: "Firearm",
     getName: (item) => firearmDisplayName(item),
@@ -85,8 +104,8 @@ export function FirearmsView({
 
   function refresh(touchedId?: string) {
     setForm({ open: false });
-    // Show the full list after a create/edit so the touched row (which may be a
-    // type the active filter would hide) is visible and its flash lands.
+    // Show the full list after a create so the new row (which may be a type the
+    // active filter would hide) is visible and its flash lands.
     if (touchedId) {
       setTypeFilter(ALL_TYPES);
       flash(touchedId);
@@ -110,11 +129,8 @@ export function FirearmsView({
 
       {form.open ? (
         <Card>
-          <h2 className="mb-4 text-sm font-semibold text-ink">
-            {form.initial ? "Edit firearm" : "New firearm"}
-          </h2>
+          <h2 className="mb-4 text-sm font-semibold text-ink">New firearm</h2>
           <FirearmForm
-            initial={form.initial}
             caliberSuggestions={caliberSuggestions}
             manufacturerSuggestions={manufacturerSuggestions}
             subtypeSuggestions={subtypeSuggestions}
@@ -168,13 +184,20 @@ export function FirearmsView({
               <TH>Action</TH>
               {showSerial ? <TH>Serial</TH> : null}
               <TH className="text-right"># Mags</TH>
+              <TH className="text-right">Rounds</TH>
               <TH className="text-right">Actions</TH>
             </THead>
             <tbody>
               {filtered.map((item) => (
                 <TRow key={item.id} flash={item.id === flashId}>
                   <TD className="font-medium">
-                    {firearmDisplayName(item)}
+                    <Link
+                      href={`/firearms/${item.id}`}
+                      aria-label={linkLabel(item)}
+                      className="text-blaze hover:underline"
+                    >
+                      {firearmDisplayName(item)}
+                    </Link>
                     {hasNickname(item) ? (
                       <span className="block text-xs font-normal text-ink-faint">
                         {item.name}
@@ -188,23 +211,15 @@ export function FirearmsView({
                     <TD className="font-mono text-xs">{item.serialNumber}</TD>
                   ) : null}
                   <TD className="text-right tabular">{item.magazineCount}</TD>
+                  <TD className="text-right tabular">{item.roundTotal}</TD>
                   <TD className="text-right">
-                    <div className="flex justify-end gap-1">
-                      {item.ownerId === currentUserId ? (
+                    {item.ownerId === currentUserId ? (
+                      <div className="flex justify-end gap-1">
                         <ShareControl
                           parentType="firearm"
                           parentId={item.id}
                           itemName={firearmDisplayName(item)}
                         />
-                      ) : null}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setForm({ open: true, initial: item })}
-                      >
-                        Edit
-                      </Button>
-                      {item.ownerId === currentUserId ? (
                         <Button
                           variant="danger"
                           size="sm"
@@ -212,8 +227,8 @@ export function FirearmsView({
                         >
                           Delete
                         </Button>
-                      ) : null}
-                    </div>
+                      </div>
+                    ) : null}
                   </TD>
                 </TRow>
               ))}

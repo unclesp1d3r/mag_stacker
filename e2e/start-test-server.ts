@@ -13,15 +13,20 @@
  *      IN-PROCESS via `auth.handler` — rotating `x-forwarded-for` per call so the
  *      DB-stored `/sign-in/email` rate limit (5/60s) never trips regardless of
  *      pool size. Write the resolved env (incl. session tokens) to the artifact.
- *   5. Ensure a production build, then SPAWN (not exec) `next start` so the
- *      SIGINT/SIGTERM trap that stops the container survives; the trap also
- *      forwards the kill to the Next child so it is never orphaned.
+ *   5. Ensure a production build, then serve it IN-PROCESS via Next's
+ *      programmatic `nextStart`. The launcher's per-run env (Testcontainers
+ *      DATABASE_URL, reserved-port BETTER_AUTH_URL, random BETTER_AUTH_SECRET)
+ *      is already set here and `@next/env` preserves already-set vars, so
+ *      nothing re-loads a local `.env` (or mise-cached env) to clobber it — the
+ *      failure mode that a spawned `next start` subprocess hit. Serving in the
+ *      same process also keeps the SIGINT/SIGTERM trap that stops the container
+ *      alongside the server it supervises.
  *
  * Playwright starts `webServer` BEFORE `globalSetup`, which is exactly why the
  * container cannot live in `globalSetup` — the app must not boot before the DB
  * and the seeded users exist.
  */
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -29,6 +34,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
+import { nextStart } from "next/dist/cli/next-start";
 import {
   ARTIFACT_PATH,
   type RunArtifact,
@@ -148,25 +154,13 @@ async function main(): Promise<void> {
   process.env.DATABASE_URL = container.getConnectionUri();
   console.log("[e2e] container up; DATABASE_URL set.");
 
-  let child: ChildProcess | undefined;
   let shuttingDown = false;
 
   const shutdown = async (code: number): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
-    if (child && child.exitCode === null) {
-      child.kill("SIGTERM");
-      // Let the Next child drain before cutting the DB connection, so teardown
-      // doesn't leave "terminating connection" noise in the container log.
-      // Bounded so a stuck child can't hang teardown.
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, 5_000);
-        child?.once("exit", () => {
-          clearTimeout(timer);
-          resolve();
-        });
-      });
-    }
+    // Next serves in this process, so it stops when we exit. Stop the container
+    // first for a clean teardown; Ryuk also reaps it on any exit as a backstop.
     try {
       await container.stop();
     } catch (error) {
@@ -258,30 +252,15 @@ async function main(): Promise<void> {
       console.log("[e2e] no production build found; running next build…");
       runScript(["run", "build"], "Build");
     }
-    console.log(`[e2e] starting next start on :${PORT}…`);
-    child = spawn(
-      process.execPath,
-      // Start via the shim so this run's DB/auth env wins over any local `.env`
-      // (or mise env_cache) that bun/Next would otherwise re-load in the app.
-      [
-        "e2e/start-app.ts",
-        process.env.DATABASE_URL ?? "",
-        process.env.BETTER_AUTH_URL ?? "",
-        process.env.BETTER_AUTH_SECRET ?? "",
-        "-p",
-        String(PORT),
-      ],
-      {
-        stdio: "inherit",
-        env: process.env,
-      },
-    );
-    child.on("exit", (exitCode) => {
-      if (!shuttingDown) {
-        console.error(`[e2e] next start exited early (${exitCode}).`);
-        void shutdown(exitCode ?? 1);
-      }
-    });
+    console.log(`[e2e] serving the app in-process on :${PORT}…`);
+    // Serve Next here rather than as a spawned `next start`. The env resolved
+    // above (this run's Testcontainers DATABASE_URL, reserved-port
+    // BETTER_AUTH_URL, random BETTER_AUTH_SECRET) is already in process.env, and
+    // `@next/env` only fills *unset* vars — so nothing re-loads a local `.env`
+    // (or mise-cached env) to override it. `nextStart` resolves once the server
+    // is listening; the open socket keeps this process alive until Playwright
+    // tears the webServer down and the SIGTERM trap above stops the container.
+    await nextStart({ port: PORT, hostname: "localhost" });
   } catch (error) {
     console.error("[e2e] launcher failed during setup:", error);
     await shutdown(1);

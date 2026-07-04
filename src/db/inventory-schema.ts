@@ -120,6 +120,25 @@ export const magazine = pgTable(
   ],
 );
 
+/**
+ * Per-owner label-prefix list (#22). A flat set of prefix strings the owner has
+ * used, extended on create (single or bulk). Feeds the single-add prefix
+ * combobox and drives auto-numbering; the composite PK enforces one row per
+ * (owner, prefix) and its leading `owner_id` column serves owner-scoped lookups,
+ * so no separate index is needed. Grows-only in v1 (no delete/rename path).
+ */
+export const magazineLabelPrefix = pgTable(
+  "magazine_label_prefix",
+  {
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    prefix: text("prefix").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.ownerId, t.prefix] })],
+);
+
 export const magazineFirearm = pgTable(
   "magazine_firearm",
   {
@@ -135,6 +154,39 @@ export const magazineFirearm = pgTable(
     // Composite PK prevents duplicate (magazine, firearm) pairs (R34 backstop).
     primaryKey({ columns: [t.magazineId, t.firearmId] }),
     index("magazine_firearm_firearm_id_idx").on(t.firearmId),
+  ],
+);
+
+/**
+ * Range session log (#11) — the first firearm child record (R62). One row per
+ * firearm per range trip; a firearm's lifetime round total is DERIVED by summing
+ * `rounds_fired` over its rows (no stored counter). Inherits owner/grants from
+ * the parent firearm: no `owner_id`, no own grant family. The FK ON DELETE
+ * CASCADE drops sessions with the firearm (R35). `ammo_id` is a nullable seam for
+ * the future Ammo inventory (#7) and intentionally carries NO FK — the ammo table
+ * does not exist yet (KTD5).
+ */
+export const rangeSession = pgTable(
+  "range_session",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    firearmId: uuid("firearm_id")
+      .notNull()
+      .references(() => firearm.id, { onDelete: "cascade" }),
+    // Calendar date of the session, no time component.
+    date: date("date").notNull(),
+    roundsFired: integer("rounds_fired").notNull(),
+    // Nullable #7 seam — no FK until the ammo table exists (KTD5).
+    ammoId: uuid("ammo_id"),
+    notes: text("notes").notNull().default(""),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    // Per-firearm history + lifetime-total aggregation lookup.
+    index("range_session_firearm_id_idx").on(t.firearmId),
+    // R26-style backstop — domain validation is the primary surface (KTD4).
+    check("range_session_rounds_fired_min", sql`${t.roundsFired} >= 1`),
   ],
 );
 

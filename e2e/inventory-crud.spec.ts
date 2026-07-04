@@ -85,15 +85,14 @@ test("inventory CRUD, completion feedback, and controls-gating", async ({
   });
 
   await test.step("edit a magazine → 'Changes saved'", async () => {
-    await page
-      .getByRole("row")
-      .filter({ hasText: MAG_BRAND })
-      .getByRole("button", { name: "Edit" })
-      .click();
+    // Editing lives on the magazine detail page now — reach it via the row link.
+    await page.getByRole("link", { name: MAG_BRAND }).click();
+    await page.getByRole("button", { name: "Edit" }).click();
     await page.locator("form").getByLabel("Notes").fill("Range mag");
     await page.getByRole("button", { name: "Save changes" }).click();
 
     await expect(page.getByText("Changes saved")).toBeVisible();
+    await page.goto("/magazines");
   });
 
   await test.step("export → download + 'Inventory exported'", async () => {

@@ -34,7 +34,7 @@ test("Settings toggle, grandfather behavior, and persistence", async ({
     const form = page.locator("form");
     await form.getByLabel("Brand / model").fill(MAG_BRAND);
     await form.getByLabel("Caliber").fill("9mm");
-    await form.getByLabel("Label").fill(NONCONFORMING_LABEL);
+    await form.getByLabel("Label", { exact: true }).fill(NONCONFORMING_LABEL);
     await page.getByRole("button", { name: "Add magazine" }).click();
     await expect(page.getByText("Magazine seated")).toBeVisible();
     await expect(
@@ -60,21 +60,23 @@ test("Settings toggle, grandfather behavior, and persistence", async ({
 
   await test.step("magazines label field shows the Magpul hint after mode is enabled", async () => {
     await page.goto("/magazines");
-    await page
-      .getByRole("row")
-      .filter({ hasText: MAG_BRAND })
-      .getByRole("button", { name: "Edit" })
-      .click();
+    // Editing lives on the magazine detail page now — reach it via the row link.
+    await page.getByRole("link", { name: MAG_BRAND }).click();
+    await page.getByRole("button", { name: "Edit" }).click();
     await expect(page.getByText(/Max 4/)).toBeVisible();
   });
 
   await test.step("existing nonconforming label shows verbatim until edited (AE7)", async () => {
-    const labelInput = page.locator("form").getByLabel("Label");
+    const labelInput = page
+      .locator("form")
+      .getByLabel("Label", { exact: true });
     await expect(labelInput).toHaveValue(NONCONFORMING_LABEL);
   });
 
   await test.step("editing the label field applies the mask (AE8)", async () => {
-    const labelInput = page.locator("form").getByLabel("Label");
+    const labelInput = page
+      .locator("form")
+      .getByLabel("Label", { exact: true });
     await labelInput.fill("ar15");
     await expect(labelInput).toHaveValue("AR15");
     await page.getByRole("button", { name: "Cancel" }).click();

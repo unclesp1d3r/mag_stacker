@@ -1,7 +1,7 @@
-validate    = true
-number      = true
-wrap        = "no"
 end_of_line = "lf"
+number      = true
+validate    = true
+wrap        = "no"
 
 [plugin.mkdocs]
 align_semantic_breaks_in_lists = true
