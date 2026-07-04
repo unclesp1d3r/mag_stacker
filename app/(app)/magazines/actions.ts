@@ -27,11 +27,16 @@ export async function createMagazineAction(
 ): Promise<ActionResult<{ id: string }>> {
   try {
     const userId = await requireUserId();
-    // `labelPrefix` only feeds the prefix list (recordPrefix); it never affects
-    // ownership. Create-on-behalf `ownerId` is gated separately by
-    // resolveCreateOwner's grant check (KTD-5) — that is the trust boundary here,
-    // not this argument's shape.
-    const created = await createMagazine(userId, { ...input, labelPrefix });
+    // Single add always creates for the acting user. Force `ownerId` undefined so
+    // an injected `ownerId` on the submitted object can't ride into createMagazine's
+    // create-on-behalf path — resolveCreateOwner would still gate it on a grant
+    // (KTD-5), but single add is not a create-on-behalf surface (bulk add owns that).
+    // `labelPrefix` only feeds the prefix list (recordPrefix); it never affects ownership.
+    const created = await createMagazine(userId, {
+      ...input,
+      ownerId: undefined,
+      labelPrefix,
+    });
     revalidatePath("/magazines");
     return { ok: true, data: { id: created.id } };
   } catch (error) {
