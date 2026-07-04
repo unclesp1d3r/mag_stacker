@@ -1,63 +1,40 @@
 # MagStacker
 
-MagStacker keeps track of your firearms and magazines: what you own, what fits
-what, and how much it all holds. It's a self-hosted web app for shooting ranges,
-clubs, and individual owners who'd rather not keep their inventory in a
-spreadsheet or somebody else's cloud.
+MagStacker keeps track of your firearms and magazines: what you own, what fits what, and how much it all holds. It's a self-hosted web app for shooting ranges, clubs, and individual owners who'd rather not keep their inventory in a spreadsheet or somebody else's cloud.
 
-You run it on your own server, behind your own login, and the data stays with
-you.
+You run it on your own server, behind your own login, and the data stays with you.
 
 ![MagStacker walkthrough: adding a magazine, mapping firearm compatibility, the caliber summary, and switching themes](docs/images/demo.gif)
 
-It ships a two-mode interface that follows your system by default — a dark
-"Field Console" and a light "Machined Instrument":
+It ships a two-mode interface that follows your system by default — a dark "Field Console" and a light "Machined Instrument":
 
-|                          Dark                           |                          Light                           |
-| :-----------------------------------------------------: | :------------------------------------------------------: |
+|                             Dark                              |                              Light                              |
+| :-----------------------------------------------------------: | :-------------------------------------------------------------: |
 | ![Magazines list, dark theme](docs/images/magazines-dark.png) | ![Magazines list, light theme](docs/images/magazines-light.png) |
 
 ## Who it's for
 
-- **Individuals** keeping a personal collection straight. Label your mags, see
-  how many you've got per caliber and per firearm, and pull a copy for your own
-  records or insurance.
-- **Clubs** that want to share specific club-owned items with members at view or
-  edit, without opening up the whole inventory.
-- **Ranges** handing fleet hardware to staff. Share items at edit and switch on
-  "allow adding records owned by me," so an employee can add new range assets to
-  the range's books. A view-only volunteer can see them without changing
-  anything.
+- **Individuals** keeping a personal collection straight. Label your mags, see how many you've got per caliber and per firearm, and pull a copy for your own records or insurance.
+- **Clubs** that want to share specific club-owned items with members at view or edit, without opening up the whole inventory.
+- **Ranges** handing fleet hardware to staff. Share items at edit and switch on "allow adding records owned by me," so an employee can add new range assets to the range's books. A view-only volunteer can see them without changing anything.
 
-Everyone sees only what they own or what's been shared with them, and only an
-item's owner can delete it. Revoke a share and it's gone on the other person's
-next request.
+Everyone sees only what they own or what's been shared with them, and only an item's owner can delete it. Revoke a share and it's gone on the other person's next request.
 
 ## What you can do
 
-- Add firearms and magazines with the fields that matter: caliber, capacity
-  (base plus any extension), labels, acquired date, serial, notes.
-- Link each magazine to the firearms it fits. The order you set is the order it
-  shows up in everywhere else.
-- Bulk-add a labeled batch in one go (say, 60 mags numbered `AR-01` through
-  `AR-60`), and the count picks up where it left off the next time you add.
+- Add firearms and magazines with the fields that matter: caliber, capacity (base plus any extension), labels, acquired date, serial, notes.
+- Link each magazine to the firearms it fits. The order you set is the order it shows up in everywhere else.
+- Bulk-add a labeled batch in one go (say, 60 mags numbered `AR-01` through `AR-60`), and the count picks up where it left off the next time you add.
 - Filter magazines by brand or model, exact caliber, or which firearm they fit.
-- Check a summary: a running total, plus counts per caliber and per firearm,
-  over everything you can see.
-- Export to CSV for a spreadsheet. Serial numbers stay out of the export, and a
-  cell that starts with `=` won't turn into a live formula when someone opens the
-  file.
-- Share one item with another account at view or edit, optionally let them add
-  records on your behalf, and take the access back whenever you want.
+- Check a summary: a running total, plus counts per caliber and per firearm, over everything you can see.
+- Export to CSV for a spreadsheet. Serial numbers stay out of the export, and a cell that starts with `=` won't turn into a live formula when someone opens the file.
+- Share one item with another account at view or edit, optionally let them add records on your behalf, and take the access back whenever you want.
 
-There's no public sign-up. Accounts are created by whoever runs the server, and
-serial numbers are treated as sensitive everywhere they show up.
+There's no public sign-up. Accounts are created by whoever runs the server, and serial numbers are treated as sensitive everywhere they show up.
 
 ## Quick start
 
-Just want it running? You don't need to clone anything — grab the two files the
-stack needs and start it with the published image. On any machine with
-[Docker](https://www.docker.com/):
+Just want it running? You don't need to clone anything — grab the two files the stack needs and start it with the published image. On any machine with [Docker](https://www.docker.com/):
 
 ```bash
 # 1. Grab the compose file and an env template (no checkout required)
@@ -73,18 +50,13 @@ docker compose pull
 docker compose up -d          # migrates, seeds your first admin, starts the app
 ```
 
-That's it — open `http://<your-server>:3000/login` and sign in as the admin you
-set in `.env`. Compose defaults to the `latest` released image; pin a specific
-version by setting `MAGSTACKER_VERSION` in `.env` (or use `edge` to track main).
+That's it — open `http://<your-server>:3000/login` and sign in as the admin you set in `.env`. Compose defaults to the `latest` released image; pin a specific version by setting `MAGSTACKER_VERSION` in `.env` (or use `edge` to track main). When you pin an older version, fetch `docker-compose.yml` and `.env.example` from that release tag too (swap `main` for the tag in the URLs above) — the compose file and env template evolve alongside the image, so a pinned image and a `main` compose file can drift apart.
 
-On anything other than localhost, run it behind a TLS-terminating reverse proxy
-and set `BETTER_AUTH_URL` to the `https://` address — see
-[`docs/deployment.md`](docs/deployment.md).
+On anything other than localhost, run it behind a TLS-terminating reverse proxy and set `BETTER_AUTH_URL` to the `https://` address — see [`docs/deployment.md`](docs/deployment.md).
 
 ## Get it running
 
-You'll need a machine with [Docker](https://www.docker.com/): a home server, a
-spare always-on box, the club's back-office PC, whatever you keep running.
+You'll need a machine with [Docker](https://www.docker.com/): a home server, a spare always-on box, the club's back-office PC, whatever you keep running.
 
 ```bash
 cp .env.example .env
@@ -95,23 +67,15 @@ cp .env.example .env
 docker compose up --build -d                  # migrates, seeds your first admin, starts the app
 ```
 
-The bootstrap runs migrations and creates your first admin account (from the
-`ADMIN_EMAIL` / `ADMIN_PASSWORD` you set in `.env`) before the app starts —
-`docker compose logs migrate` shows `Created admin account for <email>.` It's
-idempotent, so re-running `up` never duplicates the admin.
+The bootstrap runs migrations and creates your first admin account (from the `ADMIN_EMAIL` / `ADMIN_PASSWORD` you set in `.env`) before the app starts — `docker compose logs migrate` shows `Created admin account for <email>.` It's idempotent, so re-running `up` never duplicates the admin.
 
-Open `http://<your-server>:3000/login`, sign in, and add the rest of the
-accounts (staff, members, family) from the **Accounts** screen.
+Open `http://<your-server>:3000/login`, sign in, and add the rest of the accounts (staff, members, family) from the **Accounts** screen.
 
-> Run it behind HTTPS. Logins ride on cookies, so put MagStacker behind a reverse
-> proxy that handles TLS (Caddy, nginx, Traefik) and set `BETTER_AUTH_URL` to the
-> `https://` address. There's more in [`docs/deployment.md`](docs/deployment.md).
+> Run it behind HTTPS. Logins ride on cookies, so put MagStacker behind a reverse proxy that handles TLS (Caddy, nginx, Traefik) and set `BETTER_AUTH_URL` to the `https://` address. There's more in [`docs/deployment.md`](docs/deployment.md).
 
 ### Backups
 
-Everything lives in Postgres, so a normal `pg_dump` is your backup. Restoring it
-brings back every firearm, magazine, compatibility link, and share exactly as
-they were:
+Everything lives in Postgres, so a normal `pg_dump` is your backup. Restoring it brings back every firearm, magazine, compatibility link, and share exactly as they were:
 
 ```bash
 docker compose exec db pg_dump -U "$POSTGRES_USER" -Fc -d "$POSTGRES_DB" > magstacker.dump
@@ -121,14 +85,9 @@ docker compose exec db pg_dump -U "$POSTGRES_USER" -Fc -d "$POSTGRES_DB" > magst
 
 ## Behind a reverse proxy
 
-Sign-in rides on cookies, so on any real network you run MagStacker behind a
-reverse proxy that terminates TLS — never expose port 3000 directly. Point the
-proxy at the app's published port and set `BETTER_AUTH_URL` in `.env` to the
-public `https://` address (it **must** match the origin you actually open, or
-Better Auth rejects the request).
+Sign-in rides on cookies, so on any real network you run MagStacker behind a reverse proxy that terminates TLS — never expose port 3000 directly. Point the proxy at the app's published port and set `BETTER_AUTH_URL` in `.env` to the public `https://` address (it **must** match the origin you actually open, or Better Auth rejects the request).
 
-The smallest example is [Caddy](https://caddyserver.com/), which gets you an
-automatic Let's Encrypt certificate. A whole `Caddyfile` can be two lines:
+The smallest example is [Caddy](https://caddyserver.com/), which gets you an automatic Let's Encrypt certificate. A whole `Caddyfile` can be two lines:
 
 ```caddyfile
 magstacker.example.com {
@@ -136,21 +95,13 @@ magstacker.example.com {
 }
 ```
 
-Then set `BETTER_AUTH_URL=https://magstacker.example.com` in `.env` and restart
-the stack. nginx and Traefik work the same way — terminate TLS, proxy to the
-app port, and forward a single trusted client-IP header (e.g. `X-Real-IP`) so
-the auth rate limiting keys on the real client. Full details, including the
-header and port notes, are in [`docs/deployment.md`](docs/deployment.md).
+Then set `BETTER_AUTH_URL=https://magstacker.example.com` in `.env` and restart the stack. nginx and Traefik work the same way — terminate TLS, proxy to the app port, and forward a single trusted client-IP header (e.g. `X-Real-IP`) so the auth rate limiting keys on the real client. Full details, including the header and port notes, are in [`docs/deployment.md`](docs/deployment.md).
 
 ## For developers
 
-MagStacker is the original Go/Wails (later Avalonia) desktop app rebuilt as a
-multi-user web app. It has to match what the desktop version already did, so the
-inventory rules are pinned to a parity spec and tested against it.
+MagStacker is the original Go/Wails (later Avalonia) desktop app rebuilt as a multi-user web app. It has to match what the desktop version already did, so the inventory rules are pinned to a parity spec and tested against it.
 
-Stack: Next.js 16 (App Router), React 19, Bun, Drizzle ORM, Postgres, Better
-Auth, Tailwind v4, Biome. Use Bun and Biome, not ESLint/Prettier/pnpm (see
-`AGENTS.md`).
+Stack: Next.js 16 (App Router), React 19, Bun, Drizzle ORM, Postgres, Better Auth, Tailwind v4, Biome. Use Bun and Biome, not ESLint/Prettier/pnpm (see `AGENTS.md`).
 
 ```bash
 docker compose up -d db        # local Postgres on host port 5544
@@ -165,9 +116,7 @@ bun run typecheck              # tsc --noEmit
 bun test                       # unit + integration
 ```
 
-> `mise` (`mise.toml`) pins the toolchain and loads `.env` into your shell, then
-> caches it. After you edit `.env`, run `mise cache clear`, or a stale value can
-> shadow both your tooling and `docker compose`.
+> `mise` (`mise.toml`) pins the toolchain and loads `.env` into your shell, then caches it. After you edit `.env`, run `mise cache clear`, or a stale value can shadow both your tooling and `docker compose`.
 
 Layout:
 
@@ -184,10 +133,7 @@ src/
 docs/                # deployment guide, architecture decision records, images
 ```
 
-Authorization is enforced server-side in `src/auth`, and reads are
-viewer-relative: anything you can't see drops out of lists, the summary, and
-exports before it reaches you. The parity behaviors are pinned to exact values
-in the test suite, including two-user tests that try to break the sharing rules.
+Authorization is enforced server-side in `src/auth`, and reads are viewer-relative: anything you can't see drops out of lists, the summary, and exports before it reaches you. The parity behaviors are pinned to exact values in the test suite, including two-user tests that try to break the sharing rules.
 
 ## License
 
@@ -195,6 +141,4 @@ MagStacker is licensed under the [Apache License 2.0](LICENSE).
 
 ## Contributing
 
-Bug reports, feature requests, and pull requests are welcome. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the dev loop, the `just ci-check` gate,
-and PR guidelines.
+Bug reports, feature requests, and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev loop, the `just ci-check` gate, and PR guidelines.

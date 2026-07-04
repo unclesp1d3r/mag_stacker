@@ -16,9 +16,28 @@
 set -euo pipefail
 
 # Placeholder values shipped in .env.example — refuse to start with these so a
-# deployment never comes up with a default database password or auth secret.
+# deployment never comes up with a default database password, auth secret, or
+# admin login.
 PLACEHOLDER_POSTGRES_PASSWORD="change-me-in-production"
 PLACEHOLDER_AUTH_SECRET="change-me-generate-a-strong-random-secret"
+PLACEHOLDER_ADMIN_EMAIL="admin@example.com"
+PLACEHOLDER_ADMIN_PASSWORD="change-me-strong-admin-password"
+
+# Read a single KEY=VALUE from .env without sourcing it. Sourcing would execute
+# the file as shell, so a stray backtick or `$(...)` in a hand-edited .env could
+# run arbitrary commands; this only reads the values we check. Docker Compose
+# loads .env itself when it brings the stack up.
+env_value() {
+  local key="$1" line
+  line="$(grep -E "^[[:space:]]*${key}=" .env | tail -n1)" || return 0
+  line="${line#*=}"
+  line="${line%$'\r'}"
+  case "${line}" in
+    \"*\") line="${line#\"}"; line="${line%\"}" ;;
+    \'*\') line="${line#\'}"; line="${line%\'}" ;;
+  esac
+  printf '%s' "${line}"
+}
 
 echo "=== MagStacker Setup ==="
 echo ""
@@ -61,23 +80,34 @@ fi
 echo ".env found — leaving it untouched."
 echo ""
 
-# --- Load .env for presence/placeholder checks (values are never printed) --
+# --- Read .env for presence/placeholder checks (values are never printed) --
 
-set -a
-# shellcheck disable=SC1091
-. ./.env
-set +a
+postgres_password="$(env_value POSTGRES_PASSWORD)"
+auth_secret="$(env_value BETTER_AUTH_SECRET)"
+admin_email="$(env_value ADMIN_EMAIL)"
+admin_password="$(env_value ADMIN_PASSWORD)"
 
 fail=0
 
-if [[ -z "${POSTGRES_PASSWORD:-}" || "${POSTGRES_PASSWORD:-}" == "${PLACEHOLDER_POSTGRES_PASSWORD}" ]]; then
+if [[ -z "${postgres_password}" || "${postgres_password}" == "${PLACEHOLDER_POSTGRES_PASSWORD}" ]]; then
   echo "Error: set a real POSTGRES_PASSWORD in .env (still the placeholder)." >&2
   fail=1
 fi
 
-if [[ -z "${BETTER_AUTH_SECRET:-}" || "${BETTER_AUTH_SECRET:-}" == "${PLACEHOLDER_AUTH_SECRET}" ]]; then
+if [[ -z "${auth_secret}" || "${auth_secret}" == "${PLACEHOLDER_AUTH_SECRET}" ]]; then
   echo "Error: set a real BETTER_AUTH_SECRET in .env (openssl rand -base64 32)." >&2
   fail=1
+fi
+
+# The admin seed is optional — leave both unset to skip it. But if both are set
+# (so compose will seed) and either is still the shipped placeholder, refuse:
+# otherwise the stack comes up with a known-password admin account.
+if [[ -n "${admin_email}" && -n "${admin_password}" ]]; then
+  if [[ "${admin_email}" == "${PLACEHOLDER_ADMIN_EMAIL}" || "${admin_password}" == "${PLACEHOLDER_ADMIN_PASSWORD}" ]]; then
+    echo "Error: ADMIN_EMAIL/ADMIN_PASSWORD are still the .env.example placeholders." >&2
+    echo "       Set real admin credentials, or clear both to skip the first-admin seed." >&2
+    fail=1
+  fi
 fi
 
 if [[ "${fail}" -ne 0 ]]; then
@@ -86,7 +116,7 @@ if [[ "${fail}" -ne 0 ]]; then
   exit 1
 fi
 
-if [[ -z "${ADMIN_EMAIL:-}" || -z "${ADMIN_PASSWORD:-}" ]]; then
+if [[ -z "${admin_email}" || -z "${admin_password}" ]]; then
   echo "Note: ADMIN_EMAIL/ADMIN_PASSWORD not set — the first-admin seed will be"
   echo "      skipped. Set them in .env and re-run to create the admin account."
   echo ""
@@ -94,7 +124,8 @@ fi
 
 # --- Bring up the stack via Docker Compose --------------------------------
 
-app_host_port="${APP_HOST_PORT:-3000}"
+app_host_port="$(env_value APP_HOST_PORT)"
+app_host_port="${app_host_port:-3000}"
 
 echo "Starting the stack (docker compose up --build -d)..."
 echo "  db      → Postgres"
