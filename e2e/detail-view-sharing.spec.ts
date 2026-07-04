@@ -157,4 +157,18 @@ test("permission-gated read-only detail routes", async ({ page, browser }) => {
       page.getByRole("row").filter({ hasText: "Detail Rifle" }),
     ).toHaveCount(0);
   });
+
+  await test.step("owner deletes the magazine from its detail page and lands on the list (AE3)", async () => {
+    await page.goto("/magazines");
+    await page.getByRole("link", { name: "Detail Mag" }).click();
+    await page.getByRole("button", { name: "Delete" }).click();
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Delete" }).click();
+
+    await expect(page).toHaveURL(/\/magazines$/);
+    await expect(
+      page.getByRole("row").filter({ hasText: "Detail Mag" }),
+    ).toHaveCount(0);
+  });
 });

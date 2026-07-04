@@ -18,9 +18,11 @@ interface DeleteConfirmation<T> {
 }
 
 /**
- * Shared "confirm, then delete" flow for an inventory row (magazines, firearms).
- * Pessimistic: runs the server action, toasts success/failure, then refreshes.
- * The view owns the dialog copy; this owns the state machine and side effects.
+ * Shared "confirm, then delete" flow for an inventory row or detail page
+ * (magazines, firearms). Pessimistic: runs the server action and toasts the
+ * result. On success it navigates to `redirectTo` when given, otherwise
+ * refreshes in place; on failure the dialog just closes (nothing changed
+ * server-side). The view owns the dialog copy; this owns the state machine.
  */
 export function useDeleteConfirmation<T extends { id: string }>({
   entityLabel,

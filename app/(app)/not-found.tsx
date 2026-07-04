@@ -4,7 +4,9 @@ import { PageHeader } from "@/components/ui/surface";
 /**
  * Shared 404 for the (app) segment — rendered when a detail route calls
  * `notFound()` because the record does not exist or is not shared with the
- * viewer (R9). Accessible heading + keyboard-reachable links back (R16).
+ * viewer (R9). Accessible heading and keyboard-reachable links back; as a
+ * full-page notFound() boundary it relies on Next's route announcer rather than
+ * the focus-shift the detail views implement for R16.
  */
 export default function AppNotFound() {
   return (

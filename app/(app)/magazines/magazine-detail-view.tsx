@@ -21,7 +21,9 @@ import {
 export interface MagazineDetail extends MagazineFormValues {
   id: string;
   ownerId: string;
-  compatibleFirearmNames: string[];
+  /** Visible compatible firearms as {id, name} pairs — only those the viewer can
+   * see (names of firearms not shared with a grantee are omitted, not leaked). */
+  compatibleFirearms: { id: string; name: string }[];
 }
 
 interface MagazineDetailViewProps {
@@ -185,11 +187,11 @@ export function MagazineDetailView({
             <DetailRow
               label="Compatible firearms"
               value={
-                magazine.compatibleFirearmNames.length > 0 ? (
+                magazine.compatibleFirearms.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
-                    {magazine.compatibleFirearmNames.map((name) => (
-                      <Badge key={name} tone="neutral">
-                        {name}
+                    {magazine.compatibleFirearms.map((f) => (
+                      <Badge key={f.id} tone="neutral">
+                        {f.name}
                       </Badge>
                     ))}
                   </div>

@@ -41,6 +41,11 @@ export default async function FirearmDetailPage({ params }: PageProps) {
     ],
   );
 
+  // getFirearm already confirmed visibility; a null here means the grant was
+  // revoked between that check and this one — resolve as not-found, not a
+  // silently-downgraded "view" page (R9).
+  if (permission === null) notFound();
+
   const magazineCount =
     summary.firearmCounts.find((f) => f.id === id)?.count ?? 0;
   const subtypeSuggestions = [
@@ -62,7 +67,7 @@ export default async function FirearmDetailPage({ params }: PageProps) {
         serialNumber: row.serialNumber,
         notes: row.notes,
       }}
-      permission={permission ?? "view"}
+      permission={permission}
       currentUserId={user.id}
       magazineCount={magazineCount}
       caliberSuggestions={caliberSuggestions}

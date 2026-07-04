@@ -38,6 +38,10 @@ export default async function MagazineDetailPage({ params }: PageProps) {
       getPrefixData(user.id),
     ]);
 
+  // getMagazine already confirmed visibility; a null here means the grant was
+  // revoked between that check and this one — resolve as not-found (R9).
+  if (permission === null) notFound();
+
   const nameById = new Map(firearms.map((f) => [f.id, f.name]));
   const nameCounts = new Map<string, number>();
   for (const f of firearms)
@@ -48,9 +52,14 @@ export default async function MagazineDetailPage({ params }: PageProps) {
     // Disambiguate same-named firearms with a non-sensitive id fragment (R52).
     hint: (nameCounts.get(f.name) ?? 0) > 1 ? f.id.slice(0, 6) : undefined,
   }));
-  const compatibleFirearmNames = row.compatibleFirearmIds
-    .map((fid) => nameById.get(fid))
-    .filter((n): n is string => n !== undefined);
+  // Pair id+name structurally so display can't drift; a firearm the viewer can't
+  // see is omitted (its name is never leaked), not rendered as a blank badge.
+  const compatibleFirearms = row.compatibleFirearmIds
+    .map((fid) => {
+      const name = nameById.get(fid);
+      return name ? { id: fid, name } : null;
+    })
+    .filter((f): f is { id: string; name: string } => f !== null);
 
   return (
     <MagazineDetailView
@@ -65,9 +74,9 @@ export default async function MagazineDetailPage({ params }: PageProps) {
         acquiredDate: row.acquiredDate ?? "",
         notes: row.notes,
         compatibleFirearmIds: row.compatibleFirearmIds,
-        compatibleFirearmNames,
+        compatibleFirearms,
       }}
-      permission={permission ?? "view"}
+      permission={permission}
       currentUserId={user.id}
       firearmOptions={firearmOptions}
       caliberSuggestions={caliberSuggestions}

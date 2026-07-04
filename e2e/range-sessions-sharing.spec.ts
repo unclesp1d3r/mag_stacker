@@ -96,6 +96,9 @@ test("a view-only sharee reads the total and history but sees no session control
       await expect(
         viewerPage.getByRole("button", { name: "Edit" }),
       ).toHaveCount(0);
+      await expect(
+        viewerPage.getByRole("button", { name: "Delete" }),
+      ).toHaveCount(0);
     } finally {
       await viewerContext.close();
     }
