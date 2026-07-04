@@ -26,11 +26,18 @@ export function useDeleteConfirmation<T extends { id: string }>({
   entityLabel,
   getName,
   remove,
+  redirectTo,
 }: {
   /** Capitalized noun for the success toast, e.g. "Magazine". */
   entityLabel: string;
   getName: (item: T) => string;
   remove: (id: string) => Promise<ActionResult>;
+  /**
+   * Where to go after a successful delete. Omitted on list views (stay and
+   * refresh in place); set to the list path on a detail view, where the deleted
+   * record's own page no longer exists.
+   */
+  redirectTo?: string;
 }): DeleteConfirmation<T> {
   const router = useRouter();
   const { toast } = useToast();
@@ -48,11 +55,15 @@ export function useDeleteConfirmation<T extends { id: string }>({
           detail: getName(item),
           tone: "neutral",
         });
-      } else {
-        toast({ message: result.error ?? "Could not delete.", tone: "danger" });
+        setTarget(null);
+        // On a detail view the deleted record's page is gone — navigate to the
+        // list. On a list view stay put and refresh in place.
+        if (redirectTo) router.push(redirectTo);
+        else router.refresh();
+        return;
       }
+      toast({ message: result.error ?? "Could not delete.", tone: "danger" });
       setTarget(null);
-      router.refresh();
     });
   }
 
