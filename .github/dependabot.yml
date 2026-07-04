@@ -1,6 +1,10 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"
+  # This project uses Bun. Dependabot's "bun" ecosystem maintains bun.lock;
+  # the "npm" ecosystem does not, which leaves the lockfile stale and breaks
+  # `bun install --frozen-lockfile` in CI. Note: the bun ecosystem currently
+  # supports version updates only (no security updates).
+  - package-ecosystem: "bun"
     directory: "/"
     schedule:
       interval: daily
