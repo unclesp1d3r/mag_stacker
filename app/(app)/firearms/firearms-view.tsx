@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { ShareControl } from "@/app/(app)/grants/share-control";
@@ -20,7 +21,6 @@ import {
 import { firearmDisplayName, hasNickname } from "@/src/domain/firearms/display";
 import { deleteFirearmAction } from "./actions";
 import { FirearmForm, type FirearmFormValues } from "./firearm-form";
-import { RangeSessionHistory } from "./range-session-history";
 
 /** Filter sentinel: show every type. */
 const ALL_TYPES = "all";
@@ -31,7 +31,7 @@ export interface FirearmListItem extends FirearmFormValues {
   magazineCount: number;
   /** Derived lifetime rounds fired across this firearm's sessions (#11). */
   roundTotal: number;
-  /** The viewer's own permission on this firearm, for session-control gating. */
+  /** The viewer's own permission on this firearm. */
   permission: Permission;
 }
 
@@ -44,7 +44,7 @@ interface FirearmsViewProps {
   subtypeSuggestions: string[];
 }
 
-type FormState = { open: false } | { open: true; initial?: FirearmFormValues };
+type FormState = { open: false } | { open: true };
 
 export function FirearmsView({
   firearms,
@@ -56,14 +56,7 @@ export function FirearmsView({
 }: FirearmsViewProps) {
   const router = useRouter();
   const [form, setForm] = useState<FormState>({ open: false });
-  const [sessionsForId, setSessionsForId] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>(ALL_TYPES);
-  // Derive the panel's firearm from the live list, so a router.refresh() (a
-  // rename, a revoked grant, or a delete) reflects in the open panel instead of
-  // a stale snapshot taken when it was first opened.
-  const sessionsFor = sessionsForId
-    ? (firearms.find((f) => f.id === sessionsForId) ?? null)
-    : null;
   const filterId = useId();
   const { flashId, flash } = useRowFlash();
 
@@ -90,6 +83,21 @@ export function FirearmsView({
     effectiveFilter === ALL_TYPES
       ? firearms
       : firearms.filter((f) => f.type === effectiveFilter);
+
+  // Same-named firearms get a caliber suffix on the row link's accessible name
+  // so a screen-reader link list stays unambiguous (R17).
+  const nameCounts = new Map<string, number>();
+  for (const f of firearms) {
+    const n = firearmDisplayName(f);
+    nameCounts.set(n, (nameCounts.get(n) ?? 0) + 1);
+  }
+  function linkLabel(item: FirearmListItem): string | undefined {
+    const name = firearmDisplayName(item);
+    return (nameCounts.get(name) ?? 0) > 1
+      ? `${name}, ${item.caliber}`
+      : undefined;
+  }
+
   const del = useDeleteConfirmation<FirearmListItem>({
     entityLabel: "Firearm",
     getName: (item) => firearmDisplayName(item),
@@ -98,8 +106,8 @@ export function FirearmsView({
 
   function refresh(touchedId?: string) {
     setForm({ open: false });
-    // Show the full list after a create/edit so the touched row (which may be a
-    // type the active filter would hide) is visible and its flash lands.
+    // Show the full list after a create so the new row (which may be a type the
+    // active filter would hide) is visible and its flash lands.
     if (touchedId) {
       setTypeFilter(ALL_TYPES);
       flash(touchedId);
@@ -123,11 +131,8 @@ export function FirearmsView({
 
       {form.open ? (
         <Card>
-          <h2 className="mb-4 text-sm font-semibold text-ink">
-            {form.initial ? "Edit firearm" : "New firearm"}
-          </h2>
+          <h2 className="mb-4 text-sm font-semibold text-ink">New firearm</h2>
           <FirearmForm
-            initial={form.initial}
             caliberSuggestions={caliberSuggestions}
             manufacturerSuggestions={manufacturerSuggestions}
             subtypeSuggestions={subtypeSuggestions}
@@ -135,19 +140,6 @@ export function FirearmsView({
             onCancel={() => setForm({ open: false })}
           />
         </Card>
-      ) : null}
-
-      {sessionsFor ? (
-        <RangeSessionHistory
-          firearmId={sessionsFor.id}
-          firearmName={firearmDisplayName(sessionsFor)}
-          canEdit={
-            sessionsFor.permission === "owner" ||
-            sessionsFor.permission === "edit"
-          }
-          onClose={() => setSessionsForId(null)}
-          onChange={() => router.refresh()}
-        />
       ) : null}
 
       {firearms.length === 0 && !form.open ? (
@@ -201,7 +193,13 @@ export function FirearmsView({
               {filtered.map((item) => (
                 <TRow key={item.id} flash={item.id === flashId}>
                   <TD className="font-medium">
-                    {firearmDisplayName(item)}
+                    <Link
+                      href={`/firearms/${item.id}`}
+                      aria-label={linkLabel(item)}
+                      className="text-blaze hover:underline"
+                    >
+                      {firearmDisplayName(item)}
+                    </Link>
                     {hasNickname(item) ? (
                       <span className="block text-xs font-normal text-ink-faint">
                         {item.name}
@@ -217,29 +215,13 @@ export function FirearmsView({
                   <TD className="text-right tabular">{item.magazineCount}</TD>
                   <TD className="text-right tabular">{item.roundTotal}</TD>
                   <TD className="text-right">
-                    <div className="flex justify-end gap-1">
-                      {item.ownerId === currentUserId ? (
+                    {item.ownerId === currentUserId ? (
+                      <div className="flex justify-end gap-1">
                         <ShareControl
                           parentType="firearm"
                           parentId={item.id}
                           itemName={firearmDisplayName(item)}
                         />
-                      ) : null}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSessionsForId(item.id)}
-                      >
-                        Sessions
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setForm({ open: true, initial: item })}
-                      >
-                        Edit
-                      </Button>
-                      {item.ownerId === currentUserId ? (
                         <Button
                           variant="danger"
                           size="sm"
@@ -247,8 +229,8 @@ export function FirearmsView({
                         >
                           Delete
                         </Button>
-                      ) : null}
-                    </div>
+                      </div>
+                    ) : null}
                   </TD>
                 </TRow>
               ))}

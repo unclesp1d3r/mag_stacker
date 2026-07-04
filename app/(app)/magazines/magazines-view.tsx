@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ShareControl } from "@/app/(app)/grants/share-control";
@@ -11,11 +12,7 @@ import { DataTable, TD, TH, THead, TRow } from "@/components/ui/table";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import { useRowFlash } from "@/hooks/use-row-flash";
 import { deleteMagazineAction } from "./actions";
-import {
-  type FirearmOption,
-  MagazineForm,
-  type MagazineFormValues,
-} from "./magazine-form";
+import { type FirearmOption, MagazineForm } from "./magazine-form";
 
 export interface MagazineListItem {
   id: string;
@@ -46,28 +43,10 @@ interface MagazinesViewProps {
   filtered: boolean;
 }
 
-// `magpulMode` is resolved per-open: the label mask applies only when the
-// current user OWNS the magazine being edited (self-owned → their session flag
-// is the owner's flag). Editing a shared magazine you don't own never masks —
-// the owner's mode governs and the domain layer stays authoritative (KTD-6),
-// so we never mangle another owner's label client-side.
-type FormState =
-  | { open: false }
-  | { open: true; initial?: MagazineFormValues; magpulMode: boolean };
-
-function toFormValues(item: MagazineListItem): MagazineFormValues {
-  return {
-    id: item.id,
-    brandModel: item.brandModel,
-    caliber: item.caliber,
-    baseCapacity: String(item.baseCapacity),
-    extensionRounds: String(item.extensionRounds),
-    label: item.label,
-    acquiredDate: item.acquiredDate ?? "",
-    notes: item.notes,
-    compatibleFirearmIds: item.compatibleFirearmIds,
-  };
-}
+// Create-only form state. New magazines are always owned by the current user, so
+// the create form uses their own Magpul mode directly. Editing now lives on the
+// magazine detail page (owner-only), not here.
+type FormState = { open: false } | { open: true; magpulMode: boolean };
 
 export function MagazinesView({
   magazines,
@@ -88,14 +67,23 @@ export function MagazinesView({
     remove: deleteMagazineAction,
   });
 
+  // Same-named magazines get a suffix on the row link's accessible name so a
+  // screen-reader link list stays unambiguous (R17).
+  const nameCounts = new Map<string, number>();
+  for (const m of magazines)
+    nameCounts.set(m.brandModel, (nameCounts.get(m.brandModel) ?? 0) + 1);
+  function linkLabel(item: MagazineListItem): string | undefined {
+    return (nameCounts.get(item.brandModel) ?? 0) > 1
+      ? `${item.brandModel}, ${item.label || item.caliber}`
+      : undefined;
+  }
+
   function refresh(touchedId?: string) {
     setForm({ open: false });
     if (touchedId) flash(touchedId);
     router.refresh();
   }
 
-  // New magazines are always owned by the current user, so the create form
-  // uses their own Magpul mode directly (editing gates on ownership instead).
   function openCreate() {
     setForm({ open: true, magpulMode });
   }
@@ -112,11 +100,8 @@ export function MagazinesView({
 
       {form.open ? (
         <Card>
-          <h2 className="mb-4 text-sm font-semibold text-ink">
-            {form.initial ? "Edit magazine" : "New magazine"}
-          </h2>
+          <h2 className="mb-4 text-sm font-semibold text-ink">New magazine</h2>
           <MagazineForm
-            initial={form.initial}
             firearmOptions={firearmOptions}
             caliberSuggestions={caliberSuggestions}
             prefixOptions={prefixOptions}
@@ -173,7 +158,15 @@ export function MagazinesView({
           <tbody>
             {magazines.map((item) => (
               <TRow key={item.id} flash={item.id === flashId}>
-                <TD className="font-medium">{item.brandModel}</TD>
+                <TD className="font-medium">
+                  <Link
+                    href={`/magazines/${item.id}`}
+                    aria-label={linkLabel(item)}
+                    className="text-blaze hover:underline"
+                  >
+                    {item.brandModel}
+                  </Link>
+                </TD>
                 <TD className="tabular">{item.caliber}</TD>
                 <TD className="text-right tabular">
                   {item.baseCapacity + item.extensionRounds}
@@ -189,29 +182,13 @@ export function MagazinesView({
                   </div>
                 </TD>
                 <TD className="text-right">
-                  <div className="flex justify-end gap-1">
-                    {item.ownerId === currentUserId ? (
+                  {item.ownerId === currentUserId ? (
+                    <div className="flex justify-end gap-1">
                       <ShareControl
                         parentType="magazine"
                         parentId={item.id}
                         itemName={item.brandModel}
                       />
-                    ) : null}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        setForm({
-                          open: true,
-                          initial: toFormValues(item),
-                          magpulMode:
-                            magpulMode && item.ownerId === currentUserId,
-                        })
-                      }
-                    >
-                      Edit
-                    </Button>
-                    {item.ownerId === currentUserId ? (
                       <Button
                         variant="danger"
                         size="sm"
@@ -219,8 +196,8 @@ export function MagazinesView({
                       >
                         Delete
                       </Button>
-                    ) : null}
-                  </div>
+                    </div>
+                  ) : null}
                 </TD>
               </TRow>
             ))}
