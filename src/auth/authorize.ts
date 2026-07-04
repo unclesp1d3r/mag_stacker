@@ -67,6 +67,26 @@ export async function authorizeUpdate(
 }
 
 /**
+ * Authorize an owner-only update. Used where edit-grantees must NOT modify —
+ * magazine actions are owner-only per the read-only-detail-view scope (R13).
+ * Mirrors `authorizeDelete`'s owner-only shape: a visible non-owner is
+ * forbidden, an unseen item is not-found so existence is never revealed (R70).
+ */
+export async function authorizeOwnerOnlyUpdate(
+  tx: DbOrTx,
+  actorId: string,
+  parentType: ParentType,
+  parentId: string,
+): Promise<void> {
+  const perm = await resolvePermission(tx, actorId, parentType, parentId);
+  if (perm === "owner") return;
+  if (perm === "edit" || perm === "view") {
+    throw new NotAuthorizedError("only the owner may modify this item");
+  }
+  throw new NotFoundError();
+}
+
+/**
  * Authorize a delete. Owner-only (KTD-3) — an edit grant permits modify, not
  * delete. A visible non-owner is forbidden; an unseen item is not-found (R70).
  */

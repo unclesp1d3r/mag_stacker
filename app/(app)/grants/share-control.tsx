@@ -101,6 +101,9 @@ export function ShareControl({
 
   const grants: ShareGrant[] = state?.grants ?? [];
   const candidates = state?.candidates ?? [];
+  // Magazine actions are owner-only (R13): editing is not shareable, so an
+  // `edit` grant would be inert. Offer view-only for magazines.
+  const canGrantEdit = parentType === "firearm";
 
   return (
     <>
@@ -149,25 +152,32 @@ export function ShareControl({
                   ))}
                 </Select>
               </div>
-              <div>
-                <label
-                  htmlFor={permSel}
-                  className="mb-1 block text-sm font-medium text-ink"
-                >
-                  Permission
-                </label>
-                <Select
-                  id={permSel}
-                  value={permission}
-                  onChange={(e) =>
-                    setPermission(e.target.value as "view" | "edit")
-                  }
-                >
-                  <option value="view">View — can read</option>
-                  <option value="edit">Edit — can read and modify</option>
-                </Select>
-              </div>
-              {permission === "edit" ? (
+              {canGrantEdit ? (
+                <div>
+                  <label
+                    htmlFor={permSel}
+                    className="mb-1 block text-sm font-medium text-ink"
+                  >
+                    Permission
+                  </label>
+                  <Select
+                    id={permSel}
+                    value={permission}
+                    onChange={(e) =>
+                      setPermission(e.target.value as "view" | "edit")
+                    }
+                  >
+                    <option value="view">View — can read</option>
+                    <option value="edit">Edit — can read and modify</option>
+                  </Select>
+                </div>
+              ) : (
+                <p className="text-xs text-ink-soft">
+                  Shared as <span className="font-medium text-ink">view</span> —
+                  magazine editing stays with the owner.
+                </p>
+              )}
+              {canGrantEdit && permission === "edit" ? (
                 <label className="flex items-center gap-2 text-sm text-ink">
                   <input
                     type="checkbox"

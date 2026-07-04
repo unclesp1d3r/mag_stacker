@@ -1,7 +1,7 @@
 import { asc, eq, inArray } from "drizzle-orm";
 import {
   authorizeAndDeleteParent,
-  authorizeUpdate,
+  authorizeOwnerOnlyUpdate,
   resolveCreateOwner,
 } from "@/src/auth/authorize";
 import { NotFoundError } from "@/src/auth/errors";
@@ -153,7 +153,9 @@ export async function updateMagazine(
   input: MagazineInput,
 ): Promise<MagazineWithCompatibility> {
   const row = await db.transaction(async (tx) => {
-    await authorizeUpdate(tx, actorId, "magazine", id);
+    // Owner-only: magazine editing is not granted to edit-sharees (R13). Delete
+    // and share are already owner-only via authorizeDelete / grant ownership.
+    await authorizeOwnerOnlyUpdate(tx, actorId, "magazine", id);
 
     // Lock the row for the transaction so the read of `existing.label` and the
     // later update are atomic. Without it, a concurrent edit (magazines support
