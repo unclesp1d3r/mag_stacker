@@ -3,6 +3,8 @@
 This repo runs a **trimmed ECC surface**, not the full bundle. Full map + rationale:
 `.claude/skills/skill-library/SKILL.md` (the `skill-library` router).
 
+> **This file is mirrored to Dosu** (page `6e69465b-8afd-4278-92cf-5aa2d416b6e2`, deployment "Mag Stacker MCP Server") so it's queryable via `dosu ask` / the Dosu MCP. The page is a static snapshot — after editing this file, refresh it: `dosu docs update 6e69465b-8afd-4278-92cf-5aa2d416b6e2 --body-file ./AGENTS.md`.
+
 - **Stack:** TypeScript · Next.js 16 (App Router) · React 19 · **Bun** · **Biome** (not ESLint/Prettier) · Tailwind v4 · Postgres + Drizzle (pg Pool) · Better Auth · Docker · multi-user owner-scoped inventory + grant-based sharing (all shipped). Planned: Shadcn.
 - **DAILY (load by default):** frontend/react/next patterns, `docs-lookup`, `bun-runtime`, backend/postgres/migrations, `security-review`, TDD + e2e, code-review + on-stack reviewers (react/typescript/database/security), coding-standards, git-workflow, a11y, docker-patterns.
 - **LIBRARY (search on demand, never auto-load):** all other languages (incl. **C#/.NET** — the former `.cs` snapshot is gone), other web frameworks, domain verticals, network/homelab, content/marketing, research, heavy orchestration.
