@@ -67,10 +67,29 @@ export async function authorizeUpdate(
 }
 
 /**
+ * Shared owner-only gate. Owner passes; a visible non-owner is forbidden (the
+ * message names the attempted `action`); an unseen item is not-found so
+ * existence is never revealed (R70). Backing both owner-only callers keeps the
+ * owner/edit/view/not-found precedence in one place so it can't drift.
+ */
+async function authorizeOwnerOnly(
+  tx: DbOrTx,
+  actorId: string,
+  parentType: ParentType,
+  parentId: string,
+  action: string,
+): Promise<void> {
+  const perm = await resolvePermission(tx, actorId, parentType, parentId);
+  if (perm === "owner") return;
+  if (perm === "edit" || perm === "view") {
+    throw new NotAuthorizedError(`only the owner may ${action} this item`);
+  }
+  throw new NotFoundError();
+}
+
+/**
  * Authorize an owner-only update. Used where edit-grantees must NOT modify —
  * magazine actions are owner-only per the read-only-detail-view scope (R13).
- * Mirrors `authorizeDelete`'s owner-only shape: a visible non-owner is
- * forbidden, an unseen item is not-found so existence is never revealed (R70).
  */
 export async function authorizeOwnerOnlyUpdate(
   tx: DbOrTx,
@@ -78,12 +97,7 @@ export async function authorizeOwnerOnlyUpdate(
   parentType: ParentType,
   parentId: string,
 ): Promise<void> {
-  const perm = await resolvePermission(tx, actorId, parentType, parentId);
-  if (perm === "owner") return;
-  if (perm === "edit" || perm === "view") {
-    throw new NotAuthorizedError("only the owner may modify this item");
-  }
-  throw new NotFoundError();
+  return authorizeOwnerOnly(tx, actorId, parentType, parentId, "modify");
 }
 
 /**
@@ -96,12 +110,7 @@ export async function authorizeDelete(
   parentType: ParentType,
   parentId: string,
 ): Promise<void> {
-  const perm = await resolvePermission(tx, actorId, parentType, parentId);
-  if (perm === "owner") return;
-  if (perm === "edit" || perm === "view") {
-    throw new NotAuthorizedError("only the owner may delete this item");
-  }
-  throw new NotFoundError();
+  return authorizeOwnerOnly(tx, actorId, parentType, parentId, "delete");
 }
 
 /**

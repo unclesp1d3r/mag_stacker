@@ -104,7 +104,10 @@ export function MagazineDetailView({
           </h1>
           {!isOwner ? (
             <p className="text-sm text-ink-soft">
-              <Badge tone="blaze">Shared with you · {permission}</Badge>
+              {/* Magazine actions are owner-only (R13), so a non-owner grantee is
+                  functionally view-only regardless of the raw grant — don't
+                  advertise an "edit" that can't do anything. */}
+              <Badge tone="blaze">Shared with you · view</Badge>
             </p>
           ) : null}
         </div>
