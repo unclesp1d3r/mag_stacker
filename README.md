@@ -53,6 +53,34 @@ next request.
 There's no public sign-up. Accounts are created by whoever runs the server, and
 serial numbers are treated as sensitive everywhere they show up.
 
+## Quick start
+
+Just want it running? You don't need to clone anything — grab the two files the
+stack needs and start it with the published image. On any machine with
+[Docker](https://www.docker.com/):
+
+```bash
+# 1. Grab the compose file and an env template (no checkout required)
+curl -O https://raw.githubusercontent.com/unclesp1d3r/mag_stacker/main/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/unclesp1d3r/mag_stacker/main/.env.example
+
+# 2. Fill in .env: a database password, a long random BETTER_AUTH_SECRET
+#    (try `openssl rand -base64 32`), your first admin email and password, and
+#    BETTER_AUTH_URL set to the address you'll actually open it at.
+
+# 3. Pull the published image and start the stack
+docker compose pull
+docker compose up -d          # migrates, seeds your first admin, starts the app
+```
+
+That's it — open `http://<your-server>:3000/login` and sign in as the admin you
+set in `.env`. Compose defaults to the `latest` released image; pin a specific
+version by setting `MAGSTACKER_VERSION` in `.env` (or use `edge` to track main).
+
+On anything other than localhost, run it behind a TLS-terminating reverse proxy
+and set `BETTER_AUTH_URL` to the `https://` address — see
+[`docs/deployment.md`](docs/deployment.md).
+
 ## Get it running
 
 You'll need a machine with [Docker](https://www.docker.com/): a home server, a
@@ -90,6 +118,29 @@ docker compose exec db pg_dump -U "$POSTGRES_USER" -Fc -d "$POSTGRES_DB" > magst
 ```
 
 ---
+
+## Behind a reverse proxy
+
+Sign-in rides on cookies, so on any real network you run MagStacker behind a
+reverse proxy that terminates TLS — never expose port 3000 directly. Point the
+proxy at the app's published port and set `BETTER_AUTH_URL` in `.env` to the
+public `https://` address (it **must** match the origin you actually open, or
+Better Auth rejects the request).
+
+The smallest example is [Caddy](https://caddyserver.com/), which gets you an
+automatic Let's Encrypt certificate. A whole `Caddyfile` can be two lines:
+
+```caddyfile
+magstacker.example.com {
+    reverse_proxy localhost:3000
+}
+```
+
+Then set `BETTER_AUTH_URL=https://magstacker.example.com` in `.env` and restart
+the stack. nginx and Traefik work the same way — terminate TLS, proxy to the
+app port, and forward a single trusted client-IP header (e.g. `X-Real-IP`) so
+the auth rate limiting keys on the real client. Full details, including the
+header and port notes, are in [`docs/deployment.md`](docs/deployment.md).
 
 ## For developers
 
@@ -141,3 +192,9 @@ in the test suite, including two-user tests that try to break the sharing rules.
 ## License
 
 MagStacker is licensed under the [Apache License 2.0](LICENSE).
+
+## Contributing
+
+Bug reports, feature requests, and pull requests are welcome. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the dev loop, the `just ci-check` gate,
+and PR guidelines.
