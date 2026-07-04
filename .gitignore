@@ -48,6 +48,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# generated SBOM (`just sbom`)
+/sbom.cdx.json
+
 # local env files
 **/*.local.*
 

@@ -8,6 +8,7 @@ import { ValidationError } from "@/src/domain/errors";
 import {
   createUser,
   deleteUsers,
+  linkMagazineFirearm,
   makeFirearm,
   makeMagazine,
 } from "@/src/test-support/factories";
@@ -16,6 +17,7 @@ import {
   createMagazine,
   getMagazine,
   listMagazines,
+  magazineCountForFirearm,
   updateMagazine,
 } from "../service";
 
@@ -31,6 +33,19 @@ live("magazines service (U6)", () => {
   });
   afterAll(async () => {
     await deleteUsers(userA, userB);
+  });
+
+  test("magazineCountForFirearm counts only the actor's visible compatible magazines", async () => {
+    const fa = await makeFirearm(userA);
+    const m1 = await makeMagazine(userA);
+    const m2 = await makeMagazine(userA);
+    await makeMagazine(userA); // incompatible — must not be counted
+    await linkMagazineFirearm(m1.id, fa.id);
+    await linkMagazineFirearm(m2.id, fa.id);
+
+    expect(await magazineCountForFirearm(userA, fa.id)).toBe(2);
+    // A user with no visibility into these magazines counts zero.
+    expect(await magazineCountForFirearm(userB, fa.id)).toBe(0);
   });
 
   test("invalid input throws ValidationError and writes nothing", async () => {

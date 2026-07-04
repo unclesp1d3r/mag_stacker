@@ -21,6 +21,8 @@ export const SPEC_USER_KEYS = [
   "range-sessions",
   "range-sessions-share",
   "range-sessions-viewer",
+  "detail-view-owner",
+  "detail-view-viewer",
 ] as const;
 
 export type SpecUserKey = (typeof SPEC_USER_KEYS)[number];
