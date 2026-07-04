@@ -12,7 +12,6 @@ import { Card, PageHeader } from "@/components/ui/surface";
 import { DataTable, TD, TH, THead, TRow } from "@/components/ui/table";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import { useRowFlash } from "@/hooks/use-row-flash";
-import type { Permission } from "@/src/auth/visibility";
 import {
   FIREARM_TYPES,
   firearmActionLabel,
@@ -31,8 +30,6 @@ export interface FirearmListItem extends FirearmFormValues {
   magazineCount: number;
   /** Derived lifetime rounds fired across this firearm's sessions (#11). */
   roundTotal: number;
-  /** The viewer's own permission on this firearm. */
-  permission: Permission;
 }
 
 interface FirearmsViewProps {

@@ -9,6 +9,7 @@ import {
   manufacturers,
 } from "@/src/domain/reference/reference";
 import { inventorySummary } from "@/src/domain/summary/summary";
+import { isUuid } from "@/src/lib/uuid";
 import { FirearmDetailView } from "../firearm-detail-view";
 
 interface PageProps {
@@ -19,6 +20,9 @@ export default async function FirearmDetailPage({ params }: PageProps) {
   const { id } = await params;
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  // A malformed id can match no record and would raise a uuid-cast error on the
+  // query — treat it as not-found at the boundary (R9).
+  if (!isUuid(id)) notFound();
 
   // getFirearm resolves the viewer's permission and throws NotFoundError for a
   // record that is not owned or shared — the not-found path never reveals

@@ -7,6 +7,7 @@ import { listFirearms } from "@/src/domain/firearms/service";
 import { getPrefixData } from "@/src/domain/magazines/prefixes";
 import { getMagazine } from "@/src/domain/magazines/service";
 import { calibersForInput } from "@/src/domain/reference/reference";
+import { isUuid } from "@/src/lib/uuid";
 import { MagazineDetailView } from "../magazine-detail-view";
 import type { FirearmOption } from "../magazine-form";
 
@@ -18,6 +19,9 @@ export default async function MagazineDetailPage({ params }: PageProps) {
   const { id } = await params;
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  // A malformed id can match no record and would raise a uuid-cast error on the
+  // query — treat it as not-found at the boundary (R9).
+  if (!isUuid(id)) notFound();
 
   // getMagazine throws NotFoundError for a record not owned or shared — the
   // not-found path never reveals existence (R9).

@@ -137,6 +137,11 @@ test("permission-gated read-only detail routes", async ({ page, browser }) => {
     await expect(
       page.getByRole("heading", { name: "Not found" }),
     ).toBeVisible();
+    // A malformed (non-uuid) id resolves as not-found too, never a 500.
+    await page.goto("/firearms/not-a-real-id");
+    await expect(
+      page.getByRole("heading", { name: "Not found" }),
+    ).toBeVisible();
   });
 
   await test.step("owner deletes the firearm from its detail page and lands on the list (AE3)", async () => {
