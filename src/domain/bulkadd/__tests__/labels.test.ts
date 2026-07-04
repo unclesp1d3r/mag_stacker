@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { generateLabels, nextLabelStart } from "../labels";
+import {
+  generateLabels,
+  nextLabelStart,
+  nextStartForPrefixes,
+} from "../labels";
 
 // Parity digest §12.4 — exact tables.
 describe("generateLabels (parity §10.3)", () => {
@@ -43,5 +47,20 @@ describe("nextLabelStart (parity §10.4 / §12.4)", () => {
     [["", ""], "", 1],
   ] as const)("%j prefix %s → %d", (labels, prefix, expected) => {
     expect(nextLabelStart([...labels], prefix)).toBe(expected);
+  });
+});
+
+describe("nextStartForPrefixes (#22)", () => {
+  test("maps each prefix to its next start; unmatched prefix → 1", () => {
+    // Covers R5: next start continues past the highest matching label per prefix.
+    const map = nextStartForPrefixes(
+      ["US01", "US03", "AR02"],
+      ["US", "AR", "MP"],
+    );
+    expect(map).toEqual({ US: 4, AR: 3, MP: 1 });
+  });
+
+  test("empty prefix list yields an empty map", () => {
+    expect(nextStartForPrefixes(["US01"], [])).toEqual({});
   });
 });

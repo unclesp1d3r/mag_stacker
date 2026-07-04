@@ -52,3 +52,20 @@ export function nextLabelStart(
   }
   return highest + 1;
 }
+
+/**
+ * Map each prefix to its next sequence start (#22). Pure; drives the single-add
+ * label prefill without a per-keystroke round-trip. A prefix with no matching
+ * labels maps to 1 (via `nextLabelStart`). Callers are expected to default any
+ * prefix absent from the map (e.g. a freshly typed one) to 1 themselves.
+ */
+export function nextStartForPrefixes(
+  existingLabels: string[],
+  prefixes: string[],
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const prefix of prefixes) {
+    out[prefix] = nextLabelStart(existingLabels, prefix);
+  }
+  return out;
+}

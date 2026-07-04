@@ -65,16 +65,14 @@ test("nickname-primary display, fallback, and delete label", async ({
   });
 
   await test.step("editing a firearm to add a nickname flips it to nickname-primary", async () => {
-    await page
-      .getByRole("row")
-      .filter({ hasText: "M&P Shield Plus" })
-      .getByRole("button", { name: "Edit" })
-      .click();
+    await page.getByRole("link", { name: "M&P Shield Plus" }).click();
+    await page.getByRole("button", { name: "Edit" }).click();
     const form = page.locator("form");
     await form.getByLabel("Nickname", { exact: true }).fill("Backup");
     await page.getByRole("button", { name: "Save changes" }).click();
 
     await expect(page.getByText("Changes saved").first()).toBeVisible();
+    await page.goto("/firearms");
     const row = page.getByRole("row").filter({ hasText: "Backup" });
     await expect(row).toHaveCount(1);
     await expect(row).toContainText("M&P Shield Plus");

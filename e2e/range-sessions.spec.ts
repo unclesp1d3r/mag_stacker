@@ -33,11 +33,8 @@ test("derived lifetime total tracks logged and deleted sessions", async ({
   });
 
   await test.step("logging a session sets the derived total", async () => {
-    await page
-      .getByRole("row")
-      .filter({ hasText: "Range Rifle" })
-      .getByRole("button", { name: "Sessions" })
-      .click();
+    // Sessions now live on the firearm detail page — reach it via the row link.
+    await page.getByRole("link", { name: "Range Rifle" }).click();
     await page.getByRole("button", { name: "Log session" }).click();
 
     const form = page.locator("form");
@@ -61,10 +58,12 @@ test("derived lifetime total tracks logged and deleted sessions", async ({
     await expect(
       page.getByText("225 rounds fired over 2 sessions"),
     ).toBeVisible();
-    // The firearms list row behind the panel reflects the derived total.
+    // The firearms list reflects the derived total; return to the detail page.
+    await page.goto("/firearms");
     await expect(
       page.getByRole("row").filter({ hasText: "Range Rifle" }),
     ).toContainText("225");
+    await page.getByRole("link", { name: "Range Rifle" }).click();
   });
 
   await test.step("deleting a session decreases the total", async () => {
