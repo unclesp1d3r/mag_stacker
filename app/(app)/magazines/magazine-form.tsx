@@ -72,6 +72,10 @@ interface MagazineFormProps {
   initial?: MagazineFormValues;
   firearmOptions: FirearmOption[];
   caliberSuggestions: string[];
+  /** The owner's used label prefixes, offered as a datalist for auto-numbering (#22). */
+  prefixOptions?: string[];
+  /** `prefix -> next sequence number` for single-add label prefill (#22). */
+  prefixNextStart?: Record<string, number>;
   /** When true the label field enforces PMAG dot-matrix character constraints. */
   magpulMode: boolean;
   /** `touchedId` flashes the just-created/edited row; omitted for bulk adds. */
@@ -83,6 +87,8 @@ export function MagazineForm({
   initial,
   firearmOptions,
   caliberSuggestions,
+  prefixOptions = [],
+  prefixNextStart = {},
   magpulMode,
   onDone,
   onCancel,
@@ -122,7 +128,7 @@ export function MagazineForm({
     if (labelPrefix.trim() === "")
       return "No label numbering (enter a prefix to auto-number).";
     const labels = generateLabels(
-      labelPrefix,
+      labelPrefix.trim(),
       Math.max(0, Math.min(num(count), 1000)),
       1,
     );
@@ -168,15 +174,13 @@ export function MagazineForm({
     set("label", masked);
   }
 
-  function handlePrefixChange(e: ChangeEvent<HTMLInputElement>) {
-    const raw = e.target.value;
-    if (!magpulMode) {
-      setLabelPrefix(raw);
-      return;
-    }
-    // Uppercase + filter to the allowed set. The 4-char cap spans prefix + the
-    // auto-number, so it's enforced authoritatively in the domain layer on
-    // submit (sequence width is #22's concern), not by a fixed length here.
+  // Apply the Magpul character constraint to a raw prefix (uppercase + filter to
+  // the allowed set), announcing when anything was dropped; off-mode passes
+  // through untouched. The 4-char cap spans prefix + the auto-number, so it's
+  // enforced authoritatively in the domain layer on submit, not by length here.
+  // Shared by the bulk and single-add prefix inputs.
+  function filterPrefix(raw: string): string {
+    if (!magpulMode) return raw;
     const upper = raw.toUpperCase();
     const filtered = upper.replace(MAGPUL_LABEL_DISALLOWED_CHAR_RE, "");
     if (filtered !== upper) {
@@ -184,7 +188,35 @@ export function MagazineForm({
       setLiveAnnounce(`Filtered to ${MAGPUL_LABEL_ALLOWED_DESCRIPTION}`);
       announceTimer.current = setTimeout(() => setLiveAnnounce(""), 2_000);
     }
-    setLabelPrefix(filtered);
+    return filtered;
+  }
+
+  function handlePrefixChange(e: ChangeEvent<HTMLInputElement>) {
+    setLabelPrefix(filterPrefix(e.target.value));
+  }
+
+  // Compute the auto-numbered label for a prefix (#22): `prefix + next number`,
+  // continuing past the owner's highest matching label. Empty prefix ⇒ no label.
+  // A prefix not in the server-computed map starts at 1 (a freshly typed one).
+  function prefillLabel(rawPrefix: string): string {
+    // Trim to match what the server stores and keys the next-start map by, so a
+    // pasted "US " resolves to the real next number instead of falling back to 1.
+    const prefix = rawPrefix.trim();
+    if (prefix === "") return "";
+    const start = Object.hasOwn(prefixNextStart, prefix)
+      ? prefixNextStart[prefix]
+      : 1;
+    const [label] = generateLabels(prefix, 1, start);
+    return label ?? "";
+  }
+
+  // Single-add prefix control: filter to the allowed set under Magpul mode (like
+  // the bulk prefix), then prefill the editable label. Re-prefills on every
+  // prefix change; a manual label edit persists until the prefix changes again.
+  function handleSinglePrefixChange(e: ChangeEvent<HTMLInputElement>) {
+    const prefix = filterPrefix(e.target.value);
+    setLabelPrefix(prefix);
+    set("label", prefillLabel(prefix));
   }
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -216,13 +248,16 @@ export function MagazineForm({
         result = await bulkAddMagazinesAction(
           baseInput,
           addCount,
-          labelPrefix,
+          labelPrefix.trim(),
           {
             idempotencyKey: crypto.randomUUID(),
           },
         );
       } else {
-        result = await createMagazineAction(baseInput);
+        result = await createMagazineAction(
+          baseInput,
+          labelPrefix.trim() || undefined,
+        );
       }
       if (result.ok) {
         if (isEdit) {
@@ -254,6 +289,11 @@ export function MagazineForm({
       <datalist id="magazine-calibers">
         {caliberSuggestions.map((c) => (
           <option key={c} value={c} />
+        ))}
+      </datalist>
+      <datalist id="magazine-prefixes">
+        {prefixOptions.map((p) => (
+          <option key={p} value={p} />
         ))}
       </datalist>
 
@@ -344,29 +384,46 @@ export function MagazineForm({
       </div>
 
       {mode === "single" ? (
-        <Field
-          label="Label"
-          controlId={labelId}
-          hint={
-            magpulMode
-              ? `Max ${MAX_LABEL_LENGTH} · ${MAGPUL_LABEL_ALLOWED_DESCRIPTION}`
-              : undefined
-          }
-          error={firstMessage(codes, [
-            "invalidMagpulLabel",
-            "magpulLabelTooLong",
-          ])}
-        >
-          <Input
-            id={labelId}
-            value={values.label}
-            onChange={handleLabelChange}
-            aria-invalid={
-              codes.includes("invalidMagpulLabel") ||
-              codes.includes("magpulLabelTooLong")
+        <div className="grid gap-4 sm:grid-cols-2">
+          {!isEdit ? (
+            <Field
+              label="Label prefix"
+              controlId={prefixId}
+              hint="Optional — pick or type to auto-number"
+            >
+              <Input
+                id={prefixId}
+                list="magazine-prefixes"
+                value={labelPrefix}
+                onChange={handleSinglePrefixChange}
+                placeholder="e.g. US"
+              />
+            </Field>
+          ) : null}
+          <Field
+            label="Label"
+            controlId={labelId}
+            hint={
+              magpulMode
+                ? `Max ${MAX_LABEL_LENGTH} · ${MAGPUL_LABEL_ALLOWED_DESCRIPTION}`
+                : undefined
             }
-          />
-        </Field>
+            error={firstMessage(codes, [
+              "invalidMagpulLabel",
+              "magpulLabelTooLong",
+            ])}
+          >
+            <Input
+              id={labelId}
+              value={values.label}
+              onChange={handleLabelChange}
+              aria-invalid={
+                codes.includes("invalidMagpulLabel") ||
+                codes.includes("magpulLabelTooLong")
+              }
+            />
+          </Field>
+        </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
@@ -408,12 +465,9 @@ export function MagazineForm({
           >
             <Input
               id={prefixId}
+              list="magazine-prefixes"
               value={labelPrefix}
-              onChange={
-                magpulMode
-                  ? handlePrefixChange
-                  : (e) => setLabelPrefix(e.target.value)
-              }
+              onChange={handlePrefixChange}
               aria-invalid={
                 magpulMode &&
                 (codes.includes("invalidMagpulLabel") ||

@@ -52,7 +52,6 @@ export default async function FirearmsPage() {
     notes: f.notes,
     magazineCount: counts.get(f.id) ?? 0,
     roundTotal: roundTotals.get(f.id) ?? 0,
-    permission: permissions.get(f.id) ?? "view",
   }));
   // Serial column shows only when at least one visible firearm has a serial (R71).
   const showSerial = firearms.some((f) => f.serialNumber.trim() !== "");

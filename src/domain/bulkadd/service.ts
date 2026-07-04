@@ -13,6 +13,7 @@ import {
   MAX_LABEL_LENGTH,
   normalizeMagpulLabel,
 } from "@/src/domain/magazines/constants";
+import { recordPrefix } from "@/src/domain/magazines/prefixes";
 import type { MagazineWithCompatibility } from "@/src/domain/magazines/service";
 import {
   type MagazineFields,
@@ -69,10 +70,12 @@ export async function bulkAddMagazines(
     if (!ownerRow) throw new NotFoundError();
     const ownerMagpulMode = ownerRow.magpulMode ?? false;
     // Normalize the prefix (uppercase + outer-trim) so generated labels store
-    // and sequence-continue consistently with single add; off-mode is untouched.
+    // and sequence-continue consistently with single add. Off-mode still trims:
+    // an untrimmed prefix would generate "US 01" labels but record the trimmed
+    // "US", desyncing the sequence scan (R55) from what was written.
     const effectivePrefix = ownerMagpulMode
       ? normalizeMagpulLabel(labelPrefix)
-      : labelPrefix;
+      : labelPrefix.trim();
 
     // Every template link must be visible to the acting user (R37), checked in
     // the same transaction so a concurrent revoke cannot race the create.
@@ -133,6 +136,10 @@ export async function bulkAddMagazines(
         })),
       )
       .returning();
+
+    // Remember the prefix the owner used (#22), no-op when blank. Same tx, so a
+    // rolled-back batch leaves the list unchanged.
+    await recordPrefix(tx, owner, effectivePrefix);
 
     // Each magazine gets its own (deep-copied) compatibility rows (R56).
     if (firearmIds.length > 0) {

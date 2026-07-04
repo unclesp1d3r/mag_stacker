@@ -4,6 +4,7 @@ import { createGrant } from "@/src/auth/grants";
 import { db } from "@/src/db/client";
 import { magazine, user } from "@/src/db/schema";
 import { ValidationError } from "@/src/domain/errors";
+import { listPrefixes } from "@/src/domain/magazines/prefixes";
 import {
   createUser,
   deleteUsers,
@@ -181,6 +182,22 @@ live("bulkAddMagazines — Magpul mode (owner-governed)", () => {
     const owner = await createUser("mp-off");
     const created = await bulkAddMagazines(owner, template(), 2, "ABC");
     expect(created.map((m) => m.label)).toEqual(["ABC01", "ABC02"]);
+    await deleteUsers(owner);
+  });
+});
+
+live("bulkAddMagazines — prefix recording (#22)", () => {
+  test("records the batch prefix once, even for count > 1 (R3)", async () => {
+    const owner = await createUser("bulk-rec");
+    await bulkAddMagazines(owner, template(), 3, "US");
+    expect(await listPrefixes(owner)).toEqual(["US"]);
+    await deleteUsers(owner);
+  });
+
+  test("records nothing for a blank prefix", async () => {
+    const owner = await createUser("bulk-blank");
+    await bulkAddMagazines(owner, template(), 2, "");
+    expect(await listPrefixes(owner)).toEqual([]);
     await deleteUsers(owner);
   });
 });

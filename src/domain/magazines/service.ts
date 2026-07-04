@@ -1,16 +1,21 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   authorizeAndDeleteParent,
-  authorizeUpdate,
+  authorizeOwnerOnlyUpdate,
   resolveCreateOwner,
 } from "@/src/auth/authorize";
 import { NotFoundError } from "@/src/auth/errors";
-import { getVisibleIds, resolvePermission } from "@/src/auth/visibility";
+import {
+  getVisibleIds,
+  type Permission,
+  resolvePermission,
+} from "@/src/auth/visibility";
 import { type DbOrTx, db } from "@/src/db/client";
-import { magazine, user } from "@/src/db/schema";
+import { magazine, magazineFirearm, user } from "@/src/db/schema";
 import { ValidationError } from "../errors";
 import { loadCompatibilityBatch, replaceCompatibility } from "./compatibility";
 import { normalizeMagpulLabel } from "./constants";
+import { recordPrefix } from "./prefixes";
 import { type MagazineFields, validateMagazine } from "./validate";
 
 /**
@@ -36,6 +41,12 @@ export interface MagazineInput extends MagazineFields {
 export interface MagazineCreateInput extends MagazineInput {
   /** Create-on-behalf target owner; defaults to the acting user (KTD-5). */
   ownerId?: string;
+  /**
+   * The prefix the owner selected/typed for auto-numbering (#22). Recorded in
+   * the owner's prefix list when non-empty; does not affect the stored `label`
+   * (the client already prefilled/edited it). Create-only, never on updates.
+   */
+  labelPrefix?: string;
 }
 
 /**
@@ -126,6 +137,14 @@ export async function createMagazine(
       created.id,
       input.compatibleFirearmIds ?? [],
     );
+    // Remember the prefix the owner used (#22). Store the *effective* prefix so
+    // the list matches the labels actually written (Magpul-normalized when on).
+    if (input.labelPrefix) {
+      const effectivePrefix = ownerMagpulMode
+        ? normalizeMagpulLabel(input.labelPrefix)
+        : input.labelPrefix;
+      await recordPrefix(tx, ownerId, effectivePrefix);
+    }
     return created;
   });
   const [withCompat] = await attachCompatibility(db, actorId, [row]);
@@ -138,7 +157,9 @@ export async function updateMagazine(
   input: MagazineInput,
 ): Promise<MagazineWithCompatibility> {
   const row = await db.transaction(async (tx) => {
-    await authorizeUpdate(tx, actorId, "magazine", id);
+    // Owner-only: magazine editing is not granted to edit-sharees (R13). Delete
+    // and share are already owner-only via authorizeDelete / grant ownership.
+    await authorizeOwnerOnlyUpdate(tx, actorId, "magazine", id);
 
     // Lock the row for the transaction so the read of `existing.label` and the
     // later update are atomic. Without it, a concurrent edit (magazines support
@@ -203,9 +224,9 @@ export async function deleteMagazine(
 export async function getMagazine(
   actorId: string,
   id: string,
-): Promise<MagazineWithCompatibility> {
-  const perm = await resolvePermission(db, actorId, "magazine", id);
-  if (perm === null) throw new NotFoundError();
+): Promise<{ magazine: MagazineWithCompatibility; permission: Permission }> {
+  const permission = await resolvePermission(db, actorId, "magazine", id);
+  if (permission === null) throw new NotFoundError();
   const [row] = await db
     .select()
     .from(magazine)
@@ -213,7 +234,32 @@ export async function getMagazine(
     .limit(1);
   if (!row) throw new NotFoundError();
   const [withCompat] = await attachCompatibility(db, actorId, [row]);
-  return withCompat;
+  // Return the viewer's permission alongside the record so the caller doesn't
+  // re-resolve it (one query, no read-vs-permission race between two calls).
+  return { magazine: withCompat, permission };
+}
+
+/**
+ * Count the magazines compatible with a firearm that are visible to the actor.
+ * A targeted count for the firearm detail page — avoids loading the whole
+ * inventory summary just to read one firearm's magazine count.
+ */
+export async function magazineCountForFirearm(
+  actorId: string,
+  firearmId: string,
+): Promise<number> {
+  const visible = await getVisibleIds(db, actorId, "magazine");
+  if (visible.size === 0) return 0;
+  const rows = await db
+    .select({ magazineId: magazineFirearm.magazineId })
+    .from(magazineFirearm)
+    .where(
+      and(
+        eq(magazineFirearm.firearmId, firearmId),
+        inArray(magazineFirearm.magazineId, [...visible]),
+      ),
+    );
+  return rows.length;
 }
 
 /** Owned + shared magazines ordered by brand/model ascending; always an array (R27/R68). */

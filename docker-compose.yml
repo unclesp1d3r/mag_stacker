@@ -16,6 +16,15 @@
 # via a gitignored `.env` file or the host environment — never committed here
 # or baked into the image. Copy `.env.example` to `.env` and fill it in.
 #
+# Required variables — the stack refuses to start (a `${VAR:?...}` guard aborts
+# `docker compose` before anything runs) if these are unset or empty:
+#   • POSTGRES_PASSWORD   — database password
+#   • BETTER_AUTH_SECRET  — auth signing secret (openssl rand -base64 32)
+# Optional (sensible defaults): POSTGRES_USER/POSTGRES_DB (magstacker),
+#   BETTER_AUTH_URL (http://localhost:3000 — set to your real origin behind a
+#   proxy), APP_HOST_PORT/POSTGRES_HOST_PORT, MAGSTACKER_VERSION (latest), and
+#   ADMIN_EMAIL/ADMIN_PASSWORD (unset ⇒ the first-admin seed is skipped).
+#
 # Network exposure on a home network should sit behind a TLS-terminating
 # reverse proxy so session cookies and credentials are never sent in cleartext.
 
@@ -63,7 +72,7 @@ services:
           echo "ADMIN_EMAIL/ADMIN_PASSWORD unset — skipping first-admin seed."
         fi
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-magstacker}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-magstacker}
+      DATABASE_URL: postgres://${POSTGRES_USER:-magstacker}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-magstacker}
       # seed:admin imports `@/auth`, which needs the secret at module load.
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
@@ -82,7 +91,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-magstacker}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-magstacker}
+      DATABASE_URL: postgres://${POSTGRES_USER:-magstacker}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-magstacker}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
     ports:

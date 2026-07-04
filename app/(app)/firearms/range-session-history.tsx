@@ -22,7 +22,8 @@ interface RangeSessionHistoryProps {
   firearmName: string;
   /** True when the actor owns or has edit rights on the firearm (KTD7). */
   canEdit: boolean;
-  onClose: () => void;
+  /** Optional: when omitted (e.g. embedded on the detail page) no Close button renders. */
+  onClose?: () => void;
   /** Called after a log/edit/delete so the parent can refresh the round total. */
   onChange: () => void;
 }
@@ -182,9 +183,11 @@ export function RangeSessionHistory({
             {list.length === 1 ? "" : "s"}
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          Close
-        </Button>
+        {onClose ? (
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Close
+          </Button>
+        ) : null}
       </div>
 
       {canEdit && !form.open ? (
