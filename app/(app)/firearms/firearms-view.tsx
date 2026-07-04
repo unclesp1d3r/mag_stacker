@@ -84,8 +84,9 @@ export function FirearmsView({
       ? firearms
       : firearms.filter((f) => f.type === effectiveFilter);
 
-  // Same-named firearms get a caliber suffix on the row link's accessible name
-  // so a screen-reader link list stays unambiguous (R17).
+  // Same-named firearms get a non-sensitive id-fragment suffix on the row link's
+  // accessible name so a screen-reader link list stays unambiguous (R17/R52).
+  // The fragment (not a visible column value) avoids colliding with other cells.
   const nameCounts = new Map<string, number>();
   for (const f of firearms) {
     const n = firearmDisplayName(f);
@@ -94,7 +95,7 @@ export function FirearmsView({
   function linkLabel(item: FirearmListItem): string | undefined {
     const name = firearmDisplayName(item);
     return (nameCounts.get(name) ?? 0) > 1
-      ? `${name}, ${item.caliber}`
+      ? `${name} (#${item.id.slice(0, 6)})`
       : undefined;
   }
 

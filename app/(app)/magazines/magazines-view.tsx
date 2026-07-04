@@ -67,14 +67,15 @@ export function MagazinesView({
     remove: deleteMagazineAction,
   });
 
-  // Same-named magazines get a suffix on the row link's accessible name so a
-  // screen-reader link list stays unambiguous (R17).
+  // Same-named magazines get a non-sensitive id-fragment suffix on the row link's
+  // accessible name so a screen-reader link list stays unambiguous (R17/R52).
+  // The fragment (not the visible label/caliber) avoids colliding with other cells.
   const nameCounts = new Map<string, number>();
   for (const m of magazines)
     nameCounts.set(m.brandModel, (nameCounts.get(m.brandModel) ?? 0) + 1);
   function linkLabel(item: MagazineListItem): string | undefined {
     return (nameCounts.get(item.brandModel) ?? 0) > 1
-      ? `${item.brandModel}, ${item.label || item.caliber}`
+      ? `${item.brandModel} (#${item.id.slice(0, 6)})`
       : undefined;
   }
 
