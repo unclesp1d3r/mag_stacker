@@ -22,13 +22,11 @@ import { RangeSessionHistory } from "./range-session-history";
 
 export interface FirearmDetail extends FirearmFormValues {
   id: string;
-  ownerId: string;
 }
 
 interface FirearmDetailViewProps {
   firearm: FirearmDetail;
   permission: Permission;
-  currentUserId: string;
   magazineCount: number;
   caliberSuggestions: string[];
   manufacturerSuggestions: string[];
@@ -58,7 +56,6 @@ function orDash(value: string): ReactNode {
 export function FirearmDetailView({
   firearm,
   permission,
-  currentUserId,
   magazineCount,
   caliberSuggestions,
   manufacturerSuggestions,
@@ -67,7 +64,9 @@ export function FirearmDetailView({
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const isOwner = firearm.ownerId === currentUserId;
+  // Ownership and edit rights derive from the server-resolved permission (single
+  // source of truth) — no separate ownerId/currentUserId compare to drift from it.
+  const isOwner = permission === "owner";
   const canEdit = permission === "owner" || permission === "edit";
   const del = useDeleteConfirmation<FirearmDetail>({
     entityLabel: "Firearm",

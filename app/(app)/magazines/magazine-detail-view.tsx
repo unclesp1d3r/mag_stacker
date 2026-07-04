@@ -20,7 +20,6 @@ import {
 
 export interface MagazineDetail extends MagazineFormValues {
   id: string;
-  ownerId: string;
   /** Visible compatible firearms as {id, name} pairs — only those the viewer can
    * see (names of firearms not shared with a grantee are omitted, not leaked). */
   compatibleFirearms: { id: string; name: string }[];
@@ -29,7 +28,6 @@ export interface MagazineDetail extends MagazineFormValues {
 interface MagazineDetailViewProps {
   magazine: MagazineDetail;
   permission: Permission;
-  currentUserId: string;
   firearmOptions: FirearmOption[];
   caliberSuggestions: string[];
   prefixOptions: string[];
@@ -60,7 +58,6 @@ function orDash(value: string): ReactNode {
 export function MagazineDetailView({
   magazine,
   permission,
-  currentUserId,
   firearmOptions,
   caliberSuggestions,
   prefixOptions,
@@ -71,7 +68,8 @@ export function MagazineDetailView({
   const [editing, setEditing] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   // Magazine actions are owner-only (R13) — edit-grantees get a read-only page.
-  const isOwner = magazine.ownerId === currentUserId;
+  // Ownership derives from the server-resolved permission (single source of truth).
+  const isOwner = permission === "owner";
   const del = useDeleteConfirmation<MagazineDetail>({
     entityLabel: "Magazine",
     getName: (item) => item.brandModel,

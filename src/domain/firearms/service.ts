@@ -5,7 +5,11 @@ import {
   resolveCreateOwner,
 } from "@/src/auth/authorize";
 import { NotFoundError } from "@/src/auth/errors";
-import { getVisibleIds, resolvePermission } from "@/src/auth/visibility";
+import {
+  getVisibleIds,
+  type Permission,
+  resolvePermission,
+} from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
 import { firearm } from "@/src/db/schema";
 import { ValidationError } from "../errors";
@@ -102,16 +106,18 @@ export async function deleteFirearm(
 export async function getFirearm(
   actorId: string,
   id: string,
-): Promise<Firearm> {
-  const perm = await resolvePermission(db, actorId, "firearm", id);
-  if (perm === null) throw new NotFoundError();
+): Promise<{ firearm: Firearm; permission: Permission }> {
+  const permission = await resolvePermission(db, actorId, "firearm", id);
+  if (permission === null) throw new NotFoundError();
   const [row] = await db
     .select()
     .from(firearm)
     .where(eq(firearm.id, id))
     .limit(1);
   if (!row) throw new NotFoundError();
-  return row;
+  // Return the viewer's permission alongside the row so the caller doesn't
+  // re-resolve it (one query, and no read-vs-permission race between two calls).
+  return { firearm: row, permission };
 }
 
 /**

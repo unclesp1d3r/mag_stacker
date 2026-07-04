@@ -1,13 +1,17 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   authorizeAndDeleteParent,
   authorizeOwnerOnlyUpdate,
   resolveCreateOwner,
 } from "@/src/auth/authorize";
 import { NotFoundError } from "@/src/auth/errors";
-import { getVisibleIds, resolvePermission } from "@/src/auth/visibility";
+import {
+  getVisibleIds,
+  type Permission,
+  resolvePermission,
+} from "@/src/auth/visibility";
 import { type DbOrTx, db } from "@/src/db/client";
-import { magazine, user } from "@/src/db/schema";
+import { magazine, magazineFirearm, user } from "@/src/db/schema";
 import { ValidationError } from "../errors";
 import { loadCompatibilityBatch, replaceCompatibility } from "./compatibility";
 import { normalizeMagpulLabel } from "./constants";
@@ -220,9 +224,9 @@ export async function deleteMagazine(
 export async function getMagazine(
   actorId: string,
   id: string,
-): Promise<MagazineWithCompatibility> {
-  const perm = await resolvePermission(db, actorId, "magazine", id);
-  if (perm === null) throw new NotFoundError();
+): Promise<{ magazine: MagazineWithCompatibility; permission: Permission }> {
+  const permission = await resolvePermission(db, actorId, "magazine", id);
+  if (permission === null) throw new NotFoundError();
   const [row] = await db
     .select()
     .from(magazine)
@@ -230,7 +234,32 @@ export async function getMagazine(
     .limit(1);
   if (!row) throw new NotFoundError();
   const [withCompat] = await attachCompatibility(db, actorId, [row]);
-  return withCompat;
+  // Return the viewer's permission alongside the record so the caller doesn't
+  // re-resolve it (one query, no read-vs-permission race between two calls).
+  return { magazine: withCompat, permission };
+}
+
+/**
+ * Count the magazines compatible with a firearm that are visible to the actor.
+ * A targeted count for the firearm detail page — avoids loading the whole
+ * inventory summary just to read one firearm's magazine count.
+ */
+export async function magazineCountForFirearm(
+  actorId: string,
+  firearmId: string,
+): Promise<number> {
+  const visible = await getVisibleIds(db, actorId, "magazine");
+  if (visible.size === 0) return 0;
+  const rows = await db
+    .select({ magazineId: magazineFirearm.magazineId })
+    .from(magazineFirearm)
+    .where(
+      and(
+        eq(magazineFirearm.firearmId, firearmId),
+        inArray(magazineFirearm.magazineId, [...visible]),
+      ),
+    );
+  return rows.length;
 }
 
 /** Owned + shared magazines ordered by brand/model ascending; always an array (R27/R68). */

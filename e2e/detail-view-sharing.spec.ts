@@ -31,10 +31,23 @@ test("permission-gated read-only detail routes", async ({ page, browser }) => {
     await page.getByRole("button", { name: "Add your first firearm" }).click();
     const form = page.locator("form");
     await form.getByLabel(/^Name/).fill("Detail Rifle");
+    await form.getByLabel("Manufacturer").fill("Colt");
     await form.getByLabel("Caliber").fill("5.56");
     await form.getByLabel(/^Type/).selectOption("rifle");
     await form.getByLabel("Action").selectOption("semi-auto");
+    await form.getByLabel("Subtype").fill("AR-pattern");
     await form.getByLabel("Serial number").fill("SN-DETAIL-01");
+    await form.getByLabel("Notes").fill("Range only.");
+    await page.getByRole("button", { name: "Add firearm" }).click();
+    await expect(page.getByText("Firearm logged").first()).toBeVisible();
+
+    // A second firearm shared at EDIT exercises the firearm edit-grantee tier.
+    await page.getByRole("button", { name: "Add firearm" }).click();
+    const editForm = page.locator("form");
+    await editForm.getByLabel(/^Name/).fill("Edit Rifle");
+    await editForm.getByLabel("Caliber").fill("9mm");
+    await editForm.getByLabel(/^Type/).selectOption("pistol");
+    await editForm.getByLabel("Action").selectOption("semi-auto");
     await page.getByRole("button", { name: "Add firearm" }).click();
     await expect(page.getByText("Firearm logged").first()).toBeVisible();
 
@@ -53,7 +66,11 @@ test("permission-gated read-only detail routes", async ({ page, browser }) => {
     await expect(
       page.getByRole("heading", { level: 1, name: "Detail Rifle" }),
     ).toBeVisible();
+    // R2/R5: every field renders, including ones omitted from the list.
     await expect(page.getByText("SN-DETAIL-01")).toBeVisible();
+    await expect(page.getByText("Colt")).toBeVisible();
+    await expect(page.getByText("AR-pattern")).toBeVisible();
+    await expect(page.getByText("Range only.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Delete" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Share" })).toBeVisible();
@@ -95,6 +112,22 @@ test("permission-gated read-only detail routes", async ({ page, browser }) => {
       magDialog.getByRole("listitem").filter({ hasText: viewer.email }),
     ).toBeVisible();
     await magDialog.getByRole("button", { name: "Done" }).click();
+
+    // Share the second firearm at EDIT to exercise the edit-grantee tier.
+    await page.goto("/firearms");
+    await page
+      .getByRole("row")
+      .filter({ hasText: "Edit Rifle" })
+      .getByRole("button", { name: "Share" })
+      .click();
+    const editDialog = page.getByRole("dialog");
+    await editDialog.getByLabel("User").selectOption({ label: viewer.email });
+    await editDialog.getByLabel("Permission").selectOption("edit");
+    await editDialog.getByRole("button", { name: "Share" }).click();
+    await expect(
+      editDialog.getByRole("listitem").filter({ hasText: viewer.email }),
+    ).toBeVisible();
+    await editDialog.getByRole("button", { name: "Done" }).click();
   });
 
   await test.step("view-only grantee gets read-only pages; serial visible, no controls (AE1/AE5/AE7)", async () => {
@@ -122,6 +155,13 @@ test("permission-gated read-only detail routes", async ({ page, browser }) => {
       await expect(vp.getByRole("button", { name: "Edit" })).toHaveCount(0);
       await expect(vp.getByRole("button", { name: "Delete" })).toHaveCount(0);
       await expect(vp.getByRole("button", { name: "Share" })).toHaveCount(0);
+
+      // Firearm edit-grantee tier: Edit is available, Delete/Share are not (R8).
+      await vp.goto("/firearms");
+      await vp.getByRole("link", { name: "Edit Rifle" }).click();
+      await expect(vp.getByRole("button", { name: "Edit" })).toBeVisible();
+      await expect(vp.getByRole("button", { name: "Delete" })).toHaveCount(0);
+      await expect(vp.getByRole("button", { name: "Share" })).toHaveCount(0);
     } finally {
       await viewerContext.close();
     }
@@ -147,6 +187,11 @@ test("permission-gated read-only detail routes", async ({ page, browser }) => {
   await test.step("owner deletes the firearm from its detail page and lands on the list (AE3)", async () => {
     await page.goto("/firearms");
     await page.getByRole("link", { name: "Detail Rifle" }).click();
+    // Wait for the detail page so Delete resolves to the page action, not one of
+    // the list rows' owner-only quick-Delete buttons.
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Detail Rifle" }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Delete" }).click();
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible();
@@ -161,6 +206,9 @@ test("permission-gated read-only detail routes", async ({ page, browser }) => {
   await test.step("owner deletes the magazine from its detail page and lands on the list (AE3)", async () => {
     await page.goto("/magazines");
     await page.getByRole("link", { name: "Detail Mag" }).click();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Detail Mag" }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Delete" }).click();
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible();

@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { NotFoundError } from "@/src/auth/errors";
 import { getCurrentUser } from "@/src/auth/session";
-import { resolvePermission } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
 import { listFirearms } from "@/src/domain/firearms/service";
 import { getPrefixData } from "@/src/domain/magazines/prefixes";
@@ -24,23 +23,20 @@ export default async function MagazineDetailPage({ params }: PageProps) {
   if (!isUuid(id)) notFound();
 
   // getMagazine throws NotFoundError for a record not owned or shared — the
-  // not-found path never reveals existence (R9).
-  const row = await getMagazine(user.id, id).catch((error: unknown) => {
-    if (error instanceof NotFoundError) notFound();
-    throw error;
-  });
+  // not-found path never reveals existence (R9). It returns the permission so we
+  // don't re-resolve it.
+  const { magazine: row, permission } = await getMagazine(user.id, id).catch(
+    (error: unknown) => {
+      if (error instanceof NotFoundError) notFound();
+      throw error;
+    },
+  );
 
-  const [permission, firearms, caliberSuggestions, prefixData] =
-    await Promise.all([
-      resolvePermission(db, user.id, "magazine", id),
-      listFirearms(user.id),
-      calibersForInput(db, user.id),
-      getPrefixData(user.id),
-    ]);
-
-  // getMagazine already confirmed visibility; a null here means the grant was
-  // revoked between that check and this one — resolve as not-found (R9).
-  if (permission === null) notFound();
+  const [firearms, caliberSuggestions, prefixData] = await Promise.all([
+    listFirearms(user.id),
+    calibersForInput(db, user.id),
+    getPrefixData(user.id),
+  ]);
 
   const nameById = new Map(firearms.map((f) => [f.id, f.name]));
   const nameCounts = new Map<string, number>();
@@ -65,7 +61,6 @@ export default async function MagazineDetailPage({ params }: PageProps) {
     <MagazineDetailView
       magazine={{
         id: row.id,
-        ownerId: row.ownerId,
         brandModel: row.brandModel,
         caliber: row.caliber,
         baseCapacity: String(row.baseCapacity),
@@ -77,7 +72,6 @@ export default async function MagazineDetailPage({ params }: PageProps) {
         compatibleFirearms,
       }}
       permission={permission}
-      currentUserId={user.id}
       firearmOptions={firearmOptions}
       caliberSuggestions={caliberSuggestions}
       prefixOptions={prefixData.prefixes}

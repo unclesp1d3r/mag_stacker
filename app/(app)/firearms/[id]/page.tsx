@@ -1,14 +1,13 @@
 import { notFound, redirect } from "next/navigation";
 import { NotFoundError } from "@/src/auth/errors";
 import { getCurrentUser } from "@/src/auth/session";
-import { resolvePermission } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
 import { getFirearm, listFirearms } from "@/src/domain/firearms/service";
+import { magazineCountForFirearm } from "@/src/domain/magazines/service";
 import {
   calibersForInput,
   manufacturers,
 } from "@/src/domain/reference/reference";
-import { inventorySummary } from "@/src/domain/summary/summary";
 import { isUuid } from "@/src/lib/uuid";
 import { FirearmDetailView } from "../firearm-detail-view";
 
@@ -26,28 +25,20 @@ export default async function FirearmDetailPage({ params }: PageProps) {
 
   // getFirearm resolves the viewer's permission and throws NotFoundError for a
   // record that is not owned or shared — the not-found path never reveals
-  // existence (R9). notFound() renders app/(app)/not-found.tsx.
-  const row = await getFirearm(user.id, id).catch((error: unknown) => {
-    if (error instanceof NotFoundError) notFound();
-    throw error;
-  });
-
-  const [permission, caliberSuggestions, summary, firearms] = await Promise.all(
-    [
-      resolvePermission(db, user.id, "firearm", id),
-      calibersForInput(db, user.id),
-      inventorySummary(user.id),
-      listFirearms(user.id),
-    ],
+  // existence (R9). It returns the permission so we don't re-resolve it.
+  const { firearm: row, permission } = await getFirearm(user.id, id).catch(
+    (error: unknown) => {
+      if (error instanceof NotFoundError) notFound();
+      throw error;
+    },
   );
 
-  // getFirearm already confirmed visibility; a null here means the grant was
-  // revoked between that check and this one — resolve as not-found, not a
-  // silently-downgraded "view" page (R9).
-  if (permission === null) notFound();
+  const [caliberSuggestions, magazineCount, firearms] = await Promise.all([
+    calibersForInput(db, user.id),
+    magazineCountForFirearm(user.id, id),
+    listFirearms(user.id),
+  ]);
 
-  const magazineCount =
-    summary.firearmCounts.find((f) => f.id === id)?.count ?? 0;
   const subtypeSuggestions = [
     ...new Set(firearms.map((f) => f.subtype).filter((s) => s.trim() !== "")),
   ].sort((a, b) => a.localeCompare(b));
@@ -56,7 +47,6 @@ export default async function FirearmDetailPage({ params }: PageProps) {
     <FirearmDetailView
       firearm={{
         id: row.id,
-        ownerId: row.ownerId,
         name: row.name,
         nickname: row.nickname,
         manufacturer: row.manufacturer,
@@ -68,7 +58,6 @@ export default async function FirearmDetailPage({ params }: PageProps) {
         notes: row.notes,
       }}
       permission={permission}
-      currentUserId={user.id}
       magazineCount={magazineCount}
       caliberSuggestions={caliberSuggestions}
       manufacturerSuggestions={manufacturers()}
