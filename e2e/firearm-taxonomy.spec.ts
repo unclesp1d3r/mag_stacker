@@ -74,11 +74,8 @@ test("required classification, Type column, and type filter", async ({
   });
 
   await test.step("AE1 (UI): reverting type to the placeholder blocks the save", async () => {
-    await page
-      .getByRole("row")
-      .filter({ hasText: "Glock 19" })
-      .getByRole("button", { name: "Edit" })
-      .click();
+    await page.getByRole("link", { name: "Glock 19" }).click();
+    await page.getByRole("button", { name: "Edit" }).click();
     const form = page.locator("form");
     await form.getByLabel(/^Type/).selectOption("unspecified");
     await page.getByRole("button", { name: "Save changes" }).click();

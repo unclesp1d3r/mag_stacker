@@ -38,18 +38,16 @@ test("a view-only sharee reads the total and history but sees no session control
     await page.getByRole("button", { name: "Add firearm" }).click();
     await expect(page.getByText("Firearm logged").first()).toBeVisible();
 
-    await page
-      .getByRole("row")
-      .filter({ hasText: "Shared Carbine" })
-      .getByRole("button", { name: "Sessions" })
-      .click();
+    // Sessions live on the firearm detail page now — reach it via the row link.
+    await page.getByRole("link", { name: "Shared Carbine" }).click();
     await page.getByRole("button", { name: "Log session" }).click();
     const sessionForm = page.locator("form");
     await sessionForm.getByLabel("Date").fill("2026-03-20");
     await sessionForm.getByLabel("Rounds fired").fill("42");
     await sessionForm.getByRole("button", { name: "Log session" }).click();
     await expect(page.getByText("Session logged").first()).toBeVisible();
-    await page.getByRole("button", { name: "Close" }).click();
+    // Back to the list for the (owner-only) quick Share action.
+    await page.goto("/firearms");
   });
 
   await test.step("owner shares the firearm view-only with the viewer", async () => {
@@ -83,16 +81,20 @@ test("a view-only sharee reads the total and history but sees no session control
         .getByRole("row")
         .filter({ hasText: "Shared Carbine" });
       await expect(row).toContainText("42");
-      await row.getByRole("button", { name: "Sessions" }).click();
+      // Open the read-only detail page via the row link.
+      await viewerPage.getByRole("link", { name: "Shared Carbine" }).click();
 
       // Reads the derived total and the logged session.
       await expect(
         viewerPage.getByText("42 rounds fired over 1 session"),
       ).toBeVisible();
       // No write controls: the panel's "Log session" action is gated on edit
-      // rights (KTD7), so a view-only sharee never sees it.
+      // rights (KTD7), and Edit/Delete are absent for a view-only sharee.
       await expect(
         viewerPage.getByRole("button", { name: "Log session" }),
+      ).toHaveCount(0);
+      await expect(
+        viewerPage.getByRole("button", { name: "Edit" }),
       ).toHaveCount(0);
     } finally {
       await viewerContext.close();

@@ -60,11 +60,9 @@ test("Settings toggle, grandfather behavior, and persistence", async ({
 
   await test.step("magazines label field shows the Magpul hint after mode is enabled", async () => {
     await page.goto("/magazines");
-    await page
-      .getByRole("row")
-      .filter({ hasText: MAG_BRAND })
-      .getByRole("button", { name: "Edit" })
-      .click();
+    // Editing lives on the magazine detail page now — reach it via the row link.
+    await page.getByRole("link", { name: MAG_BRAND }).click();
+    await page.getByRole("button", { name: "Edit" }).click();
     await expect(page.getByText(/Max 4/)).toBeVisible();
   });
 
