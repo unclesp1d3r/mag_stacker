@@ -49,7 +49,7 @@ repos:
             files: "\\.github/workflows/"
 
     - repo: https://github.com/biomejs/pre-commit
-      rev: v2.2.0
+      rev: v2.5.1
       hooks:
           - id: biome-check
             types_or: [ts, tsx, javascript, jsx, json]
