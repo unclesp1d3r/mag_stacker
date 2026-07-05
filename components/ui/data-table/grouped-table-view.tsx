@@ -274,12 +274,14 @@ function GroupPanel<TData>({
           </span>
         ) : null}
       </CollapsibleTrigger>
-      {/* R17: height animates via the `--radix-collapsible-content-height` var
-          Radix exposes; `tw-animate-css` (already in the design token bridge)
-          supplies the `animate-collapsible-*` keyframes and honors the global
-          `prefers-reduced-motion` media query, so no Motion/JS transition is
-          needed here. */}
-      <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+      {/* Instant reveal (no height animation). The Radix height-animation path
+          (`animate-collapsible-*` reading `--radix-collapsible-content-height`)
+          drives a ResizeObserver re-measure of the member table; combined with
+          the table's own horizontal-scroll container under software rendering
+          (headless CI has no GPU) it thrashes and blocks the main thread on
+          expand. Dropping the animation keeps the collapse (R11) robust; R17's
+          motion degrades to instant, an acceptable tradeoff for correctness. */}
+      <CollapsibleContent>
         <Table>
           <TableHeader>
             <TableRow>
