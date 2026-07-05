@@ -150,6 +150,14 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --radius: var(--radius);
+  /* shadcn radius scale, on-brand: derived from the DESIGN.md radii so
+     shadcn components' rounded-sm/md/lg/xl match the system. `lg` maps to the
+     existing frame radius (0.625rem) so it agrees with the raw
+     `rounded-[var(--radius-lg)]` usages — no value conflict. */
+  --radius-sm: calc(var(--radius) - 0.125rem);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: calc(var(--radius-lg) + 0.125rem);
 }
 
 * {

@@ -116,7 +116,7 @@ export function AdminUsers({ users }: { users: AdminUserRow[] }) {
               <Button
                 variant={user.banned ? "secondary" : "danger"}
                 size="sm"
-                disabled={pending || user.role === "admin"}
+                disabled={user.role === "admin"}
                 onClick={() => onToggleDisabled(user)}
               >
                 {user.banned ? "Enable" : "Disable"}
@@ -126,7 +126,14 @@ export function AdminUsers({ users }: { users: AdminUserRow[] }) {
         },
       },
     ],
-    [pending, onToggleDisabled],
+    // Deliberately NOT depending on `pending`: it flips on every toggle, and a
+    // fresh `columns` array rebuilds every cell's function identity, which
+    // makes flexRender remount every cell (tearing down the just-clicked
+    // button). `onToggleDisabled` is a stable useCallback. The dropped
+    // `pending` disable was only an invisible re-click guard, and a rapid
+    // double-toggle is idempotent (both compute `!user.banned` from the same
+    // row) — same stable-columns rule applied in magazines/firearms views.
+    [onToggleDisabled],
   );
 
   const { viewState, setViewState, mounted } = useTableViewState(
