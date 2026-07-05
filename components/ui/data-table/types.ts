@@ -125,6 +125,13 @@ export interface DataTableProps<TData> {
   /** Rendered in place of the table body when `data` is empty (R16). */
   emptyState?: ReactNode;
   /**
+   * `false` while a persistence hook (U2) restores saved state; the wrapper
+   * renders a neutral skeleton until `true` so restored sort/columns/page-size
+   * apply on the first real paint with no defaults-then-swap flash (R3/KTD-7).
+   * Defaults to `true` for self-managed usage with no persistence.
+   */
+  mounted?: boolean;
+  /**
    * Defaults to `true`. Grouped views (U5) pass `false` so all groups render
    * on a single page with no pagination (R14).
    */

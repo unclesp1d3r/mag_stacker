@@ -15,6 +15,14 @@ import { DataTableToolbar } from "./data-table-toolbar";
 import type { ColumnDef, DataTableProps, TableViewState } from "./types";
 import { createDefaultTableViewState, resolveColumnLabel } from "./types";
 
+/** Number of placeholder rows shown in the pre-mount skeleton (RES-1). */
+const SKELETON_ROWS = 6;
+
+/** Shared outer frame classes, reused by the table and its skeleton so the
+ * skeleton→content swap keeps the frame, toolbar, and header geometry stable. */
+const FRAME_CLASSNAME =
+  "flex flex-col overflow-hidden rounded-[var(--radius-lg)] border border-line bg-paper-raised shadow-[var(--shadow-raised)]";
+
 /** Generic shared table wrapper: sort, column show/hide, and pagination over a flat row set. */
 export function DataTable<TData>({
   columns,
@@ -25,6 +33,7 @@ export function DataTable<TData>({
   groupingSlot,
   emptyState,
   enablePagination = true,
+  mounted = true,
 }: DataTableProps<TData>) {
   const [internalViewState, setInternalViewState] = useState<TableViewState>(
     () => viewState ?? createDefaultTableViewState(columns),
@@ -81,8 +90,12 @@ export function DataTable<TData>({
 
   const isEmpty = data.length === 0;
 
+  if (!mounted) {
+    return <DataTableSkeleton />;
+  }
+
   return (
-    <div className="flex flex-col overflow-hidden rounded-[var(--radius-lg)] border border-line bg-paper-raised shadow-[var(--shadow-raised)]">
+    <div className={FRAME_CLASSNAME}>
       <DataTableToolbar
         table={table}
         filterSlot={filterSlot}
@@ -192,6 +205,40 @@ export function DataTable<TData>({
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Neutral placeholder shown while a persistence hook restores saved view state
+ * (R3/KTD-7). Reuses the real frame so the toolbar and header bands hold their
+ * geometry across the skeleton→content swap; the body height settles to the
+ * restored page size on mount (RES-1 accepted tradeoff).
+ */
+function DataTableSkeleton() {
+  return (
+    <div className={FRAME_CLASSNAME} aria-busy="true" aria-hidden="true">
+      {/* Toolbar band */}
+      <div className="flex items-center justify-between border-line border-b bg-paper-raised px-4 py-3">
+        <div className="h-8 w-40 animate-pulse rounded-[var(--radius)] bg-paper-sunken" />
+        <div className="h-8 w-32 animate-pulse rounded-[var(--radius)] bg-paper-sunken" />
+      </div>
+      {/* Header band */}
+      <div className="border-line-strong border-b-2 bg-paper-sunken px-4 py-3">
+        <div className="h-3 w-24 animate-pulse rounded bg-line" />
+      </div>
+      {/* Body rows */}
+      <div>
+        {Array.from({ length: SKELETON_ROWS }, (_, index) => (
+          <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: static placeholder rows, never reordered
+            key={index}
+            className="border-line border-b px-4 py-3 last:border-0"
+          >
+            <div className="h-3 w-full max-w-[28rem] animate-pulse rounded bg-paper-sunken" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
