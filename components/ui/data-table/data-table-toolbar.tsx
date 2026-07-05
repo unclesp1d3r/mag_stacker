@@ -14,12 +14,14 @@ export interface DataTableToolbarProps<TData> {
   /**
    * Reactive view-state slices forwarded to the memoized controls. They are
    * passed as values (not read from `table`) so the controls re-render under
-   * React Compiler, which cannot see the stable `table` object mutate.
+   * React Compiler, which cannot see the stable `table` object mutate. The
+   * pagination slices are optional — grouped views (R14) omit them with
+   * `showPagination={false}`.
    */
   columnVisibility: VisibilityState;
-  pageIndex: number;
-  pageSize: number;
-  rowCount: number;
+  pageIndex?: number;
+  pageSize?: number;
+  rowCount?: number;
 }
 
 /**
@@ -48,9 +50,9 @@ export function DataTableToolbar<TData>({
         {showPagination ? (
           <Pagination
             table={table}
-            pageIndex={pageIndex}
-            pageSize={pageSize}
-            rowCount={rowCount}
+            pageIndex={pageIndex ?? 0}
+            pageSize={pageSize ?? 0}
+            rowCount={rowCount ?? 0}
           />
         ) : null}
       </div>
