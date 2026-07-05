@@ -2,17 +2,21 @@
 
 // U5: grouped rendering for owner-scoped roll-ups (magazines/firearms). Reuses
 // the U1 wrapper's toolbar and header/cell styling but owns its own render
-// tree (collapsible group headers + a flat "Shared with you" section) rather
-// than delegating to `DataTable`, since the None-mode wrapper has no concept
-// of groups (KTD-1: grouping order/aggregation is hand-rolled, the table
-// library only supplies sort/column-visibility over each flat row set).
+// tree (expandable group-header rows inside a single table + a flat "Shared
+// with you" section) rather than delegating to `DataTable`, since the
+// None-mode wrapper has no concept of groups (KTD-1: grouping order/
+// aggregation is hand-rolled, the table library only supplies sort/
+// column-visibility over each flat row set).
 //
-// Expand/collapse is Radix `Collapsible` (via shadcn's `components/ui/collapsible`)
-// rather than hand-rolled `expandedKeys` state: Radix owns open-state, keyboard
-// interaction, focus, and `aria-expanded`/`aria-controls` (with valid
-// Radix-generated ids — the previous version built ids from raw group keys
-// containing spaces like `"PMAG 30|9mm|10|0"`, which are invalid HTML ids and
-// caused the in-browser hang this rewrite fixes).
+// Expand/collapse is a single `<table>` with group-header rows that toggle
+// plain React state (a `Set<string>` of open group keys), NOT a per-group
+// Radix `Collapsible`. Radix Collapsible measures each group's content height
+// via a ResizeObserver, and the member table's own horizontal-scroll
+// container toggling its scrollbar on expand made that observer thrash under
+// headless/software rendering (GitHub CI has no GPU), hanging the renderer
+// main thread. One `<table>`, one scroll container, and instant conditional
+// rendering of member rows avoids all of that — at the cost of the height
+// animation, an acceptable tradeoff for correctness (R17 degrades to instant).
 
 import type { Cell, Header, Row, SortingState } from "@tanstack/react-table";
 import {
@@ -23,11 +27,7 @@ import {
 } from "@tanstack/react-table";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Fragment, useCallback, useId, useMemo, useState } from "react";
 import {
   Table,
   TableBody,
@@ -68,9 +68,9 @@ export interface GroupedTableViewProps<
 
 /**
  * Renders an owner-scoped roll-up: owned rows collapsed into count-desc/
- * name-asc ordered groups (R13) with keyboard-operable, Radix-animated
- * expand/collapse (R11, R15, R17), plus a flat "Shared with you" section for
- * borrowed rows (R10). No pagination in grouped mode (R14).
+ * name-asc ordered groups (R13) with keyboard-operable expand/collapse
+ * (R11, R15), plus a flat "Shared with you" section for borrowed rows (R10).
+ * No pagination in grouped mode (R14).
  */
 export function GroupedTableView<
   TData extends { ownerId: string },
@@ -95,7 +95,19 @@ export function GroupedTableView<
     ? viewState.sorting
     : (defaultMemberSort ?? []);
 
-  const ownedData = data.filter((row) => row.ownerId === ownerId);
+  // Memoize the row sets fed to the two useReactTable instances. A fresh
+  // `filter(...)` array every render makes TanStack see "data changed" and fire
+  // its autoReset logic → schedule a state update → re-render → new array →
+  // an INFINITE render loop that pegs the main thread (it only surfaces once
+  // this component re-renders on its own state, e.g. expanding a group).
+  const ownedData = useMemo(
+    () => data.filter((row) => row.ownerId === ownerId),
+    [data, ownerId],
+  );
+  const borrowed = useMemo(
+    () => data.filter((row) => row.ownerId !== ownerId),
+    [data, ownerId],
+  );
 
   const table = useReactTable({
     data: ownedData,
@@ -124,7 +136,10 @@ export function GroupedTableView<
   // engine; member *rows* for rendering come from this table's sorted row
   // model, bucketed by the same `keyOf`, so a click-to-sort reorders members
   // within each group without touching group order (R13).
-  const { groups, borrowed } = buildGroups(data, {
+  // Only the group metadata (order, name, count, aggregate) is taken from the
+  // engine here; `borrowed` is the memoized split above (kept stable for the
+  // borrowed table's data).
+  const { groups } = buildGroups(data, {
     ownerId,
     keyOf,
     aggregateOf,
@@ -140,6 +155,7 @@ export function GroupedTableView<
     }, new Map());
 
   const groupHeaders = table.getHeaderGroups()[0]?.headers ?? [];
+  const visibleColumnCount = table.getVisibleLeafColumns().length;
 
   const borrowedTable = useReactTable({
     data: borrowed,
@@ -147,6 +163,28 @@ export function GroupedTableView<
     state: { columnVisibility: viewState.columnVisibility },
     getCoreRowModel: getCoreRowModel(),
   });
+
+  // Expansion state (R11: collapsed by default) is a plain immutable `Set`,
+  // not Radix Collapsible open-state — see the file header for why. `toggle`
+  // always returns a NEW Set rather than mutating the current one.
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const toggle = useCallback((key: string) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  // `group.key` values come from `keyOf` and may contain spaces/pipes (e.g.
+  // `"PMAG 30|9mm|10|0"`), which are invalid HTML ids. `useId` plus the
+  // group's array INDEX gives every panel a stable, valid id without
+  // depending on the raw key (R15).
+  const idPrefix = useId();
 
   const isFullyEmpty = data.length === 0;
 
@@ -166,33 +204,77 @@ export function GroupedTableView<
         <div className="p-6">{emptyFilterState}</div>
       ) : (
         <>
-          {/* Single horizontal-scroll container for wide member tables (R19).
-              Lives OUTSIDE the per-group Collapsibles, so it isn't what Radix's
-              content-height ResizeObserver measures — avoiding the scrollbar
-              thrash that a per-table `overflow-x-auto` caused on expand. */}
-          <div className="flex flex-col divide-y divide-border overflow-x-auto">
-            {groups.length === 0 ? (
-              <div className="p-6">
-                <EmptyState
-                  title="No items to group"
-                  description="Add some items or adjust your filters to see them grouped here."
-                />
-              </div>
-            ) : (
-              groups.map((group) => (
-                <GroupPanel
-                  key={group.key}
-                  name={group.name}
-                  count={group.count}
-                  aggregateLabel={
-                    renderAggregate ? renderAggregate(group.aggregate) : null
-                  }
-                  headers={groupHeaders}
-                  members={rowsByGroupKey.get(group.key) ?? []}
-                />
-              ))
-            )}
-          </div>
+          {groups.length === 0 ? (
+            <div className="p-6">
+              <EmptyState
+                title="No items to group"
+                description="Add some items or adjust your filters to see them grouped here."
+              />
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>{groupHeaders.map(renderHeaderCell)}</TableRow>
+              </TableHeader>
+              <TableBody>
+                {groups.map((group, groupIndex) => {
+                  const isOpen = expanded.has(group.key);
+                  const panelId = `${idPrefix}-group-${groupIndex}`;
+                  const members = rowsByGroupKey.get(group.key) ?? [];
+                  return (
+                    <Fragment key={group.key}>
+                      <TableRow>
+                        <TableCell
+                          colSpan={visibleColumnCount}
+                          className="bg-muted/60 p-0"
+                        >
+                          <button
+                            type="button"
+                            aria-expanded={isOpen}
+                            aria-controls={isOpen ? panelId : undefined}
+                            onClick={() => toggle(group.key)}
+                            className="flex w-full items-center gap-2 px-4 py-2 text-left hover:bg-accent/50"
+                          >
+                            <ChevronRight
+                              aria-hidden="true"
+                              className={cn(
+                                "size-4 shrink-0 text-muted-foreground transition-transform",
+                                isOpen && "rotate-90",
+                              )}
+                            />
+                            <span className="font-semibold text-foreground">
+                              {group.name}
+                            </span>
+                            <span className="font-mono text-muted-foreground text-xs tabular">
+                              {group.count}{" "}
+                              {group.count === 1 ? "item" : "items"}
+                            </span>
+                            {renderAggregate ? (
+                              <span className="font-mono text-muted-foreground text-xs tabular">
+                                {renderAggregate(group.aggregate)}
+                              </span>
+                            ) : null}
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                      {/* Member rows: plain conditional render, no Collapsible
+                          and no height animation — instant reveal is the
+                          whole point of this rewrite. */}
+                      {isOpen &&
+                        members.map((row, memberIndex) => (
+                          <TableRow
+                            key={row.id}
+                            id={memberIndex === 0 ? panelId : undefined}
+                          >
+                            {row.getVisibleCells().map(renderBodyCell)}
+                          </TableRow>
+                        ))}
+                    </Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
           <div className="border-border border-t">
             <header className="flex items-center gap-2 bg-muted px-4 py-3">
               <h3 className="font-mono font-semibold text-[0.65rem] text-muted-foreground uppercase tracking-[0.14em]">
@@ -235,79 +317,6 @@ export function GroupedTableView<
         </>
       )}
     </div>
-  );
-}
-
-interface GroupPanelProps<TData> {
-  name: string;
-  count: number;
-  aggregateLabel: ReactNode;
-  headers: Header<TData, unknown>[];
-  members: Row<TData>[];
-}
-
-/**
- * One roll-up group: a Radix `Collapsible` whose trigger is the group summary
- * row (name, count, optional aggregate) and whose content is a standalone
- * `<Table>` for that group's members. Collapsed by default (R11) — Radix owns
- * open state, keyboard activation, focus, and `aria-expanded`/`aria-controls`
- * with valid generated ids, so no manual `expandedKeys` state or focus-return
- * bookkeeping is needed here (fixes the prior in-browser hang, R15).
- */
-function GroupPanel<TData>({
-  name,
-  count,
-  aggregateLabel,
-  headers,
-  members,
-}: GroupPanelProps<TData>) {
-  return (
-    <Collapsible defaultOpen={false}>
-      <CollapsibleTrigger className="group flex w-full items-center gap-2 px-4 py-2 text-left transition-colors hover:bg-accent/60">
-        <ChevronRight
-          aria-hidden="true"
-          className="size-3 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[state=open]:rotate-90"
-        />
-        <span className="font-semibold text-foreground">{name}</span>
-        <span className="font-mono text-muted-foreground text-xs tabular">
-          {count} {count === 1 ? "item" : "items"}
-        </span>
-        {aggregateLabel ? (
-          <span className="font-mono text-muted-foreground text-xs tabular">
-            {aggregateLabel}
-          </span>
-        ) : null}
-      </CollapsibleTrigger>
-      {/* Instant reveal (no height animation). The Radix height-animation path
-          (`animate-collapsible-*` reading `--radix-collapsible-content-height`)
-          drives a ResizeObserver re-measure of the member table; combined with
-          the table's own horizontal-scroll container under software rendering
-          (headless CI has no GPU) it thrashes and blocks the main thread on
-          expand. Dropping the animation keeps the collapse (R11) robust; R17's
-          motion degrades to instant, an acceptable tradeoff for correctness. */}
-      <CollapsibleContent>
-        {/* Plain <table>, NOT shadcn's <Table>: the latter wraps in a hardcoded
-            `overflow-x-auto` div, whose horizontal scrollbar toggling makes
-            Radix Collapsible's content-height ResizeObserver thrash under
-            software rendering (headless CI), blocking the main thread on expand.
-            Horizontal overflow is handled by one container around the whole
-            groups region instead (R19). */}
-        <table className="w-full caption-bottom text-sm">
-          <TableHeader>
-            <TableRow>
-              {headers.map((header) => renderHeaderCell(header))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {members.map((row) => (
-              <TableRow key={row.id}>
-                {row.getVisibleCells().map((cell) => renderBodyCell(cell))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </table>
-      </CollapsibleContent>
-    </Collapsible>
   );
 }
 
