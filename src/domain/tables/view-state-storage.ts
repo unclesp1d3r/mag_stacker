@@ -29,9 +29,45 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * A plain object we deep-merge — NOT an array. Arrays (e.g. `sorting`, a
+ * `SortingState`) must be replaced wholesale, never spread key-by-key (which
+ * would turn `[{…}]` into `{ "0": {…} }`).
+ */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return isRecord(value) && !Array.isArray(value);
+}
+
+/**
+ * Merge stored state over defaults ONE LEVEL DEEP: a nested plain-object field
+ * (e.g. `columnVisibility`, `filters`) is spread-merged with its default rather
+ * than replaced wholesale, so keys the current defaults gained since the entry
+ * was written (a new opt-in column, a new filter field) keep their default —
+ * without a version bump. A flat spread would drop them, silently shipping a
+ * new opt-in column as visible for returning users (KTD-4 regression).
+ */
+function mergeOverDefaults<T extends object>(
+  defaults: T,
+  state: Partial<T>,
+): T {
+  const result: T = { ...defaults };
+  for (const key of Object.keys(state) as (keyof T)[]) {
+    const stored = state[key];
+    if (stored === undefined) {
+      continue;
+    }
+    const fallback = defaults[key];
+    result[key] =
+      isPlainObject(stored) && isPlainObject(fallback)
+        ? ({ ...fallback, ...stored } as T[keyof T])
+        : (stored as T[keyof T]);
+  }
+  return result;
+}
+
+/**
  * Parse a stored envelope back into a view state, falling back to `defaults`
- * for any missing field (forward-compatible) and for any malformed input.
- * Returns a new object; never mutates `defaults`.
+ * for any missing field (forward-compatible, one level deep) and for any
+ * malformed input. Returns a new object; never mutates `defaults`.
  */
 export function parseViewState<T extends object>(
   raw: string | null,
@@ -56,7 +92,7 @@ export function parseViewState<T extends object>(
     return { ...defaults };
   }
 
-  return { ...defaults, ...(envelope.state as Partial<T>) };
+  return mergeOverDefaults(defaults, envelope.state as Partial<T>);
 }
 
 /** Serialize a view state into a versioned envelope for storage (KTD-7). */

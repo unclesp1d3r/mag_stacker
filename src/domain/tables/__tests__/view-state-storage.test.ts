@@ -79,3 +79,65 @@ describe("parseViewState fail-safe (KTD-7)", () => {
     expect(DEFAULTS).toEqual({ sort: "label", pageSize: 25 });
   });
 });
+
+interface NestedState {
+  pageSize: number;
+  columnVisibility: Record<string, boolean>;
+}
+
+describe("parseViewState nested-object merge (forward-compat, KTD-4)", () => {
+  test("a nested object gains keys the current defaults have but the stored entry lacks", () => {
+    // Stored before a new opt-in column "photos" existed.
+    const raw = JSON.stringify({
+      version: 1,
+      state: { pageSize: 25, columnVisibility: { notes: false } },
+    });
+    // Current defaults added "photos" (a new opt-in column) — no version bump.
+    const defaults: NestedState = {
+      pageSize: 25,
+      columnVisibility: { notes: false, photos: false },
+    };
+
+    // photos must stay hidden (default), not silently become visible.
+    expect(parseViewState(raw, defaults)).toEqual({
+      pageSize: 25,
+      columnVisibility: { notes: false, photos: false },
+    });
+  });
+
+  test("an array field is replaced wholesale, never spread into an object", () => {
+    // Regression: a `SortingState`-style array must not be key-merged into
+    // `{ "0": … }` — it stays a real array.
+    interface WithArray {
+      sorting: Array<{ id: string; desc: boolean }>;
+      pageSize: number;
+    }
+    const raw = JSON.stringify({
+      version: 1,
+      state: { sorting: [{ id: "email", desc: true }], pageSize: 10 },
+    });
+    const defaults: WithArray = { sorting: [], pageSize: 25 };
+
+    const result = parseViewState(raw, defaults);
+    expect(Array.isArray(result.sorting)).toBe(true);
+    expect(result.sorting).toEqual([{ id: "email", desc: true }]);
+    expect(result.pageSize).toBe(10);
+  });
+
+  test("stored nested values override the matching default keys", () => {
+    const raw = JSON.stringify({
+      version: 1,
+      state: { pageSize: 25, columnVisibility: { notes: true } },
+    });
+    const defaults: NestedState = {
+      pageSize: 25,
+      columnVisibility: { notes: false, photos: false },
+    };
+
+    // The user's explicit choice (notes visible) is preserved; new key defaults.
+    expect(parseViewState(raw, defaults)).toEqual({
+      pageSize: 25,
+      columnVisibility: { notes: true, photos: false },
+    });
+  });
+});
