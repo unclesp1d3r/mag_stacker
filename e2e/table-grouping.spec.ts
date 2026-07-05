@@ -64,7 +64,12 @@ test("by-type grouping, filter-then-group, persistence, and opt-in columns", asy
     // R11: collapsed by default — member links are not rendered until expanded.
     await expect(page.getByRole("link", { name: /PMAG 30/ })).toHaveCount(0);
     await expect(pmagGroup).toHaveAttribute("aria-expanded", "false");
-    await pmagGroup.click();
+    // Activate via keyboard (R15) rather than a pointer click: the Radix trigger
+    // re-renders under React Compiler, and Playwright's pointer "stability"
+    // actionability check can stall on slower/contended CI runners. focus+Enter
+    // avoids the pointer heuristic while still exercising real keyboard operation.
+    await pmagGroup.focus();
+    await page.keyboard.press("Enter");
     await expect(pmagGroup).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByRole("link", { name: /PMAG 30/ })).toHaveCount(3);
   });
