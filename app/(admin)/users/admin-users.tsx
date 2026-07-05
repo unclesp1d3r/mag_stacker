@@ -1,12 +1,25 @@
 "use client";
 
-import { useId, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { Button } from "@/components/ui/button";
+import { DataTable } from "@/components/ui/data-table/data-table";
+import {
+  ACTIONS_COLUMN_ID,
+  type ColumnDef,
+  createDefaultTableViewState,
+} from "@/components/ui/data-table/types";
 import { Badge, Callout } from "@/components/ui/feedback";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/surface";
-import { DataTable, TD, TH, THead, TRow } from "@/components/ui/table";
+import { useTableViewState } from "@/hooks/use-table-view-state";
 import { createAccountAction, setAccountDisabledAction } from "./actions";
 
 export interface AdminUserRow {
@@ -45,13 +58,81 @@ export function AdminUsers({ users }: { users: AdminUserRow[] }) {
     });
   }
 
-  function onToggleDisabled(user: AdminUserRow) {
+  const onToggleDisabled = useCallback((user: AdminUserRow) => {
     startTransition(async () => {
       const result = await setAccountDisabledAction(user.id, !user.banned);
       if (!result.ok)
         setFeedback({ tone: "danger", text: result.error ?? "Update failed." });
     });
-  }
+  }, []);
+
+  const columns = useMemo<ColumnDef<AdminUserRow>[]>(
+    () => [
+      {
+        accessorKey: "email",
+        header: "Email",
+        meta: { label: "Email" },
+        cell: ({ getValue }) => (
+          <span className="font-mono text-xs">{getValue<string>()}</span>
+        ),
+      },
+      {
+        accessorKey: "name",
+        header: "Name",
+        meta: { label: "Name" },
+      },
+      {
+        accessorKey: "role",
+        header: "Role",
+        meta: { label: "Role" },
+        cell: ({ getValue }) => {
+          const role = getValue<string>();
+          return (
+            <Badge tone={role === "admin" ? "blaze" : "neutral"}>{role}</Badge>
+          );
+        },
+      },
+      {
+        accessorKey: "banned",
+        id: "status",
+        header: "Status",
+        meta: { label: "Status" },
+        cell: ({ getValue }) =>
+          getValue<boolean>() ? (
+            <Badge tone="danger">disabled</Badge>
+          ) : (
+            <Badge tone="ok">active</Badge>
+          ),
+      },
+      {
+        id: ACTIONS_COLUMN_ID,
+        header: () => <span className="sr-only">Actions</span>,
+        enableSorting: false,
+        enableHiding: false,
+        cell: ({ row }) => {
+          const user = row.original;
+          return (
+            <div className="flex justify-end">
+              <Button
+                variant={user.banned ? "secondary" : "danger"}
+                size="sm"
+                disabled={pending || user.role === "admin"}
+                onClick={() => onToggleDisabled(user)}
+              >
+                {user.banned ? "Enable" : "Disable"}
+              </Button>
+            </div>
+          );
+        },
+      },
+    ],
+    [pending, onToggleDisabled],
+  );
+
+  const { viewState, setViewState, mounted } = useTableViewState(
+    "users",
+    createDefaultTableViewState(columns),
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-[20rem_1fr]">
@@ -102,45 +183,13 @@ export function AdminUsers({ users }: { users: AdminUserRow[] }) {
         </form>
       </Card>
 
-      <DataTable>
-        <THead>
-          <TH>Email</TH>
-          <TH>Name</TH>
-          <TH>Role</TH>
-          <TH>Status</TH>
-          <TH className="text-right">Actions</TH>
-        </THead>
-        <tbody>
-          {users.map((user) => (
-            <TRow key={user.id}>
-              <TD className="font-mono text-xs">{user.email}</TD>
-              <TD>{user.name}</TD>
-              <TD>
-                <Badge tone={user.role === "admin" ? "blaze" : "neutral"}>
-                  {user.role}
-                </Badge>
-              </TD>
-              <TD>
-                {user.banned ? (
-                  <Badge tone="danger">disabled</Badge>
-                ) : (
-                  <Badge tone="ok">active</Badge>
-                )}
-              </TD>
-              <TD className="text-right">
-                <Button
-                  variant={user.banned ? "secondary" : "danger"}
-                  size="sm"
-                  disabled={pending || user.role === "admin"}
-                  onClick={() => onToggleDisabled(user)}
-                >
-                  {user.banned ? "Enable" : "Disable"}
-                </Button>
-              </TD>
-            </TRow>
-          ))}
-        </tbody>
-      </DataTable>
+      <DataTable
+        columns={columns}
+        data={users}
+        viewState={viewState}
+        onViewStateChange={setViewState}
+        mounted={mounted}
+      />
     </div>
   );
 }

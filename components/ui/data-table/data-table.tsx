@@ -96,11 +96,20 @@ export function DataTable<TData>({
 
   return (
     <div className={FRAME_CLASSNAME}>
+      {/* The reactive slices below are passed explicitly, not read from the
+          referentially-stable `table` object. Under React Compiler
+          (reactCompiler: true) the memoized toolbar children would otherwise
+          never re-render — `table` never changes identity even as its internal
+          state mutates — and would show stale controls. */}
       <DataTableToolbar
         table={table}
         filterSlot={filterSlot}
         groupingSlot={groupingSlot}
         showPagination={enablePagination}
+        columnVisibility={currentViewState.columnVisibility}
+        pageIndex={pageIndex}
+        pageSize={currentViewState.pageSize}
+        rowCount={table.getPrePaginationRowModel().rows.length}
       />
       {isEmpty && emptyState ? (
         <div className="p-6">{emptyState}</div>

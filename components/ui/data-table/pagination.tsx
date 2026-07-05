@@ -6,14 +6,32 @@ import { Button } from "../button";
 import { Select } from "../select";
 import { PAGE_SIZE_OPTIONS } from "./types";
 
+export interface PaginationProps<TData> {
+  table: Table<TData>;
+  /**
+   * Reactive values, passed in rather than read from `table.getState()` so this
+   * memoized control re-renders under React Compiler (the `table` reference is
+   * stable even as its internal state mutates). Actions still call `table`
+   * methods, which read fresh state at call time.
+   */
+  pageIndex: number;
+  pageSize: number;
+  rowCount: number;
+}
+
 /** Prev/next buttons plus a page-size select (R18); shows the current range and page (KTD-5). */
-export function Pagination<TData>({ table }: { table: Table<TData> }) {
+export function Pagination<TData>({
+  table,
+  pageIndex,
+  pageSize,
+  rowCount,
+}: PaginationProps<TData>) {
   const pageSizeId = useId();
-  const { pageIndex, pageSize } = table.getState().pagination;
-  const rowCount = table.getPrePaginationRowModel().rows.length;
-  const pageCount = table.getPageCount();
+  const pageCount = rowCount === 0 ? 0 : Math.ceil(rowCount / pageSize);
   const rangeStart = rowCount === 0 ? 0 : pageIndex * pageSize + 1;
   const rangeEnd = Math.min(rowCount, (pageIndex + 1) * pageSize);
+  const canPrevious = pageIndex > 0;
+  const canNext = pageIndex < pageCount - 1;
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -45,7 +63,7 @@ export function Pagination<TData>({ table }: { table: Table<TData> }) {
           variant="ghost"
           size="sm"
           aria-label="Previous page"
-          disabled={!table.getCanPreviousPage()}
+          disabled={!canPrevious}
           onClick={() => table.previousPage()}
         >
           Prev
@@ -59,7 +77,7 @@ export function Pagination<TData>({ table }: { table: Table<TData> }) {
           variant="ghost"
           size="sm"
           aria-label="Next page"
-          disabled={!table.getCanNextPage()}
+          disabled={!canNext}
           onClick={() => table.nextPage()}
         >
           Next

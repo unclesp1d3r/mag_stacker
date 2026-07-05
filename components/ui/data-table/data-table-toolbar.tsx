@@ -1,6 +1,6 @@
 "use client";
 
-import type { Table } from "@tanstack/react-table";
+import type { Table, VisibilityState } from "@tanstack/react-table";
 import type { ReactNode } from "react";
 import { ColumnMenu } from "./column-menu";
 import { Pagination } from "./pagination";
@@ -11,6 +11,15 @@ export interface DataTableToolbarProps<TData> {
   groupingSlot?: ReactNode;
   /** Pagination only renders in flat (None grouping mode) views (R14). */
   showPagination: boolean;
+  /**
+   * Reactive view-state slices forwarded to the memoized controls. They are
+   * passed as values (not read from `table`) so the controls re-render under
+   * React Compiler, which cannot see the stable `table` object mutate.
+   */
+  columnVisibility: VisibilityState;
+  pageIndex: number;
+  pageSize: number;
+  rowCount: number;
 }
 
 /**
@@ -23,6 +32,10 @@ export function DataTableToolbar<TData>({
   filterSlot,
   groupingSlot,
   showPagination,
+  columnVisibility,
+  pageIndex,
+  pageSize,
+  rowCount,
 }: DataTableToolbarProps<TData>) {
   return (
     <div className="flex flex-col gap-3 border-line border-b bg-paper-raised px-4 py-3 md:flex-row md:items-center md:justify-between">
@@ -31,8 +44,15 @@ export function DataTableToolbar<TData>({
         {groupingSlot}
       </div>
       <div className="flex flex-wrap items-center justify-end gap-3">
-        <ColumnMenu table={table} />
-        {showPagination ? <Pagination table={table} /> : null}
+        <ColumnMenu table={table} columnVisibility={columnVisibility} />
+        {showPagination ? (
+          <Pagination
+            table={table}
+            pageIndex={pageIndex}
+            pageSize={pageSize}
+            rowCount={rowCount}
+          />
+        ) : null}
       </div>
     </div>
   );
