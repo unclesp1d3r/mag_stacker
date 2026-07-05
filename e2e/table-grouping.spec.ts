@@ -17,6 +17,11 @@ test.describe.configure({ retries: 0 });
 test("by-type grouping, filter-then-group, persistence, and opt-in columns", async ({
   page,
 }) => {
+  // Heavy, stateful flow: two bulk-adds + grouping + filter + a reload + opt-in
+  // columns. It fits the 30s default locally but exceeds it on slower CI
+  // runners, so give it room (the earlier CI failures were this budget running
+  // out mid-interaction, not a hung page).
+  test.setTimeout(90_000);
   await test.step("bulk-add 3 identical PMAG 30 (9mm)", async () => {
     await page.goto("/magazines");
     // Fresh account has no firearms, so the cold-start is the firearm-first
