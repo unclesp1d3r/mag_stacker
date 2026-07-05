@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { Suspense } from "react";
 import { PageHeader } from "@/components/ui/surface";
 import { getCurrentUser } from "@/src/auth/session";
 import { db } from "@/src/db/client";
@@ -11,27 +10,16 @@ import {
   calibersForInput,
 } from "@/src/domain/reference/reference";
 import { ExportButton } from "./export-button";
-import { FilterBar } from "./filter-bar";
 import type { FirearmOption } from "./magazine-form";
 import { type MagazineListItem, MagazinesView } from "./magazines-view";
 
-interface PageProps {
-  searchParams: Promise<{ q?: string; caliber?: string; firearm?: string }>;
-}
-
-export default async function MagazinesPage({ searchParams }: PageProps) {
+export default async function MagazinesPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  const params = await searchParams;
-  const filter = {
-    brandModel: params.q,
-    caliber: params.caliber,
-    compatibleFirearmId: params.firearm,
-  };
 
   const [magazines, firearms, caliberSuggestions, filterCalibers, prefixData] =
     await Promise.all([
-      listMagazinesFiltered(user.id, filter),
+      listMagazinesFiltered(user.id, {}),
       listFirearms(user.id),
       calibersForInput(db, user.id),
       calibersForFilter(db, user.id),
@@ -65,11 +53,10 @@ export default async function MagazinesPage({ searchParams }: PageProps) {
       .filter((n): n is string => n !== undefined),
   }));
 
-  const filtered = Boolean(params.q || params.caliber || params.firearm);
-  // Filtering and export only make sense once there's inventory (or an active
-  // filter to clear). On a truly empty account, the cold-start guidance carries
-  // the screen alone — no controls competing with the one path forward.
-  const showControls = items.length > 0 || filtered;
+  // Export only makes sense once there's inventory. On a truly empty account,
+  // the cold-start guidance carries the screen alone — no controls competing
+  // with the one path forward. Filtering now lives in the view's own toolbar.
+  const showControls = items.length > 0;
 
   return (
     <div className="space-y-6">
@@ -78,14 +65,6 @@ export default async function MagazinesPage({ searchParams }: PageProps) {
         description="Search, filter, add, and export your magazines."
         actions={showControls ? <ExportButton /> : undefined}
       />
-      {showControls ? (
-        <Suspense fallback={null}>
-          <FilterBar
-            calibers={filterCalibers}
-            firearmOptions={firearmOptions}
-          />
-        </Suspense>
-      ) : null}
       <MagazinesView
         magazines={items}
         currentUserId={user.id}
@@ -94,7 +73,7 @@ export default async function MagazinesPage({ searchParams }: PageProps) {
         prefixOptions={prefixData.prefixes}
         prefixNextStart={prefixData.nextStart}
         magpulMode={user.magpulMode}
-        filtered={filtered}
+        filterCalibers={filterCalibers}
       />
     </div>
   );

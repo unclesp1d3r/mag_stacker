@@ -34,6 +34,7 @@ export function DataTable<TData>({
   emptyState,
   enablePagination = true,
   mounted = true,
+  isRowFlashed,
 }: DataTableProps<TData>) {
   const [internalViewState, setInternalViewState] = useState<TableViewState>(
     () => viewState ?? createDefaultTableViewState(columns),
@@ -186,6 +187,7 @@ export function DataTable<TData>({
               {table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
+                  data-flash={isRowFlashed?.(row.original) ? "true" : undefined}
                   className="border-line border-b transition-colors duration-150 last:border-0 hover:bg-blaze-soft/45"
                 >
                   {row.getVisibleCells().map((cell) => {
@@ -224,7 +226,7 @@ export function DataTable<TData>({
  * geometry across the skeleton→content swap; the body height settles to the
  * restored page size on mount (RES-1 accepted tradeoff).
  */
-function DataTableSkeleton() {
+export function DataTableSkeleton() {
   return (
     <div className={FRAME_CLASSNAME} aria-busy="true" aria-hidden="true">
       {/* Toolbar band */}

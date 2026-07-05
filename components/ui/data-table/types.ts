@@ -125,6 +125,11 @@ export interface DataTableProps<TData> {
   /** Rendered in place of the table body when `data` is empty (R16). */
   emptyState?: ReactNode;
   /**
+   * Marks a row as freshly-touched so it gets the `data-flash` highlight
+   * (preserves the `useRowFlash` affordance after create/edit/delete).
+   */
+  isRowFlashed?: (row: TData) => boolean;
+  /**
    * `false` while a persistence hook (U2) restores saved state; the wrapper
    * renders a neutral skeleton until `true` so restored sort/columns/page-size
    * apply on the first real paint with no defaults-then-swap flash (R3/KTD-7).
