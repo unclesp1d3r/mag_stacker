@@ -166,7 +166,11 @@ export function GroupedTableView<
         <div className="p-6">{emptyFilterState}</div>
       ) : (
         <>
-          <div className="flex flex-col divide-y divide-border">
+          {/* Single horizontal-scroll container for wide member tables (R19).
+              Lives OUTSIDE the per-group Collapsibles, so it isn't what Radix's
+              content-height ResizeObserver measures — avoiding the scrollbar
+              thrash that a per-table `overflow-x-auto` caused on expand. */}
+          <div className="flex flex-col divide-y divide-border overflow-x-auto">
             {groups.length === 0 ? (
               <div className="p-6">
                 <EmptyState
@@ -282,7 +286,13 @@ function GroupPanel<TData>({
           expand. Dropping the animation keeps the collapse (R11) robust; R17's
           motion degrades to instant, an acceptable tradeoff for correctness. */}
       <CollapsibleContent>
-        <Table>
+        {/* Plain <table>, NOT shadcn's <Table>: the latter wraps in a hardcoded
+            `overflow-x-auto` div, whose horizontal scrollbar toggling makes
+            Radix Collapsible's content-height ResizeObserver thrash under
+            software rendering (headless CI), blocking the main thread on expand.
+            Horizontal overflow is handled by one container around the whole
+            groups region instead (R19). */}
+        <table className="w-full caption-bottom text-sm">
           <TableHeader>
             <TableRow>
               {headers.map((header) => renderHeaderCell(header))}
@@ -295,7 +305,7 @@ function GroupPanel<TData>({
               </TableRow>
             ))}
           </TableBody>
-        </Table>
+        </table>
       </CollapsibleContent>
     </Collapsible>
   );
