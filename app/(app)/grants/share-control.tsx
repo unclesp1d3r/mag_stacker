@@ -185,7 +185,7 @@ export function ShareControl({
                 <label className="flex items-center gap-2 text-sm text-foreground">
                   <input
                     type="checkbox"
-                    className="size-4 accent-[var(--primary)]"
+                    className="size-4 accent-primary"
                     checked={allowCreate}
                     onChange={(e) => setAllowCreate(e.target.checked)}
                   />

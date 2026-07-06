@@ -519,7 +519,7 @@ export function MagazineForm({
               >
                 <input
                   type="checkbox"
-                  className="size-4 accent-[var(--primary)]"
+                  className="size-4 accent-primary"
                   checked={values.compatibleFirearmIds.includes(f.id)}
                   onChange={() => toggleFirearm(f.id)}
                 />

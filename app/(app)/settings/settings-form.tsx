@@ -63,7 +63,7 @@ export function SettingsForm({
           disabled={pending}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? "magpul-mode-error" : undefined}
-          className="size-4 accent-[var(--primary)]"
+          className="size-4 accent-primary"
         />
         <span className="text-sm text-foreground">
           Magpul mode — enforce PMAG dot-matrix label constraints (A–Z, 0–9,
