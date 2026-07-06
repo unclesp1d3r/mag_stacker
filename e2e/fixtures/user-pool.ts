@@ -24,6 +24,9 @@ export const SPEC_USER_KEYS = [
   "detail-view-owner",
   "detail-view-viewer",
   "table-grouping",
+  "inventory-log",
+  "inventory-log-share",
+  "inventory-log-viewer",
 ] as const;
 
 export type SpecUserKey = (typeof SPEC_USER_KEYS)[number];

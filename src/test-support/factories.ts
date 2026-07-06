@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
+import type { ParentType } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
 import {
   firearm,
+  inventoryLog,
   magazine,
   magazineFirearm,
   rangeSession,
@@ -74,6 +76,29 @@ export async function makeRangeSession(
   const [row] = await db
     .insert(rangeSession)
     .values({ firearmId, date: "2026-01-01", roundsFired: 50, ...overrides })
+    .returning();
+  return row;
+}
+
+/**
+ * Insert an inventory-log row directly (U5). `actor_id` is a real FK to `user`
+ * (`ON DELETE RESTRICT`), so callers must always supply a valid user id via
+ * `overrides.actorId` — there is no sensible default actor to fall back to.
+ */
+export async function makeLogEntry(
+  parentType: ParentType,
+  parentId: string,
+  overrides: Partial<typeof inventoryLog.$inferInsert> & { actorId: string },
+): Promise<typeof inventoryLog.$inferSelect> {
+  const [row] = await db
+    .insert(inventoryLog)
+    .values({
+      parentType,
+      parentId,
+      eventType: "inventoried",
+      occurredAt: new Date("2026-01-01T00:00:00.000Z"),
+      ...overrides,
+    })
     .returning();
   return row;
 }
