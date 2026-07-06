@@ -9,6 +9,7 @@ This repo runs a **trimmed ECC surface**, not the full bundle. Full map + ration
 - **DAILY (load by default):** frontend/react/next patterns, `docs-lookup`, `bun-runtime`, backend/postgres/migrations, `security-review`, TDD + e2e, code-review + on-stack reviewers (react/typescript/database/security), coding-standards, git-workflow, a11y, docker-patterns.
 - **LIBRARY (search on demand, never auto-load):** all other languages (incl. **C#/.NET** — the former `.cs` snapshot is gone), other web frameworks, domain verticals, network/homelab, content/marketing, research, heavy orchestration.
 - **Hooks:** never wire ESLint/Prettier/pnpm hooks here — use `bun biome check`, `bun biome format`, `bun tsc --noEmit`.
+- **Documented solutions:** `docs/solutions/` — solutions to past problems (bugs + knowledge), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`, `component`); relevant when implementing or debugging in a documented area.
 
 ## Backend, auth & testing (shipped)
 
