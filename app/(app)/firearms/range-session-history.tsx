@@ -1,12 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DataTable } from "@/components/ui/data-table/data-table";
+import {
+  ACTIONS_COLUMN_ID,
+  type ColumnDef,
+  createDefaultTableViewState,
+} from "@/components/ui/data-table/types";
 import { EmptyState, Spinner } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/surface";
-import { DataTable, TD, TH, THead, TRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
+import { useTableViewState } from "@/hooks/use-table-view-state";
 import type { RangeSession } from "@/src/domain/range-sessions/service";
 import {
   RangeSessionForm,
@@ -90,6 +102,83 @@ export function RangeSessionHistory({
   const list = sessions ?? [];
   const total = list.reduce((sum, s) => sum + s.roundsFired, 0);
 
+  const columns = useMemo<ColumnDef<RangeSession>[]>(() => {
+    const cols: ColumnDef<RangeSession>[] = [
+      {
+        accessorKey: "date",
+        id: "date",
+        header: "Date",
+        meta: { label: "Date" },
+        cell: ({ getValue }) => (
+          <span className="tabular">{getValue<string>()}</span>
+        ),
+      },
+      {
+        accessorKey: "roundsFired",
+        id: "rounds",
+        header: "Rounds",
+        meta: { numeric: true, label: "Rounds" },
+      },
+      {
+        accessorKey: "notes",
+        id: "notes",
+        header: "Notes",
+        meta: { label: "Notes" },
+        cell: ({ getValue }) => (
+          <span className="text-ink-soft">{getValue<string>()}</span>
+        ),
+      },
+    ];
+    if (canEdit) {
+      cols.push({
+        id: ACTIONS_COLUMN_ID,
+        header: () => <span className="sr-only">Actions</span>,
+        enableSorting: false,
+        enableHiding: false,
+        cell: ({ row }) => {
+          const session = row.original;
+          return (
+            <div className="flex justify-end gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setForm({
+                    open: true,
+                    initial: {
+                      id: session.id,
+                      date: session.date,
+                      roundsFired: String(session.roundsFired),
+                      notes: session.notes,
+                    },
+                  })
+                }
+              >
+                Edit
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setTarget(session)}
+              >
+                Delete
+              </Button>
+            </div>
+          );
+        },
+      });
+    }
+    return cols;
+  }, [canEdit]);
+
+  // Shared across every firearm's widget (per-widget, not per-firearm) — the
+  // caller renders one of these per firearm detail page, and view-state
+  // persistence is keyed by tableId, not firearmId.
+  const { viewState, setViewState, mounted } = useTableViewState(
+    "range-session-history",
+    createDefaultTableViewState(columns),
+  );
+
   function renderBody() {
     if (loading && sessions === null) {
       return (
@@ -121,53 +210,13 @@ export function RangeSessionHistory({
       );
     }
     return (
-      <DataTable>
-        <THead>
-          <TH>Date</TH>
-          <TH className="text-right">Rounds</TH>
-          <TH>Notes</TH>
-          {canEdit ? <TH className="text-right">Actions</TH> : null}
-        </THead>
-        <tbody>
-          {list.map((session) => (
-            <TRow key={session.id}>
-              <TD className="tabular">{session.date}</TD>
-              <TD className="text-right tabular">{session.roundsFired}</TD>
-              <TD className="text-ink-soft">{session.notes}</TD>
-              {canEdit ? (
-                <TD className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        setForm({
-                          open: true,
-                          initial: {
-                            id: session.id,
-                            date: session.date,
-                            roundsFired: String(session.roundsFired),
-                            notes: session.notes,
-                          },
-                        })
-                      }
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => setTarget(session)}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </TD>
-              ) : null}
-            </TRow>
-          ))}
-        </tbody>
-      </DataTable>
+      <DataTable
+        columns={columns}
+        data={list}
+        viewState={viewState}
+        onViewStateChange={setViewState}
+        mounted={mounted}
+      />
     );
   }
 
