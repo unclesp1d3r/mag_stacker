@@ -40,7 +40,13 @@ export function useTableViewState<T extends object>(
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const raw = window.localStorage.getItem(viewStateStorageKey(tableId));
+    let raw: string | null = null;
+    try {
+      raw = window.localStorage.getItem(viewStateStorageKey(tableId));
+    } catch {
+      // Storage unavailable (Safari private mode, blocked storage) — fall
+      // back to defaults rather than leaving `mounted` stuck false.
+    }
     setInternal(parseViewState(raw, defaultsRef.current));
     setMounted(true);
   }, [tableId]);

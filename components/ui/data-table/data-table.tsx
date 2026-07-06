@@ -9,7 +9,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "../cn";
 import { DataTableToolbar } from "./data-table-toolbar";
 import type { ColumnDef, DataTableProps, TableViewState } from "./types";
@@ -90,6 +90,20 @@ export function DataTable<TData>({
   });
 
   const isEmpty = data.length === 0;
+
+  // Reset to the first page when filtering/sorting shrinks the row count
+  // below the current page (e.g. a filter change leaves `pageIndex` pointing
+  // past the last page), which would otherwise render an empty-looking table.
+  const rowCount = table.getPrePaginationRowModel().rows.length;
+  const pageCount = Math.max(
+    1,
+    Math.ceil(rowCount / currentViewState.pageSize),
+  );
+  useEffect(() => {
+    if (pageIndex > pageCount - 1) {
+      setPageIndex(0);
+    }
+  }, [pageCount, pageIndex]);
 
   if (!mounted) {
     return <DataTableSkeleton />;

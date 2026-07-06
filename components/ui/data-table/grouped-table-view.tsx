@@ -149,8 +149,12 @@ export function GroupedTableView<
     .getRowModel()
     .rows.reduce<Map<string, Row<TData>[]>>((accumulator, row) => {
       const { key } = keyOf(row.original);
-      const existing = accumulator.get(key) ?? [];
-      accumulator.set(key, [...existing, row]);
+      let members = accumulator.get(key);
+      if (!members) {
+        members = [];
+        accumulator.set(key, members);
+      }
+      members.push(row);
       return accumulator;
     }, new Map());
 
@@ -161,6 +165,7 @@ export function GroupedTableView<
     data: borrowed,
     columns,
     state: { columnVisibility: viewState.columnVisibility },
+    enableSorting: false,
     getCoreRowModel: getCoreRowModel(),
   });
 

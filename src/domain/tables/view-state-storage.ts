@@ -16,7 +16,7 @@ export const VIEW_STATE_VERSION = 1;
 
 /** localStorage key for a table's persisted view state (KTD-7). */
 export function viewStateStorageKey(tableId: string): string {
-  return `magstacker:table:${tableId}:v1`;
+  return `magstacker:table:${tableId}:v${VIEW_STATE_VERSION}`;
 }
 
 interface ViewStateEnvelope<T> {
@@ -88,7 +88,10 @@ export function parseViewState<T extends object>(
     return { ...defaults };
   }
   const envelope = parsed as Partial<ViewStateEnvelope<unknown>>;
-  if (envelope.version !== VIEW_STATE_VERSION || !isRecord(envelope.state)) {
+  if (
+    envelope.version !== VIEW_STATE_VERSION ||
+    !isPlainObject(envelope.state)
+  ) {
     return { ...defaults };
   }
 

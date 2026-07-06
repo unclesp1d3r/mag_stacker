@@ -75,7 +75,7 @@ export function buildGroups<Row extends HasOwnerId, Aggregate = undefined>(
     const { key, name } = keyOf(row);
     const existing = groupsByKey.get(key);
     if (existing) {
-      existing.members = [...existing.members, row];
+      existing.members.push(row);
     } else {
       groupsByKey.set(key, { name, members: [row] });
       groupOrder.push(key);

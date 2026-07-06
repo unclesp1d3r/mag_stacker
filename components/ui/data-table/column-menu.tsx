@@ -72,7 +72,9 @@ export function ColumnMenu<TData>({
               // pass (standard column-visibility UX); Radix otherwise closes it
               // on each select.
               onSelect={(event) => event.preventDefault()}
-              onCheckedChange={(checked) => column.toggleVisibility(checked)}
+              onCheckedChange={(checked) =>
+                column.toggleVisibility(checked === true)
+              }
             >
               {label}
             </DropdownMenuCheckboxItem>

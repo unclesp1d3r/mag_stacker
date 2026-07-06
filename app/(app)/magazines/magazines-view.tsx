@@ -300,16 +300,43 @@ export function MagazinesView({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // A persisted `caliber`/`firearm` filter can point at an option that no
+  // longer exists in the live inventory (the caliber/firearm disappeared
+  // since the value was saved). Treat a filter value absent from the current
+  // options as inactive rather than filtering the list to zero rows with a
+  // blank-looking `<Select>` (mirrors the firearms view's stale-filter
+  // handling). Kept simple per KTD-7: only the *effective* filter ignores the
+  // stale value — the persisted state itself isn't rewritten.
+  const effectiveCaliberFilter = filterCalibers.includes(
+    viewState.filters.caliber,
+  )
+    ? viewState.filters.caliber
+    : "";
+  const effectiveFirearmFilter = firearmOptions.some(
+    (f) => f.id === viewState.filters.firearm,
+  )
+    ? viewState.filters.firearm
+    : "";
+
   const filtered = useMemo(() => {
-    const { query, caliber, firearm } = viewState.filters;
-    const q = query.trim().toLowerCase();
+    const q = viewState.filters.query.trim().toLowerCase();
     return magazines.filter((m) => {
       if (q && !m.brandModel.toLowerCase().includes(q)) return false;
-      if (caliber && m.caliber !== caliber) return false;
-      if (firearm && !m.compatibleFirearmIds.includes(firearm)) return false;
+      if (effectiveCaliberFilter && m.caliber !== effectiveCaliberFilter)
+        return false;
+      if (
+        effectiveFirearmFilter &&
+        !m.compatibleFirearmIds.includes(effectiveFirearmFilter)
+      )
+        return false;
       return true;
     });
-  }, [magazines, viewState.filters]);
+  }, [
+    magazines,
+    viewState.filters.query,
+    effectiveCaliberFilter,
+    effectiveFirearmFilter,
+  ]);
 
   function refresh(touchedId?: string) {
     setForm({ open: false });
@@ -347,7 +374,7 @@ export function MagazinesView({
         </label>
         <Select
           id={caliberId}
-          value={viewState.filters.caliber}
+          value={effectiveCaliberFilter}
           onChange={(e) =>
             setViewState({
               ...viewState,
@@ -373,7 +400,7 @@ export function MagazinesView({
         </label>
         <Select
           id={firearmId}
-          value={viewState.filters.firearm}
+          value={effectiveFirearmFilter}
           onChange={(e) =>
             setViewState({
               ...viewState,
