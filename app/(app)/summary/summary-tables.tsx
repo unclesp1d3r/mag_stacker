@@ -87,7 +87,7 @@ export function SummaryTables({
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <section aria-labelledby="by-caliber" className="space-y-3">
-        <h2 id="by-caliber" className="text-sm font-semibold text-ink">
+        <h2 id="by-caliber" className="text-sm font-semibold text-foreground">
           By caliber
         </h2>
         <DataTable
@@ -100,7 +100,7 @@ export function SummaryTables({
       </section>
 
       <section aria-labelledby="by-firearm" className="space-y-3">
-        <h2 id="by-firearm" className="text-sm font-semibold text-ink">
+        <h2 id="by-firearm" className="text-sm font-semibold text-foreground">
           By firearm
         </h2>
         <DataTable

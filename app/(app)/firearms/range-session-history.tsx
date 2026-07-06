@@ -94,7 +94,10 @@ export function RangeSessionHistory({
         load();
         onChange();
       } else {
-        toast({ message: result.error ?? "Could not delete.", tone: "danger" });
+        toast({
+          message: result.error ?? "Could not delete.",
+          tone: "destructive",
+        });
       }
     });
   }
@@ -157,7 +160,7 @@ export function RangeSessionHistory({
                 Edit
               </Button>
               <Button
-                variant="danger"
+                variant="destructive"
                 size="sm"
                 onClick={() => setTarget(session)}
               >
@@ -190,7 +193,7 @@ export function RangeSessionHistory({
     if (error) {
       return (
         <div className="flex flex-col items-start gap-2">
-          <p className="text-sm text-danger">{error}</p>
+          <p className="text-sm text-destructive">{error}</p>
           <Button variant="ghost" size="sm" onClick={load}>
             Try again
           </Button>
@@ -224,10 +227,10 @@ export function RangeSessionHistory({
     <Card>
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-ink">
+          <h2 className="text-sm font-semibold text-foreground">
             Range sessions — {firearmName}
           </h2>
-          <p className="text-xs text-ink-faint tabular">
+          <p className="text-xs text-muted-foreground tabular">
             {total} rounds fired over {list.length} session
             {list.length === 1 ? "" : "s"}
           </p>
@@ -248,8 +251,8 @@ export function RangeSessionHistory({
       ) : null}
 
       {form.open ? (
-        <div className="mb-4 rounded-[var(--radius)] border border-line-strong p-4">
-          <h3 className="mb-3 text-sm font-medium text-ink">
+        <div className="mb-4 rounded-md border border-input p-4">
+          <h3 className="mb-3 text-sm font-medium text-foreground">
             {form.initial ? "Edit session" : "New session"}
           </h3>
           <RangeSessionForm

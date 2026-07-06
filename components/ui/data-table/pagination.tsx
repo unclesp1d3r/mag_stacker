@@ -35,13 +35,13 @@ export function Pagination<TData>({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <span className="font-mono text-xs text-ink-faint tabular">
+      <span className="font-mono text-xs text-muted-foreground tabular">
         {rowCount === 0 ? "0 of 0" : `${rangeStart}–${rangeEnd} of ${rowCount}`}
       </span>
       <div className="flex items-center gap-2">
         <label
           htmlFor={pageSizeId}
-          className="font-mono text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-ink-faint"
+          className="font-mono text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
         >
           Rows
         </label>
@@ -68,7 +68,7 @@ export function Pagination<TData>({
         >
           Prev
         </Button>
-        <span className="font-mono text-xs text-ink-faint tabular">
+        <span className="font-mono text-xs text-muted-foreground tabular">
           {pageCount === 0
             ? "Page 0 of 0"
             : `Page ${pageIndex + 1} of ${pageCount}`}

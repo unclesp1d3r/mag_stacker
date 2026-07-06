@@ -56,7 +56,7 @@ export function LoginForm() {
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-      {error ? <Callout tone="danger">{error}</Callout> : null}
+      {error ? <Callout tone="destructive">{error}</Callout> : null}
       <Field label="Email" controlId={emailId} required>
         <Input
           id={emailId}

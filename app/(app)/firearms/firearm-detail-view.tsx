@@ -36,11 +36,13 @@ interface FirearmDetailViewProps {
 /** One read-only label/value row. */
 function DetailRow({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex flex-col gap-0.5 border-b border-line py-2 last:border-b-0 sm:flex-row sm:gap-4">
-      <dt className="w-40 shrink-0 text-xs font-medium uppercase tracking-wide text-ink-faint">
+    <div className="flex flex-col gap-0.5 border-b border-border py-2 last:border-b-0 sm:flex-row sm:gap-4">
+      <dt className="w-40 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </dt>
-      <dd className="text-sm text-ink">{value}</dd>
+      <dd className="min-w-0 wrap-break-word text-sm text-foreground">
+        {value}
+      </dd>
     </div>
   );
 }
@@ -49,7 +51,7 @@ function orDash(value: string): ReactNode {
   return value.trim() !== "" ? (
     value
   ) : (
-    <span className="text-ink-faint">—</span>
+    <span className="text-muted-foreground">—</span>
   );
 }
 
@@ -87,24 +89,26 @@ export function FirearmDetailView({
     <div className="space-y-6">
       <Link
         href="/firearms"
-        className="inline-block text-sm font-medium text-blaze hover:underline"
+        className="inline-block text-sm font-medium text-primary hover:underline"
       >
         ← Firearms
       </Link>
 
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-line pb-4">
-        <div className="space-y-1">
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4">
+        <div className="min-w-0 space-y-1">
           <h1
             ref={headingRef}
             tabIndex={-1}
-            className="text-pretty text-[1.75rem] font-bold leading-none tracking-[-0.02em] text-ink outline-none"
+            className="text-pretty wrap-break-word text-[1.75rem] font-bold leading-none tracking-[-0.02em] text-foreground outline-none"
           >
             {displayName}
           </h1>
           <p className="flex flex-wrap items-center gap-2 text-sm text-ink-soft">
-            {hasNickname(firearm) ? <span>{firearm.name}</span> : null}
+            {hasNickname(firearm) ? (
+              <span className="min-w-0 wrap-break-word">{firearm.name}</span>
+            ) : null}
             {!isOwner ? (
-              <Badge tone="blaze">Shared with you · {permission}</Badge>
+              <Badge tone="primary">Shared with you · {permission}</Badge>
             ) : null}
           </p>
         </div>
@@ -123,7 +127,7 @@ export function FirearmDetailView({
           ) : null}
           {isOwner ? (
             <Button
-              variant="danger"
+              variant="destructive"
               size="sm"
               onClick={() => del.request(firearm)}
             >
@@ -135,7 +139,9 @@ export function FirearmDetailView({
 
       {editing ? (
         <Card>
-          <h2 className="mb-4 text-sm font-semibold text-ink">Edit firearm</h2>
+          <h2 className="mb-4 text-sm font-semibold text-foreground">
+            Edit firearm
+          </h2>
           <FirearmForm
             initial={firearm}
             caliberSuggestions={caliberSuggestions}

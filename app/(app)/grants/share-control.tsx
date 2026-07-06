@@ -111,14 +111,17 @@ export function ShareControl({
         Share
       </Button>
       {open ? (
-        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-ink/30 p-4">
+        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-foreground/30 p-4">
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className="w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-paper-raised p-5 shadow-[var(--shadow-pop)]"
+            className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-[var(--shadow-pop)]"
           >
-            <h2 id={titleId} className="text-base font-semibold text-ink">
+            <h2
+              id={titleId}
+              className="text-base font-semibold text-foreground"
+            >
               Share “{itemName}”
             </h2>
             <p className="mt-1 mb-4 text-xs text-ink-soft">
@@ -127,7 +130,7 @@ export function ShareControl({
 
             {error ? (
               <div className="mb-3">
-                <Callout tone="danger">{error}</Callout>
+                <Callout tone="destructive">{error}</Callout>
               </div>
             ) : null}
 
@@ -135,7 +138,7 @@ export function ShareControl({
               <div>
                 <label
                   htmlFor={granteeSel}
-                  className="mb-1 block text-sm font-medium text-ink"
+                  className="mb-1 block text-sm font-medium text-foreground"
                 >
                   User
                 </label>
@@ -156,7 +159,7 @@ export function ShareControl({
                 <div>
                   <label
                     htmlFor={permSel}
-                    className="mb-1 block text-sm font-medium text-ink"
+                    className="mb-1 block text-sm font-medium text-foreground"
                   >
                     Permission
                   </label>
@@ -173,15 +176,16 @@ export function ShareControl({
                 </div>
               ) : (
                 <p className="text-xs text-ink-soft">
-                  Shared as <span className="font-medium text-ink">view</span> —
+                  Shared as{" "}
+                  <span className="font-medium text-foreground">view</span> —
                   magazine editing stays with the owner.
                 </p>
               )}
               {canGrantEdit && permission === "edit" ? (
-                <label className="flex items-center gap-2 text-sm text-ink">
+                <label className="flex items-center gap-2 text-sm text-foreground">
                   <input
                     type="checkbox"
-                    className="size-4 accent-[var(--blaze)]"
+                    className="size-4 accent-primary"
                     checked={allowCreate}
                     onChange={(e) => setAllowCreate(e.target.checked)}
                   />
@@ -193,7 +197,7 @@ export function ShareControl({
               </Button>
             </div>
 
-            <div className="mt-5 border-t border-line pt-4">
+            <div className="mt-5 border-t border-border pt-4">
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-soft">
                 Shared with
               </h3>

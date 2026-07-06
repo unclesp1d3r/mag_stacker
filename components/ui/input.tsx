@@ -2,10 +2,10 @@ import type { InputHTMLAttributes, Ref, TextareaHTMLAttributes } from "react";
 import { cn } from "./cn";
 
 const BASE =
-  "w-full rounded-[var(--radius)] border border-line-strong bg-paper-raised px-3 text-ink " +
-  "placeholder:text-ink-faint transition-colors " +
-  "hover:border-ink-faint focus:border-blaze " +
-  "aria-[invalid=true]:border-danger aria-[invalid=true]:bg-danger-soft/40";
+  "w-full rounded-md border border-input bg-card px-3 text-foreground " +
+  "placeholder:text-muted-foreground transition-colors " +
+  "hover:border-muted-foreground focus:border-primary " +
+  "aria-[invalid=true]:border-destructive aria-[invalid=true]:bg-danger-soft/40";
 
 export function Input({
   className,

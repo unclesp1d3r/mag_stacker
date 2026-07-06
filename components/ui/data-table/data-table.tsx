@@ -21,7 +21,7 @@ const SKELETON_ROWS = 6;
 /** Shared outer frame classes, reused by the table and its skeleton so the
  * skeleton→content swap keeps the frame, toolbar, and header geometry stable. */
 const FRAME_CLASSNAME =
-  "flex flex-col overflow-hidden rounded-[var(--radius-lg)] border border-line bg-paper-raised shadow-[var(--shadow-raised)]";
+  "flex flex-col overflow-hidden rounded-lg border border-border bg-card shadow-[var(--shadow-raised)]";
 
 /** Generic shared table wrapper: sort, column show/hide, and pagination over a flat row set. */
 export function DataTable<TData>({
@@ -131,7 +131,7 @@ export function DataTable<TData>({
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">
-            <thead className="border-line-strong border-b-2 bg-paper-sunken">
+            <thead className="border-input border-b-2 bg-muted">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => {
@@ -175,7 +175,7 @@ export function DataTable<TData>({
                                 : undefined
                             }
                             className={cn(
-                              "inline-flex items-center gap-1 text-inherit hover:text-ink",
+                              "inline-flex items-center gap-1 text-inherit hover:text-foreground",
                               numeric && "flex-row-reverse",
                             )}
                           >
@@ -202,7 +202,7 @@ export function DataTable<TData>({
                 <tr
                   key={row.id}
                   data-flash={isRowFlashed?.(row.original) ? "true" : undefined}
-                  className="border-line border-b transition-colors duration-150 last:border-0 hover:bg-blaze-soft/45"
+                  className="border-border border-b transition-colors duration-150 last:border-0 hover:bg-accent/45"
                 >
                   {row.getVisibleCells().map((cell) => {
                     const optIn = (cell.column.columnDef as ColumnDef<TData>)
@@ -212,7 +212,7 @@ export function DataTable<TData>({
                       <td
                         key={cell.id}
                         className={cn(
-                          "px-4 py-3 align-middle text-ink",
+                          "px-4 py-3 align-middle text-foreground",
                           numeric && "text-right font-mono tabular",
                           optIn && "hidden md:table-cell",
                         )}
@@ -244,13 +244,13 @@ export function DataTableSkeleton() {
   return (
     <div className={FRAME_CLASSNAME} aria-busy="true" aria-hidden="true">
       {/* Toolbar band */}
-      <div className="flex items-center justify-between border-line border-b bg-paper-raised px-4 py-3">
-        <div className="h-8 w-40 animate-pulse rounded-[var(--radius)] bg-paper-sunken" />
-        <div className="h-8 w-32 animate-pulse rounded-[var(--radius)] bg-paper-sunken" />
+      <div className="flex items-center justify-between border-border border-b bg-card px-4 py-3">
+        <div className="h-8 w-40 animate-pulse rounded-md bg-muted" />
+        <div className="h-8 w-32 animate-pulse rounded-md bg-muted" />
       </div>
       {/* Header band */}
-      <div className="border-line-strong border-b-2 bg-paper-sunken px-4 py-3">
-        <div className="h-3 w-24 animate-pulse rounded bg-line" />
+      <div className="border-input border-b-2 bg-muted px-4 py-3">
+        <div className="h-3 w-24 animate-pulse rounded bg-border" />
       </div>
       {/* Body rows */}
       <div>
@@ -258,9 +258,9 @@ export function DataTableSkeleton() {
           <div
             // biome-ignore lint/suspicious/noArrayIndexKey: static placeholder rows, never reordered
             key={index}
-            className="border-line border-b px-4 py-3 last:border-0"
+            className="border-border border-b px-4 py-3 last:border-0"
           >
-            <div className="h-3 w-full max-w-[28rem] animate-pulse rounded bg-paper-sunken" />
+            <div className="h-3 w-full max-w-[28rem] animate-pulse rounded bg-muted" />
           </div>
         ))}
       </div>

@@ -55,11 +55,11 @@ export function AppShell({
   return (
     <ToastProvider>
       <div className="flex min-h-screen flex-col">
-        <header className="sticky top-0 z-[var(--z-sticky)] border-b border-line bg-paper/85 backdrop-blur">
+        <header className="sticky top-0 z-[var(--z-sticky)] border-b border-border bg-background/85 backdrop-blur">
           <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-6 px-4">
             <Link
               href="/magazines"
-              className="font-mono text-sm font-bold uppercase tracking-[0.18em] text-blaze"
+              className="font-mono text-sm font-bold uppercase tracking-[0.18em] text-primary"
             >
               MagStacker
             </Link>
@@ -70,10 +70,10 @@ export function AppShell({
                   href={item.href}
                   aria-current={isActive(item.href) ? "page" : undefined}
                   className={cn(
-                    "rounded-[var(--radius)] px-3 py-1.5 text-sm font-medium transition-colors",
+                    "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                     isActive(item.href)
-                      ? "bg-blaze-soft text-blaze"
-                      : "text-ink-soft hover:bg-paper-sunken hover:text-ink",
+                      ? "bg-accent text-accent-foreground"
+                      : "text-ink-soft hover:bg-muted hover:text-foreground",
                   )}
                 >
                   {item.label}
