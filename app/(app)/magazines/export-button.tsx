@@ -42,7 +42,7 @@ export function ExportButton() {
   return (
     <div className="flex items-center gap-2">
       {error ? (
-        <span role="alert" className="text-xs font-medium text-danger">
+        <span role="alert" className="text-xs font-medium text-destructive">
           {error}
         </span>
       ) : null}

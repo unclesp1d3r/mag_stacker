@@ -133,12 +133,12 @@ export function FirearmsView({
             <Link
               href={`/firearms/${row.original.id}`}
               aria-label={linkLabel(row.original)}
-              className="font-medium text-blaze hover:underline"
+              className="font-medium text-primary hover:underline"
             >
               {firearmDisplayName(row.original)}
             </Link>
             {hasNickname(row.original) ? (
-              <span className="block text-xs font-normal text-ink-faint">
+              <span className="block text-xs font-normal text-muted-foreground">
                 {row.original.name}
               </span>
             ) : null}
@@ -415,7 +415,9 @@ export function FirearmsView({
 
       {form.open ? (
         <Card>
-          <h2 className="mb-4 text-sm font-semibold text-ink">New firearm</h2>
+          <h2 className="mb-4 text-sm font-semibold text-foreground">
+            New firearm
+          </h2>
           <FirearmForm
             caliberSuggestions={caliberSuggestions}
             manufacturerSuggestions={manufacturerSuggestions}

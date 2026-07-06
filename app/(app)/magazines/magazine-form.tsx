@@ -299,7 +299,7 @@ export function MagazineForm({
 
       {!isEdit ? (
         <div
-          className="inline-flex w-fit rounded-[var(--radius)] border border-line-strong bg-paper-sunken p-0.5"
+          className="inline-flex w-fit rounded-md border border-input bg-muted p-0.5"
           role="tablist"
           aria-label="Add mode"
         >
@@ -311,9 +311,9 @@ export function MagazineForm({
               aria-selected={mode === m}
               onClick={() => setMode(m)}
               className={cn(
-                "rounded-[calc(var(--radius)-2px)] px-3 py-1 text-sm font-medium capitalize transition-colors",
+                "rounded-sm px-3 py-1 text-sm font-medium capitalize transition-colors",
                 mode === m
-                  ? "bg-paper-raised text-ink shadow-[var(--shadow-raised)]"
+                  ? "bg-card text-foreground shadow-[var(--shadow-raised)]"
                   : "text-ink-soft",
               )}
             >
@@ -497,35 +497,37 @@ export function MagazineForm({
       </div>
 
       <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium text-ink">
+        <legend className="text-sm font-medium text-foreground">
           Compatible firearms
         </legend>
         {firearmOptions.length === 0 ? (
-          <p className="text-xs text-ink-faint">
+          <p className="text-xs text-muted-foreground">
             <Link
               href="/firearms"
-              className="font-medium text-blaze underline-offset-2 hover:underline"
+              className="font-medium text-primary underline-offset-2 hover:underline"
             >
               Add a firearm
             </Link>{" "}
             first to link compatibility.
           </p>
         ) : (
-          <div className="max-h-44 overflow-y-auto rounded-[var(--radius)] border border-line bg-paper-raised p-1">
+          <div className="max-h-44 overflow-y-auto rounded-md border border-border bg-card p-1">
             {firearmOptions.map((f) => (
               <label
                 key={f.id}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-paper-sunken"
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
               >
                 <input
                   type="checkbox"
-                  className="size-4 accent-[var(--blaze)]"
+                  className="size-4 accent-[var(--primary)]"
                   checked={values.compatibleFirearmIds.includes(f.id)}
                   onChange={() => toggleFirearm(f.id)}
                 />
                 <span>{f.name}</span>
                 {f.hint ? (
-                  <span className="text-xs text-ink-faint">({f.hint})</span>
+                  <span className="text-xs text-muted-foreground">
+                    ({f.hint})
+                  </span>
                 ) : null}
               </label>
             ))}

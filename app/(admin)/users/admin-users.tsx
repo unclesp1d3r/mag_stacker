@@ -144,7 +144,9 @@ export function AdminUsers({ users }: { users: AdminUserRow[] }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[20rem_1fr]">
       <Card className="h-fit">
-        <h2 className="text-sm font-semibold text-ink">Create account</h2>
+        <h2 className="text-sm font-semibold text-foreground">
+          Create account
+        </h2>
         <p className="mt-1 mb-4 text-xs text-ink-soft">
           New users sign in with this email and password. There is no public
           sign-up.

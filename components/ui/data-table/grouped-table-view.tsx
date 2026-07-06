@@ -46,7 +46,7 @@ import { resolveColumnLabel } from "./types";
 
 /** Matches `data-table.tsx`'s outer frame so grouped and flat tables read as one system. */
 const FRAME_CLASSNAME =
-  "flex flex-col overflow-hidden rounded-[var(--radius-lg)] border border-border bg-card shadow-[var(--shadow-raised)]";
+  "flex flex-col overflow-hidden rounded-lg border border-border bg-card shadow-[var(--shadow-raised)]";
 
 export interface GroupedTableViewProps<
   TData extends { ownerId: string },

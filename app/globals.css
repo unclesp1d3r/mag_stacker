@@ -14,27 +14,42 @@
  *
  * Theme is driven by next-themes (attribute="data-theme", default "system").
  * Shared identity across both: tabular monospace figures, hairline precision
- * borders, the anodized-orange accent, and "active = lit / marked". Token names
- * are stable so every component themes for free.
+ * borders, the anodized-orange accent, and "active = lit / marked".
+ *
+ * Tokens use shadcn's canonical semantic names (--background, --foreground,
+ * --primary, --border, --ring, …) defined directly with the Machined Console
+ * values, plus a small set of directly-defined extensions the shadcn default
+ * set has no analog for: --ink-soft (the middle of the ink ramp), --steel
+ * (info accent), --ok (success), --danger-soft (destructive tint). No alias
+ * bridge — every value is defined once per theme under its canonical name.
  */
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --paper: #15181c;
-  --paper-raised: #1a1e24;
-  --paper-sunken: #11151a;
-  --ink: #e9edf1;
-  --ink-soft: #c5ccd4;
-  --ink-faint: #8a929c;
-  --line: #2a3037;
-  --line-strong: #39414a;
+  --background: #15181c;
+  --foreground: #e9edf1;
+  --card: #1a1e24;
+  --card-foreground: #e9edf1;
+  --popover: #1a1e24;
+  --popover-foreground: #e9edf1;
+  --primary: #ffb240;
+  --primary-foreground: #1a1205;
+  --secondary: #11151a;
+  --secondary-foreground: #e9edf1;
+  --muted: #11151a;
+  --muted-foreground: #8a929c;
+  --accent: #2a2415;
+  --accent-foreground: #ffb240;
+  --destructive: #ff6b5e;
+  --destructive-foreground: #1a1205;
+  --border: #2a3037;
+  --input: #39414a;
+  --ring: #ffb240;
 
-  --blaze: #ffb240;
-  --blaze-ink: #1a1205;
-  --blaze-soft: #2a2415;
+  /* Extended tokens — no shadcn default analog. */
+  --ink-soft: #c5ccd4;
   --steel: #8fb4e8;
-  --danger: #ff6b5e;
   --danger-soft: #2c1816;
   --ok: #57d98a;
 
@@ -54,24 +69,34 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  --paper: #f3f2ee;
-  --paper-raised: #ffffff;
-  --paper-sunken: #eceae4;
-  --ink: #1e1c19;
-  --ink-soft: #6a665e;
-  /* Darkened from #918c82 (2.8:1) to clear WCAG AA 4.5:1 on paper/inputs — the
-     light "Machined Instrument" muted text. Stays lighter than --ink-soft. */
-  --ink-faint: #716d66;
-  --line: #dcdad3;
-  --line-strong: #cbc8bf;
+  --background: #f3f2ee;
+  --card: #ffffff;
+  --card-foreground: #1e1c19;
+  --popover: #ffffff;
+  --popover-foreground: #1e1c19;
+  --foreground: #1e1c19;
+  --secondary: #eceae4;
+  --secondary-foreground: #1e1c19;
+  --muted: #eceae4;
+  /* Darkened from #918c82 (2.8:1) to clear WCAG AA 4.5:1 on background/inputs —
+     the light "Machined Instrument" muted text. Stays lighter than --ink-soft. */
+  --muted-foreground: #716d66;
+  --border: #dcdad3;
+  --input: #cbc8bf;
 
-  /* Deepened a touch from #bd4620 so accent text on --blaze-soft (active nav,
+  /* Deepened a touch from #bd4620 so accent text on --accent (active nav,
      badges) clears AA 4.5:1; still the anodized burnt-orange. */
-  --blaze: #b6431f;
-  --blaze-ink: #fdf3ee;
-  --blaze-soft: #f6e7df;
+  --primary: #b6431f;
+  --primary-foreground: #fdf3ee;
+  --accent: #f6e7df;
+  --accent-foreground: #b6431f;
+  --ring: #b6431f;
+  --destructive: #b23224;
+  --destructive-foreground: #fdf3ee;
+
+  /* Extended tokens — light values. */
+  --ink-soft: #6a665e;
   --steel: #3a6ea5;
-  --danger: #b23224;
   --danger-soft: #f7e4e1;
   /* Deepened from #2f8f57 so "ok" badge text clears AA on light tints. */
   --ok: #297c4c;
@@ -80,36 +105,6 @@
     0 1px 2px rgb(40 36 30 / 0.06), 0 2px 8px rgb(40 36 30 / 0.05);
   --shadow-pop: 0 8px 30px rgb(40 36 30 / 0.16);
   --glow-blaze: 0 1px 0 #9c3a18, 0 1px 3px rgb(0 0 0 / 0.18);
-}
-
-/*
- * shadcn/ui token bridge (TEMPORARY). Maps shadcn's semantic token names onto
- * the DESIGN.md "Machined Console" tokens so shadcn-generated components render
- * on-brand without per-component restyling. These alias the themed vars above,
- * so `var(--paper)` etc. resolve per-theme (dark/light) at use time — one
- * definition covers both. TODO(remove): migrate the app to shadcn tokens
- * directly and delete this bridge — tracked in GitHub issue #47.
- */
-:root {
-  --background: var(--paper);
-  --foreground: var(--ink);
-  --card: var(--paper-raised);
-  --card-foreground: var(--ink);
-  --popover: var(--paper-raised);
-  --popover-foreground: var(--ink);
-  --primary: var(--blaze);
-  --primary-foreground: var(--blaze-ink);
-  --secondary: var(--paper-sunken);
-  --secondary-foreground: var(--ink);
-  --muted: var(--paper-sunken);
-  --muted-foreground: var(--ink-faint);
-  --accent: var(--blaze-soft);
-  --accent-foreground: var(--blaze);
-  --destructive: var(--danger);
-  --destructive-foreground: var(--blaze-ink);
-  --border: var(--line);
-  --input: var(--line-strong);
-  --ring: var(--blaze);
 }
 
 @theme inline {
@@ -132,19 +127,9 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-paper: var(--paper);
-  --color-paper-raised: var(--paper-raised);
-  --color-paper-sunken: var(--paper-sunken);
-  --color-ink: var(--ink);
+  /* Extended tokens exposed as utilities (bg-ink-soft, text-steel, …). */
   --color-ink-soft: var(--ink-soft);
-  --color-ink-faint: var(--ink-faint);
-  --color-line: var(--line);
-  --color-line-strong: var(--line-strong);
-  --color-blaze: var(--blaze);
-  --color-blaze-ink: var(--blaze-ink);
-  --color-blaze-soft: var(--blaze-soft);
   --color-steel: var(--steel);
-  --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-ok: var(--ok);
   --font-sans: var(--font-geist-sans);
@@ -152,8 +137,8 @@
   --radius: var(--radius);
   /* shadcn radius scale, on-brand: derived from the DESIGN.md radii so
      shadcn components' rounded-sm/md/lg/xl match the system. `lg` maps to the
-     existing frame radius (0.625rem) so it agrees with the raw
-     `rounded-[var(--radius-lg)]` usages — no value conflict. */
+     existing frame radius (0.625rem) so it agrees with the `rounded-lg`
+     usages — no value conflict. */
   --radius-sm: calc(var(--radius) - 0.125rem);
   --radius-md: var(--radius);
   --radius-lg: var(--radius-lg);
@@ -161,19 +146,19 @@
 }
 
 * {
-  border-color: var(--line);
+  border-color: var(--border);
 }
 
 body {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--background);
+  color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
 /* Focus ring — designed, consistent, visible (a11y). */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid var(--blaze);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-radius: var(--radius);
 }
@@ -198,8 +183,8 @@ body {
 @keyframes arm-row {
   0%,
   12% {
-    background-color: var(--blaze-soft);
-    box-shadow: inset 0 1px 0 var(--blaze);
+    background-color: var(--accent);
+    box-shadow: inset 0 1px 0 var(--primary);
   }
   100% {
     background-color: transparent;

@@ -85,7 +85,7 @@ export function ConfirmDialog({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismissal is a convenience; Escape and Cancel are the primary paths.
     <div
-      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-ink/30 p-4"
+      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-foreground/30 p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}
@@ -96,11 +96,11 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
-        className="w-full max-w-sm rounded-[var(--radius-lg)] border border-line bg-paper-raised p-5 shadow-[var(--shadow-pop)]"
+        className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-[var(--shadow-pop)]"
       >
         <h2
           id={titleId}
-          className="text-pretty text-base font-semibold text-ink"
+          className="text-pretty text-base font-semibold text-foreground"
         >
           {title}
         </h2>

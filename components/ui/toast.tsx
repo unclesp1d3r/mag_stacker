@@ -55,9 +55,9 @@ const DISMISS_MS: Record<ToastTone, number> = {
 // Lit status pip — the gauge tells you which kind of event landed.
 const PIP: Record<ToastTone, string> = {
   ok: "bg-[var(--ok)] shadow-[0_0_8px_var(--ok)]",
-  blaze: "bg-blaze shadow-[var(--glow-blaze)]",
-  danger: "bg-danger shadow-[0_0_8px_var(--danger)]",
-  neutral: "bg-ink-faint",
+  blaze: "bg-primary shadow-[var(--glow-blaze)]",
+  danger: "bg-destructive shadow-[0_0_8px_var(--destructive)]",
+  neutral: "bg-muted-foreground",
 };
 
 export function useToast(): ToastApi {
@@ -119,7 +119,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.98 }}
               transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-              className="pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-[var(--radius)] border border-line-strong bg-paper-raised px-3.5 py-3 shadow-[var(--shadow-pop)]"
+              className="pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-md border border-input bg-card px-3.5 py-3 shadow-[var(--shadow-pop)]"
             >
               <span
                 aria-hidden="true"
@@ -129,11 +129,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 )}
               />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium leading-snug text-ink">
+                <p className="text-sm font-medium leading-snug text-foreground">
                   {item.message}
                 </p>
                 {item.detail ? (
-                  <p className="mt-0.5 truncate font-mono text-[0.65rem] uppercase tracking-[0.12em] text-ink-faint">
+                  <p className="mt-0.5 truncate font-mono text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground">
                     {item.detail}
                   </p>
                 ) : null}
@@ -142,7 +142,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 type="button"
                 onClick={() => dismiss(item.id)}
                 aria-label="Dismiss notification"
-                className="-mr-1.5 -mt-1 inline-flex size-6 shrink-0 items-center justify-center rounded-[calc(var(--radius)-2px)] text-ink-faint transition-colors hover:text-ink"
+                className="-mr-1.5 -mt-1 inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:text-foreground"
               >
                 <svg
                   width="14"
