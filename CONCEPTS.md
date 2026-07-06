@@ -20,8 +20,14 @@ An owned magazine in a user's inventory. The other owned parent. Carries brand/m
 ### Range Session
 A single logged range trip for one Firearm — the date and the rounds fired that day. The first **child record** family. A Firearm's **Lifetime Total** is derived by summing its Range Sessions; there is no stored counter. A Range Session inherits its owner and grants from its parent Firearm and cannot be shared or owned on its own.
 
+### Inventory Log
+An append-only history of physical-handling events on a single Firearm or Magazine — each **Log Entry** records an **Event Type**, the acting user, when it happened, and optional notes. A **child record** family: entries inherit their parent's owner and grants, cannot be shared on their own, and are removed with the parent. Entries are created and listed but not edited or deleted.
+
+### Event Type
+The controlled kind of a **Log Entry** (*inventoried* for any item; *cleaned*, *lubed* for Firearms), drawn from a fixed value set whose valid members depend on the parent family. Deliberately not called an "action" — that name already means a Firearm's operating mechanism (see **Firearm Action**).
+
 ### Child record
-A record that hangs off an owned parent (a Firearm or Magazine) and inherits that parent's owner and grants rather than carrying its own. Child records are never shared independently and are removed with their parent. **Range Session** is the first child family; the pattern is the seam future child families follow.
+A record that hangs off an owned parent (a Firearm or Magazine) and inherits that parent's owner and grants rather than carrying its own. Child records are never shared independently and are removed with their parent. **Range Session** and **Inventory Log** are the first child families; the pattern is the seam future child families follow.
 
 ### Compatibility
 The many-to-many relationship recording which Firearms a given Magazine fits. Removing either side removes the pairing.
