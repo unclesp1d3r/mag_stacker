@@ -16,6 +16,7 @@ import {
   firearmTypeLabel,
 } from "@/src/domain/firearms/constants";
 import { firearmDisplayName, hasNickname } from "@/src/domain/firearms/display";
+import { InventoryLogHistory } from "../inventory-log/inventory-log-history";
 import { deleteFirearmAction } from "./actions";
 import { FirearmForm, type FirearmFormValues } from "./firearm-form";
 import { RangeSessionHistory } from "./range-session-history";
@@ -198,6 +199,13 @@ export function FirearmDetailView({
       <RangeSessionHistory
         firearmId={firearm.id}
         firearmName={displayName}
+        canEdit={canEdit}
+        onChange={() => router.refresh()}
+      />
+
+      <InventoryLogHistory
+        parentType="firearm"
+        parentId={firearm.id}
         canEdit={canEdit}
         onChange={() => router.refresh()}
       />

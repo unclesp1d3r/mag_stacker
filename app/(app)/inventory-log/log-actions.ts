@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/src/auth/session";
+import { namesByIds } from "@/src/auth/users";
 import type { ParentType } from "@/src/auth/visibility";
 import { type ActionResult, toActionError } from "@/src/domain/action-result";
 import {
@@ -11,6 +12,11 @@ import {
   listLogForParent,
   markInventoried,
 } from "@/src/domain/inventory-log/service";
+
+/** A log entry with its actor's display name attached for the UI (R9). */
+export interface LogEntryWithActor extends LogEntry {
+  actorName: string;
+}
 
 /** Mutations resolve the session themselves (R66) before touching the domain. */
 async function requireUserId(): Promise<string> {
@@ -49,15 +55,34 @@ export async function markInventoriedAction(
   }
 }
 
-/** Read-only history load for the on-demand log panel (no revalidate). */
+/**
+ * Read-only history load for the on-demand log panel (no revalidate).
+ * Attaches each entry's actor display name (R9 — "actor" should identify who,
+ * not a raw id). Resolves to `name` rather than `email`: the log is readable
+ * by view-grantees too (AE3/R8), a broader audience than the owner-only
+ * sharing UI that resolves `email` (`grants/actions.ts`), so a raw email
+ * address is not surfaced to viewers who may not otherwise have it. Falls
+ * back to the raw `actorId` if the account can't be resolved.
+ */
 export async function listLogAction(
   parentType: ParentType,
   parentId: string,
-): Promise<ActionResult<{ entries: LogEntry[] }>> {
+): Promise<ActionResult<{ entries: LogEntryWithActor[] }>> {
   try {
     const userId = await requireUserId();
     const entries = await listLogForParent(userId, parentType, parentId);
-    return { ok: true, data: { entries } };
+    const nameById = await namesByIds([
+      ...new Set(entries.map((e) => e.actorId)),
+    ]);
+    return {
+      ok: true,
+      data: {
+        entries: entries.map((e) => ({
+          ...e,
+          actorName: nameById.get(e.actorId) ?? e.actorId,
+        })),
+      },
+    };
   } catch (error) {
     return toActionError(error);
   }
