@@ -269,7 +269,7 @@ export function MagazineForm({
             detail: labelPrefix.trim()
               ? `Label ${labelPrefix.trim()}`
               : undefined,
-            tone: "blaze",
+            tone: "primary",
           });
         } else {
           toast({ message: "Magazine seated", detail: values.brandModel });
@@ -285,7 +285,7 @@ export function MagazineForm({
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
-      {serverError ? <Callout tone="danger">{serverError}</Callout> : null}
+      {serverError ? <Callout tone="destructive">{serverError}</Callout> : null}
       <datalist id="magazine-calibers">
         {caliberSuggestions.map((c) => (
           <option key={c} value={c} />

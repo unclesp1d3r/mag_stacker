@@ -51,7 +51,7 @@ export function SettingsForm({
         Label constraints
       </h2>
       {error ? (
-        <Callout id="magpul-mode-error" tone="danger">
+        <Callout id="magpul-mode-error" tone="destructive">
           {error}
         </Callout>
       ) : null}

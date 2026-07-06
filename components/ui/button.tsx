@@ -1,17 +1,17 @@
 import type { ButtonHTMLAttributes, Ref } from "react";
 import { cn } from "./cn";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "ghost" | "destructive";
 type Size = "sm" | "md";
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    "bg-primary text-primary-foreground border-transparent hover:brightness-105 active:brightness-95 shadow-[var(--glow-blaze)]",
+    "bg-primary text-primary-foreground border-transparent hover:brightness-105 active:brightness-95 shadow-[var(--glow-primary)]",
   secondary:
     "bg-card text-foreground border-input hover:bg-muted active:bg-muted",
   ghost:
     "bg-transparent text-ink-soft border-transparent hover:bg-muted hover:text-foreground",
-  danger:
+  destructive:
     "bg-transparent text-destructive border-destructive/40 hover:bg-danger-soft",
 };
 

@@ -221,7 +221,7 @@ export function MagazinesView({
                 itemName={item.brandModel}
               />
               <Button
-                variant="danger"
+                variant="destructive"
                 size="sm"
                 onClick={() => requestDelete(item)}
               >

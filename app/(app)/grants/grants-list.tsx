@@ -30,7 +30,7 @@ export function GrantsList({ grants, onRevoke, pending }: GrantsListProps) {
               {grant.granteeEmail}
             </p>
             <div className="mt-1 flex gap-1">
-              <Badge tone={grant.permission === "edit" ? "blaze" : "neutral"}>
+              <Badge tone={grant.permission === "edit" ? "primary" : "neutral"}>
                 {grant.permission}
               </Badge>
               {grant.allowCreateOnBehalf ? (
@@ -39,7 +39,7 @@ export function GrantsList({ grants, onRevoke, pending }: GrantsListProps) {
             </div>
           </div>
           <Button
-            variant="danger"
+            variant="destructive"
             size="sm"
             disabled={pending}
             onClick={() => onRevoke(grant.granteeId)}

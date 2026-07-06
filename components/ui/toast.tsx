@@ -25,7 +25,7 @@ import { cn } from "./cn";
  * never the only way to perceive the message.
  */
 
-type ToastTone = "ok" | "blaze" | "danger" | "neutral";
+type ToastTone = "ok" | "primary" | "destructive" | "neutral";
 
 interface ToastInput {
   message: string;
@@ -47,16 +47,16 @@ const ToastContext = createContext<ToastApi | null>(null);
 
 const DISMISS_MS: Record<ToastTone, number> = {
   ok: 4000,
-  blaze: 4500,
+  primary: 4500,
   neutral: 4000,
-  danger: 6500,
+  destructive: 6500,
 };
 
 // Lit status pip — the gauge tells you which kind of event landed.
 const PIP: Record<ToastTone, string> = {
   ok: "bg-[var(--ok)] shadow-[0_0_8px_var(--ok)]",
-  blaze: "bg-primary shadow-[var(--glow-blaze)]",
-  danger: "bg-destructive shadow-[0_0_8px_var(--destructive)]",
+  primary: "bg-primary shadow-[var(--glow-primary)]",
+  destructive: "bg-destructive shadow-[0_0_8px_var(--destructive)]",
   neutral: "bg-muted-foreground",
 };
 

@@ -34,12 +34,12 @@ export function EmptyState({
   );
 }
 
-type Tone = "neutral" | "blaze" | "ok" | "danger";
+type Tone = "neutral" | "primary" | "ok" | "destructive";
 const TONES: Record<Tone, string> = {
   neutral: "bg-muted text-ink-soft border-input",
-  blaze: "bg-accent text-accent-foreground border-primary/30",
+  primary: "bg-accent text-accent-foreground border-primary/30",
   ok: "bg-[var(--ok)]/12 text-[var(--ok)] border-[var(--ok)]/30",
-  danger: "bg-danger-soft text-destructive border-destructive/30",
+  destructive: "bg-danger-soft text-destructive border-destructive/30",
 };
 
 export function Badge({
@@ -62,7 +62,7 @@ export function Badge({
 }
 
 export function Callout({
-  tone = "danger",
+  tone = "destructive",
   id,
   children,
 }: {

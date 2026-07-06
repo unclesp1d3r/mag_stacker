@@ -130,7 +130,7 @@ export function ShareControl({
 
             {error ? (
               <div className="mb-3">
-                <Callout tone="danger">{error}</Callout>
+                <Callout tone="destructive">{error}</Callout>
               </div>
             ) : null}
 

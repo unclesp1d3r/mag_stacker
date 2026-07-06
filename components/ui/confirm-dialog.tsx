@@ -10,7 +10,7 @@ import { Button } from "./button";
  * the keyboard path: `role="alertdialog"`, focus moves to the *non-destructive*
  * Cancel on open, Tab is trapped within the panel, Escape and backdrop click
  * cancel, and focus returns to the trigger on close. The destructive control
- * uses the shared `danger` button so it reads consistently with row actions.
+ * uses the shared `destructive` button so it reads consistently with row actions.
  */
 interface ConfirmDialogProps {
   open: boolean;
@@ -118,7 +118,7 @@ export function ConfirmDialog({
           >
             {cancelLabel}
           </Button>
-          <Button variant="danger" onClick={onConfirm} disabled={pending}>
+          <Button variant="destructive" onClick={onConfirm} disabled={pending}>
             {pending ? pendingLabel : confirmLabel}
           </Button>
         </div>

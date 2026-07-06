@@ -94,7 +94,10 @@ export function RangeSessionHistory({
         load();
         onChange();
       } else {
-        toast({ message: result.error ?? "Could not delete.", tone: "danger" });
+        toast({
+          message: result.error ?? "Could not delete.",
+          tone: "destructive",
+        });
       }
     });
   }
@@ -157,7 +160,7 @@ export function RangeSessionHistory({
                 Edit
               </Button>
               <Button
-                variant="danger"
+                variant="destructive"
                 size="sm"
                 onClick={() => setTarget(session)}
               >

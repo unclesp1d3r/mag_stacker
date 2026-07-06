@@ -235,7 +235,7 @@ export function FirearmsView({
                 itemName={firearmDisplayName(item)}
               />
               <Button
-                variant="danger"
+                variant="destructive"
                 size="sm"
                 onClick={() => requestDelete(item)}
               >

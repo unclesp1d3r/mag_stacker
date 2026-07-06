@@ -58,7 +58,7 @@
   --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.35), 0 2px 10px rgb(0 0 0 / 0.3);
   --shadow-pop: 0 12px 40px rgb(0 0 0 / 0.55);
   /* primary control "lights up" in dark; reads as a machined inset in light */
-  --glow-blaze: 0 0 16px rgb(255 178 64 / 0.3);
+  --glow-primary: 0 0 16px rgb(255 178 64 / 0.3);
 
   /* Semantic stacking scale (theme-agnostic). Sticky → modal → toast. */
   --z-sticky: 10;
@@ -104,7 +104,7 @@
   --shadow-raised:
     0 1px 2px rgb(40 36 30 / 0.06), 0 2px 8px rgb(40 36 30 / 0.05);
   --shadow-pop: 0 8px 30px rgb(40 36 30 / 0.16);
-  --glow-blaze: 0 1px 0 #9c3a18, 0 1px 3px rgb(0 0 0 / 0.18);
+  --glow-primary: 0 1px 0 #9c3a18, 0 1px 3px rgb(0 0 0 / 0.18);
 }
 
 @theme inline {

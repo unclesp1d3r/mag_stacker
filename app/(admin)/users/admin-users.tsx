@@ -36,7 +36,7 @@ export function AdminUsers({ users }: { users: AdminUserRow[] }) {
   const passwordId = useId();
   const formRef = useRef<HTMLFormElement>(null);
   const [feedback, setFeedback] = useState<{
-    tone: "ok" | "danger";
+    tone: "ok" | "destructive";
     text: string;
   } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -51,7 +51,7 @@ export function AdminUsers({ users }: { users: AdminUserRow[] }) {
         formRef.current?.reset();
       } else {
         setFeedback({
-          tone: "danger",
+          tone: "destructive",
           text: result.error ?? "Could not create account.",
         });
       }
@@ -62,7 +62,10 @@ export function AdminUsers({ users }: { users: AdminUserRow[] }) {
     startTransition(async () => {
       const result = await setAccountDisabledAction(user.id, !user.banned);
       if (!result.ok)
-        setFeedback({ tone: "danger", text: result.error ?? "Update failed." });
+        setFeedback({
+          tone: "destructive",
+          text: result.error ?? "Update failed.",
+        });
     });
   }, []);
 
@@ -88,7 +91,9 @@ export function AdminUsers({ users }: { users: AdminUserRow[] }) {
         cell: ({ getValue }) => {
           const role = getValue<string>();
           return (
-            <Badge tone={role === "admin" ? "blaze" : "neutral"}>{role}</Badge>
+            <Badge tone={role === "admin" ? "primary" : "neutral"}>
+              {role}
+            </Badge>
           );
         },
       },
@@ -99,7 +104,7 @@ export function AdminUsers({ users }: { users: AdminUserRow[] }) {
         meta: { label: "Status" },
         cell: ({ getValue }) =>
           getValue<boolean>() ? (
-            <Badge tone="danger">disabled</Badge>
+            <Badge tone="destructive">disabled</Badge>
           ) : (
             <Badge tone="ok">active</Badge>
           ),
@@ -114,7 +119,7 @@ export function AdminUsers({ users }: { users: AdminUserRow[] }) {
           return (
             <div className="flex justify-end">
               <Button
-                variant={user.banned ? "secondary" : "danger"}
+                variant={user.banned ? "secondary" : "destructive"}
                 size="sm"
                 disabled={user.role === "admin"}
                 onClick={() => onToggleDisabled(user)}
