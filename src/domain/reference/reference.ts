@@ -2,7 +2,7 @@ import { and, inArray, ne } from "drizzle-orm";
 import { getVisibleIds } from "@/src/auth/visibility";
 import { CALIBERS_RAW, MANUFACTURERS_RAW } from "@/src/data/raw";
 import type { DbOrTx } from "@/src/db/client";
-import { firearm, magazine } from "@/src/db/schema";
+import { ammo, firearm, magazine } from "@/src/db/schema";
 
 // ---------------------------------------------------------------------------
 // Text-file headers to strip during parse.
@@ -75,16 +75,17 @@ export function manufacturers(): string[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Returns distinct non-blank calibers from the user's visible firearms and
- * magazines (owned ∪ granted), sorted ascending (R60).
+ * Returns distinct non-blank calibers from the user's visible firearms,
+ * magazines, and ammo lots (owned ∪ granted), sorted ascending (R60).
  */
 export async function distinctCalibers(
   db: DbOrTx,
   userId: string,
 ): Promise<string[]> {
-  const [firearmIds, magazineIds] = await Promise.all([
+  const [firearmIds, magazineIds, ammoIds] = await Promise.all([
     getVisibleIds(db, userId, "firearm"),
     getVisibleIds(db, userId, "magazine"),
+    getVisibleIds(db, userId, "ammo"),
   ]);
 
   const seen = new Set<string>();
@@ -106,6 +107,14 @@ export async function distinctCalibers(
       .where(
         and(inArray(magazine.id, [...magazineIds]), ne(magazine.caliber, "")),
       );
+    for (const { caliber } of rows) seen.add(caliber);
+  }
+
+  if (ammoIds.size > 0) {
+    const rows = await db
+      .selectDistinct({ caliber: ammo.caliber })
+      .from(ammo)
+      .where(and(inArray(ammo.id, [...ammoIds]), ne(ammo.caliber, "")));
     for (const { caliber } of rows) seen.add(caliber);
   }
 

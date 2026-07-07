@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { DbOrTx } from "@/src/db/client";
-import { firearm, grant, magazine } from "@/src/db/schema";
+import { ammo, firearm, grant, magazine } from "@/src/db/schema";
 
 /**
  * Visibility computation (U4, KTD-1). The single source of truth for "what can
@@ -11,13 +11,15 @@ import { firearm, grant, magazine } from "@/src/db/schema";
  * applied at the delivery edge (server components / actions), not here.
  */
 
-export type ParentType = "firearm" | "magazine";
+export type ParentType = "firearm" | "magazine" | "ammo";
 
 /** Item-level permission the requester holds. `owner` is full control. */
 export type Permission = "owner" | "edit" | "view";
 
 function parentTable(parentType: ParentType) {
-  return parentType === "firearm" ? firearm : magazine;
+  if (parentType === "firearm") return firearm;
+  if (parentType === "magazine") return magazine;
+  return ammo;
 }
 
 /** Narrow a stored grant permission string to the item-level Permission. */

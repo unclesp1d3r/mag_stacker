@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { type DbOrTx, db as defaultDb } from "@/src/db/client";
-import { firearm, grant, magazine } from "@/src/db/schema";
+import { ammo, firearm, grant, magazine } from "@/src/db/schema";
 import { NotAuthorizedError, NotFoundError } from "./errors";
 import { type ParentType, resolvePermission } from "./visibility";
 
@@ -11,7 +11,9 @@ import { type ParentType, resolvePermission } from "./visibility";
  */
 
 function parentTable(parentType: ParentType) {
-  return parentType === "firearm" ? firearm : magazine;
+  if (parentType === "firearm") return firearm;
+  if (parentType === "magazine") return magazine;
+  return ammo;
 }
 
 /**

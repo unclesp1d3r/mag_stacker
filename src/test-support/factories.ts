@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { ParentType } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
 import {
+  ammo,
   firearm,
   inventoryLog,
   magazine,
@@ -55,6 +56,26 @@ export async function makeMagazine(
       brandModel: "Test MG",
       caliber: "9mm",
       baseCapacity: 15,
+      ...overrides,
+    })
+    .returning();
+  return row;
+}
+
+export async function makeAmmo(
+  ownerId: string,
+  overrides: Partial<typeof ammo.$inferInsert> = {},
+): Promise<typeof ammo.$inferSelect> {
+  const [row] = await db
+    .insert(ammo)
+    .values({
+      ownerId,
+      brand: "Test Ammo Co",
+      caliber: "9mm",
+      type: "FMJ",
+      grain: 115,
+      quantityRounds: 100,
+      lowStockThreshold: 0,
       ...overrides,
     })
     .returning();
