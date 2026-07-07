@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/surface";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import type { Permission } from "@/src/auth/visibility";
+import { InventoryLogHistory } from "../inventory-log/inventory-log-history";
 import { deleteMagazineAction } from "./actions";
 import {
   type FirearmOption,
@@ -218,6 +219,13 @@ export function MagazineDetailView({
           </dl>
         </Card>
       )}
+
+      {/* Magazine logging is owner-only (R13/KTD2), matching authorizeOwnerOnlyUpdate. */}
+      <InventoryLogHistory
+        parentType="magazine"
+        parentId={magazine.id}
+        canEdit={isOwner}
+      />
 
       <ConfirmDialog
         open={del.target !== null}

@@ -18,6 +18,10 @@ import {
   FIREARM_TYPES,
   UNSPECIFIED,
 } from "../domain/firearms/constants";
+import {
+  FIREARM_LOG_EVENTS,
+  MAGAZINE_LOG_EVENTS,
+} from "../domain/inventory-log/constants";
 import { user } from "./auth-schema";
 
 /**
@@ -222,6 +226,60 @@ export const grant = pgTable(
       sql`${t.parentType} in ('firearm', 'magazine')`,
     ),
     check("grant_permission_valid", sql`${t.permission} in ('view', 'edit')`),
+  ],
+);
+
+/**
+ * Inventory event log (U2/U3) — an append-only audit trail of actions taken
+ * against a firearm or magazine (inventoried, cleaned, lubed). Polymorphic
+ * `parent_type`/`parent_id` mirrors `grant`: no FK on `parent_id` (it spans
+ * two parent tables), with a `parent_type` CHECK plus a parent-gated
+ * `event_type` CHECK sourced from `domain/inventory-log/constants.ts` (R3
+ * backstop; the domain validator is the primary gate). `actor_id` FKs to
+ * `user` with `onDelete: "set null"` — the log row is a child of its parent
+ * ITEM (already cleaned up by the parent-delete trigger below), not of the
+ * actor, so deleting a user account must never be blocked by entries that
+ * user authored on someone else's shared item. `actor_id` is always supplied
+ * at write time (never null on insert — `createLogEntry` always passes the
+ * acting user's id); it is only set to NULL later, if that actor's account
+ * is subsequently deleted, which preserves the owner's audit entry with
+ * degraded attribution rather than deleting it or blocking the user delete.
+ * Rows are cleaned up via a parent-delete cascade trigger (added by hand in
+ * the generated migration), matching the `grant` cleanup pattern, since
+ * `parent_id` cannot carry an FK (R13).
+ */
+export const inventoryLog = pgTable(
+  "inventory_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    parentType: text("parent_type").notNull(),
+    parentId: uuid("parent_id").notNull(),
+    eventType: text("event_type").notNull(),
+    actorId: text("actor_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+    // Empty-not-null (R5).
+    notes: text("notes").notNull().default(""),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    // Newest-first per-item lookup (parent, then recency).
+    index("inventory_log_parent_idx").on(
+      t.parentType,
+      t.parentId,
+      t.occurredAt,
+    ),
+    check(
+      "inventory_log_parent_type_valid",
+      sql`${t.parentType} in ('firearm', 'magazine')`,
+    ),
+    // R3 backstop — domain validation is the primary surface. Value lists
+    // come from the single source in domain/inventory-log/constants.ts.
+    check(
+      "inventory_log_event_type_valid",
+      sql`(${t.parentType} = 'firearm' AND ${t.eventType} in (${sql.raw(inList(FIREARM_LOG_EVENTS))})) OR (${t.parentType} = 'magazine' AND ${t.eventType} in (${sql.raw(inList(MAGAZINE_LOG_EVENTS))}))`,
+    ),
   ],
 );
 
