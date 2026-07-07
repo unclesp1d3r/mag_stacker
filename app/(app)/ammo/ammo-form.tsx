@@ -191,7 +191,7 @@ export function AmmoForm({
         <Field
           label="Grain"
           controlId={grainId}
-          error={firstMessage(codes, ["negativeGrain"])}
+          error={firstMessage(codes, ["negativeGrain", "invalidGrain"])}
         >
           <Input
             id={grainId}
@@ -200,13 +200,15 @@ export function AmmoForm({
             max={MAX_COUNT}
             value={values.grain}
             onChange={(e) => set("grain", e.target.value)}
-            aria-invalid={codes.includes("negativeGrain")}
+            aria-invalid={
+              codes.includes("negativeGrain") || codes.includes("invalidGrain")
+            }
           />
         </Field>
         <Field
           label="Quantity (rounds)"
           controlId={qtyId}
-          error={firstMessage(codes, ["negativeQuantity"])}
+          error={firstMessage(codes, ["negativeQuantity", "invalidQuantity"])}
         >
           <Input
             id={qtyId}
@@ -215,14 +217,17 @@ export function AmmoForm({
             max={MAX_COUNT}
             value={values.quantityRounds}
             onChange={(e) => set("quantityRounds", e.target.value)}
-            aria-invalid={codes.includes("negativeQuantity")}
+            aria-invalid={
+              codes.includes("negativeQuantity") ||
+              codes.includes("invalidQuantity")
+            }
           />
         </Field>
         <Field
           label="Low-stock threshold"
           controlId={thresholdId}
           hint="Flags the lot once quantity drops to this level or below"
-          error={firstMessage(codes, ["negativeThreshold"])}
+          error={firstMessage(codes, ["negativeThreshold", "invalidThreshold"])}
         >
           <Input
             id={thresholdId}
@@ -231,7 +236,10 @@ export function AmmoForm({
             max={MAX_COUNT}
             value={values.lowStockThreshold}
             onChange={(e) => set("lowStockThreshold", e.target.value)}
-            aria-invalid={codes.includes("negativeThreshold")}
+            aria-invalid={
+              codes.includes("negativeThreshold") ||
+              codes.includes("invalidThreshold")
+            }
           />
         </Field>
       </div>

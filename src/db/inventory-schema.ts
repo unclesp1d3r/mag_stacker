@@ -209,9 +209,9 @@ export const magazineFirearm = pgTable(
  * `rounds_fired` over its rows (no stored counter). Inherits owner/grants from
  * the parent firearm: no `owner_id`, no own grant family. The FK ON DELETE
  * CASCADE drops sessions with the firearm (R35). `ammo_id` is a nullable seam for
- * a future consumption/"consume rounds" feature (#7) and intentionally carries
- * NO FK even though the `ammo` table now exists (KTD5) — that linkage is out of
- * scope for the ammo-inventory slice (no round deduction, no reservation).
+ * a future consumption/"consume rounds" feature (not yet filed) and intentionally
+ * carries NO FK even though the `ammo` table now exists (KTD5) — that linkage is
+ * out of scope for the ammo-inventory slice (no round deduction, no reservation).
  */
 export const rangeSession = pgTable(
   "range_session",
@@ -223,7 +223,7 @@ export const rangeSession = pgTable(
     // Calendar date of the session, no time component.
     date: date("date").notNull(),
     roundsFired: integer("rounds_fired").notNull(),
-    // Nullable #7 seam — no FK until the ammo table exists (KTD5).
+    // Nullable consumption seam — intentionally FK-less even though `ammo` now exists (KTD5).
     ammoId: uuid("ammo_id"),
     notes: text("notes").notNull().default(""),
     createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -88,15 +88,22 @@ export function computeSummary(
   magazines: MagazineSnapshot[],
   ammo: AmmoSnapshot[] = [],
 ): Summary {
+  // Keyed by the normalized caliber (trim + case-fold) so "9mm" and "9MM " group
+  // as one row — the same matching `computeAmmoRollups` uses (#52), keeping a
+  // single `Summary` from grouping caliber two different ways. Display uses the
+  // first-seen raw string.
   const countByCaliber = new Map<string, number>();
   const effectiveByCaliber = new Map<string, number>();
+  const displayByCaliber = new Map<string, string>();
   const countByFirearmId = new Map<string, number>();
 
   for (const mag of magazines) {
-    countByCaliber.set(mag.caliber, (countByCaliber.get(mag.caliber) ?? 0) + 1);
+    const key = caliberKey(mag.caliber);
+    if (!displayByCaliber.has(key)) displayByCaliber.set(key, mag.caliber);
+    countByCaliber.set(key, (countByCaliber.get(key) ?? 0) + 1);
     effectiveByCaliber.set(
-      mag.caliber,
-      (effectiveByCaliber.get(mag.caliber) ?? 0) + effectiveCapacity(mag),
+      key,
+      (effectiveByCaliber.get(key) ?? 0) + effectiveCapacity(mag),
     );
     for (const firearmId of mag.compatibleFirearmIds) {
       countByFirearmId.set(
@@ -107,12 +114,12 @@ export function computeSummary(
   }
 
   const byCaliber: CaliberSummary[] = [...countByCaliber.keys()]
-    .sort((a, b) => a.localeCompare(b))
-    .map((caliber) => ({
-      caliber,
-      count: countByCaliber.get(caliber) ?? 0,
-      effectiveCapacity: effectiveByCaliber.get(caliber) ?? 0,
-    }));
+    .map((key) => ({
+      caliber: displayByCaliber.get(key) ?? key,
+      count: countByCaliber.get(key) ?? 0,
+      effectiveCapacity: effectiveByCaliber.get(key) ?? 0,
+    }))
+    .sort((a, b) => a.caliber.localeCompare(b.caliber));
 
   const firearmCounts: FirearmCount[] = firearms
     .map((f) => ({

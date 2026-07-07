@@ -121,6 +121,34 @@ live("ammo service (ammo plan U3)", () => {
     });
     expect(created.ownerId).toBe(userA);
 
+    // D holds an edit grant but WITHOUT the create-on-behalf opt-in — the
+    // create-on-behalf attempt is rejected (the opt-in, not the grant, gates it).
+    const userD = await createUser("AmmoSvcD");
+    const seedD = await createAmmo(userA, {
+      caliber: "9mm",
+      grain: 115,
+      quantityRounds: 10,
+      lowStockThreshold: 0,
+    });
+    await createGrant(db, {
+      actorId: userA,
+      granteeId: userD,
+      parentType: "ammo",
+      parentId: seedD.id,
+      permission: "edit",
+      allowCreateOnBehalf: false,
+    });
+    await expect(
+      createAmmo(userD, {
+        caliber: "9mm",
+        grain: 124,
+        quantityRounds: 300,
+        lowStockThreshold: 30,
+        ownerId: userA,
+      }),
+    ).rejects.toThrow();
+    await deleteUsers(userD);
+
     // C has no grant at all from A — create-on-behalf is rejected.
     const userC = await createUser("AmmoSvcC");
     await expect(
@@ -133,6 +161,28 @@ live("ammo service (ammo plan U3)", () => {
       }),
     ).rejects.toThrow();
     await deleteUsers(userC);
+  });
+
+  test("updateAmmo clears omitted optional text fields (empty-not-null, R18)", async () => {
+    const lot = await createAmmo(userA, {
+      brand: "Federal",
+      caliber: "9mm",
+      type: "FMJ",
+      grain: 115,
+      quantityRounds: 100,
+      lowStockThreshold: 10,
+      notes: "range stock",
+    });
+    // Update omitting brand/type/notes — a full-field replace clears them to "".
+    const updated = await updateAmmo(userA, lot.id, {
+      caliber: "9mm",
+      grain: 115,
+      quantityRounds: 100,
+      lowStockThreshold: 10,
+    });
+    expect(updated.brand).toBe("");
+    expect(updated.type).toBe("");
+    expect(updated.notes).toBe("");
   });
 
   test("updateAmmo/deleteAmmo on a non-visible lot throws NotFoundError", async () => {

@@ -37,7 +37,7 @@ export interface AmmoInput extends AmmoFields {
 }
 
 export interface AmmoCreateInput extends AmmoInput {
-  /** Create-on-behalf target owner; defaults to the acting user (KTD-5). */
+  /** Create-on-behalf target owner; defaults to the acting user (KTD7). */
   ownerId?: string;
 }
 

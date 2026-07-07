@@ -255,6 +255,21 @@ describe("computeSummary — ammo roll-ups (U5)", () => {
     });
     expect(firearmRow(s, "g")?.count).toBe(1);
   });
+
+  test("caliberCoverage is sorted alphabetically regardless of firearm input order", () => {
+    const firearms: FirearmIdentity[] = [
+      { id: "f1", name: "Z Gun", caliber: "9mm" },
+      { id: "f2", name: "A Gun", caliber: ".45 ACP" },
+      { id: "f3", name: "M Gun", caliber: "5.56" },
+    ];
+    // No ammo for any of them → all three appear, sorted by caliber.
+    const s = computeSummary(firearms, [], []);
+    expect(s.caliberCoverage.map((c) => c.caliber)).toEqual([
+      ".45 ACP",
+      "5.56",
+      "9mm",
+    ]);
+  });
 });
 
 const live = process.env.DATABASE_URL ? describe : describe.skip;
