@@ -26,6 +26,7 @@ export const VALIDATION_MESSAGES: Record<string, string> = {
   invalidRoundsFired: "Rounds fired must be a whole number of at least 1",
   emptyDate: "Date is required",
   invalidDate: "Enter a valid date",
+  invalidParentType: "Invalid inventory item type",
   invalidEventType: "Select a valid event type",
   occurredAtInFuture: "Date/time cannot be in the future",
   invalidOccurredAt: "Enter a valid date and time",

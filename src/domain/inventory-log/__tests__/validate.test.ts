@@ -33,6 +33,23 @@ describe("validateLogEntry", () => {
     }
   });
 
+  test("an invalid parentType is rejected", () => {
+    expect(
+      validateLogEntry({
+        ...base,
+        // @ts-expect-error intentionally invalid at the domain boundary
+        parentType: "ammo",
+      }),
+    ).toEqual(["invalidParentType"]);
+  });
+
+  test("a valid parentType does not trigger invalidParentType", () => {
+    expect(validateLogEntry(base)).not.toContain("invalidParentType");
+    expect(validateLogEntry({ ...base, parentType: "magazine" })).not.toContain(
+      "invalidParentType",
+    );
+  });
+
   test("unknown event type is rejected for both parents", () => {
     expect(
       validateLogEntry({ ...base, eventType: "not-a-real-event" }),

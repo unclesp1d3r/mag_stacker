@@ -10,6 +10,7 @@ import {
   createUser,
   deleteUsers,
   makeFirearm,
+  makeLogEntry,
   makeMagazine,
 } from "@/src/test-support/factories";
 import * as service from "../service";
@@ -253,6 +254,70 @@ live("inventory-log service (U3)", () => {
     await expect(
       markInventoried(viewer, "firearm", fa.id),
     ).rejects.toBeInstanceOf(NotAuthorizedError);
+  });
+
+  test("covers R2/R21: a future occurredAt via the service throws ValidationError and writes no row", async () => {
+    const fa = await makeFirearm(owner);
+    const future = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await expect(
+      createLogEntry(owner, {
+        parentType: "firearm",
+        parentId: fa.id,
+        eventType: "inventoried",
+        occurredAt: future,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    const entries = await listLogForParent(owner, "firearm", fa.id);
+    expect(entries).toHaveLength(0);
+  });
+
+  test("covers R5: omitting notes stores empty string, not null", async () => {
+    const fa = await makeFirearm(owner);
+    const created = await createLogEntry(owner, {
+      parentType: "firearm",
+      parentId: fa.id,
+      eventType: "inventoried",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(created.notes).toBe("");
+  });
+
+  test("covers R10: markInventoried on a magazine creates exactly one inventoried entry", async () => {
+    const mag = await makeMagazine(owner);
+    const created = await markInventoried(owner, "magazine", mag.id);
+    expect(created.eventType).toBe("inventoried");
+    const entries = await listLogForParent(owner, "magazine", mag.id);
+    expect(entries).toHaveLength(1);
+  });
+
+  test("covers R10: a view-grantee's markInventoried on a magazine is rejected", async () => {
+    const mag = await makeMagazine(owner);
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: viewer,
+      parentType: "magazine",
+      parentId: mag.id,
+      permission: "view",
+    });
+    await expect(
+      markInventoried(viewer, "magazine", mag.id),
+    ).rejects.toBeInstanceOf(NotAuthorizedError);
+  });
+
+  test("covers R9: same occurredAt breaks the tie by createdAt DESC", async () => {
+    const fa = await makeFirearm(owner);
+    const occurredAt = new Date("2026-01-01T00:00:00.000Z");
+    const first = await makeLogEntry("firearm", fa.id, {
+      actorId: owner,
+      occurredAt,
+    });
+    const second = await makeLogEntry("firearm", fa.id, {
+      actorId: owner,
+      occurredAt,
+    });
+
+    const entries = await listLogForParent(owner, "firearm", fa.id);
+    expect(entries.map((e) => e.id)).toEqual([second.id, first.id]);
   });
 
   test("covers R4: the service module exports no update/delete function", () => {

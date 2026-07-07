@@ -24,6 +24,16 @@ function logTable(page: Page) {
     .filter({ has: page.getByRole("columnheader", { name: "Actor" }) });
 }
 
+/**
+ * Matches a rendered "9:00" wall-clock time regardless of locale (12h "9:00
+ * AM" or 24h with an optional leading zero, "09:00"), while still rejecting
+ * a shifted hour like "8:00", "10:00", or "14:00" — the kind of drift a
+ * doubled-offset / local-as-UTC datetime-local bug would produce. The
+ * leading digit-boundary check (no digit immediately before "9") excludes
+ * "19:00" so a +10h shift is still caught.
+ */
+const NINE_OCLOCK_LOCAL = /\b0?9:00\b/;
+
 test("logs, orders newest-first, and gates event types per parent", async ({
   page,
 }) => {
@@ -81,6 +91,9 @@ test("logs, orders newest-first, and gates event types per parent", async ({
     await expect(rows.nth(0)).toContainText("Inventoried");
     await expect(rows.nth(1)).toContainText("Cleaned");
     await expect(rows.nth(1)).toContainText("Field strip and clean");
+    // The entered "2026-03-01T09:00" local wall-clock time must render as
+    // 9:00, not shifted by a doubled-offset / local-as-UTC bug (R9).
+    await expect(rows.nth(1)).toContainText(NINE_OCLOCK_LOCAL);
     await expect(rows.nth(2)).toContainText("Lubed");
     await expect(rows.nth(2)).toContainText("First scheduled lube");
   });
