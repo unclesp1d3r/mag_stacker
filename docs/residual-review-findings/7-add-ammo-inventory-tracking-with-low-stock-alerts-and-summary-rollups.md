@@ -16,13 +16,12 @@ as `fix(review): schema-level tests for ammo CHECKs and grants-cleanup trigger`.
   [#53](https://github.com/unclesp1d3r/mag_stacker/issues/53) stays open for the pre-existing
   magazine capacity fields.
 
-## Human decision gate (not tracker-filed — needs owner confirmation, not code)
+## Human decision gate — RESOLVED (owner confirmed 2026-07-07)
 
 - **P1** `src/domain/ammo/service.ts:68` — **Existing create-on-behalf grants gain ammo-creation
   authority (plan AS4/KTD7).** `resolveCreateOwner` has no `parentType` predicate, so shipping ammo
   as a third owned parent silently widens every existing firearm/magazine create-on-behalf grant to
   also authorize creating ammo lots for that owner. The plan documents this as intentional
-  whole-owner trust but explicitly requires confirmation before shipping. **Resolve before merge:**
-  either confirm whole-owner trust is intended (close AS4), or scope `resolveCreateOwner`'s grant
-  query by parent type. Flagged independently by the cross-model (Codex) adversarial pass and three
-  in-process reviewers.
+  whole-owner trust. **Owner confirmed on 2026-07-07: whole-owner trust is intended; keep as-is.**
+  `resolveCreateOwner` stays unscoped (AS4 closed). Flagged independently by the cross-model (Codex)
+  adversarial pass and three in-process reviewers.
