@@ -207,7 +207,6 @@ export function FirearmDetailView({
         parentType="firearm"
         parentId={firearm.id}
         canEdit={canEdit}
-        onChange={() => router.refresh()}
       />
 
       <ConfirmDialog

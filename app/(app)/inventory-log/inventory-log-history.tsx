@@ -38,12 +38,6 @@ interface InventoryLogHistoryProps {
   onChange?: () => void;
 }
 
-/** A parent-appropriate empty-state noun ("firearm"/"magazine"). */
-const PARENT_LABEL: Record<ParentType, string> = {
-  firearm: "firearm",
-  magazine: "magazine",
-};
-
 /** Local, human-readable timestamp — date + time, no seconds (R9). */
 function formatTimestamp(value: Date | string): string {
   const date = value instanceof Date ? value : new Date(value);
@@ -115,10 +109,8 @@ export function InventoryLogHistory({
     });
   }
 
-  const eventTypes = useMemo(
-    () => (parentType === "firearm" ? FIREARM_LOG_EVENTS : MAGAZINE_LOG_EVENTS),
-    [parentType],
-  );
+  const eventTypes =
+    parentType === "firearm" ? FIREARM_LOG_EVENTS : MAGAZINE_LOG_EVENTS;
 
   const list = entries ?? [];
 
@@ -194,7 +186,7 @@ export function InventoryLogHistory({
           description={
             canEdit
               ? "Log an event or mark this item inventoried to start its history."
-              : `No inventory events have been logged for this ${PARENT_LABEL[parentType]}.`
+              : `No inventory events have been logged for this ${parentType}.`
           }
         />
       );

@@ -23,14 +23,6 @@ export type FirearmLogEvent = (typeof FIREARM_LOG_EVENTS)[number];
 export type MagazineLogEvent = (typeof MAGAZINE_LOG_EVENTS)[number];
 export type EventType = FirearmLogEvent | MagazineLogEvent;
 
-/**
- * Combined, deduped set of every valid event type across parent families.
- * Feeds the DB `CHECK` constraint (R3 backstop) — not itself parent-gated.
- */
-export const LOG_EVENT_TYPES: readonly EventType[] = Array.from(
-  new Set<EventType>([...FIREARM_LOG_EVENTS, ...MAGAZINE_LOG_EVENTS]),
-);
-
 const FIREARM_LOG_EVENT_SET: ReadonlySet<string> = new Set(FIREARM_LOG_EVENTS);
 const MAGAZINE_LOG_EVENT_SET: ReadonlySet<string> = new Set(
   MAGAZINE_LOG_EVENTS,

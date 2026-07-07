@@ -73,9 +73,6 @@ export function MagazineDetailView({
   // Magazine actions are owner-only (R13) — edit-grantees get a read-only page.
   // Ownership derives from the server-resolved permission (single source of truth).
   const isOwner = permission === "owner";
-  // Magazine logging is owner-only (R13/KTD2) — edit-grantees don't get the
-  // quick actions, matching the server-side `authorizeOwnerOnlyUpdate` gate.
-  const canEditLog = permission === "owner";
   const del = useDeleteConfirmation<MagazineDetail>({
     entityLabel: "Magazine",
     getName: (item) => item.brandModel,
@@ -223,11 +220,11 @@ export function MagazineDetailView({
         </Card>
       )}
 
+      {/* Magazine logging is owner-only (R13/KTD2), matching authorizeOwnerOnlyUpdate. */}
       <InventoryLogHistory
         parentType="magazine"
         parentId={magazine.id}
-        canEdit={canEditLog}
-        onChange={() => router.refresh()}
+        canEdit={isOwner}
       />
 
       <ConfirmDialog
