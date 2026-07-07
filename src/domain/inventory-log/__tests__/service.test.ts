@@ -324,4 +324,39 @@ live("inventory-log service (U3)", () => {
     expect("updateLogEntry" in service).toBe(false);
     expect("deleteLogEntry" in service).toBe(false);
   });
+
+  test("covers R6/FK SET NULL: deleting a grantee who authored an entry (an admin single-user delete) does not block on the log, and the owner's audit entry survives with actorId null", async () => {
+    // Dedicated users (not the shared beforeAll fixtures): this test deletes
+    // one of them mid-run, which must not disturb any other test's fixtures.
+    const isolatedOwner = await createUser("logIsolatedOwner");
+    const isolatedGrantee = await createUser("logIsolatedGrantee");
+    try {
+      const fa = await makeFirearm(isolatedOwner);
+      await createGrant(db, {
+        actorId: isolatedOwner,
+        granteeId: isolatedGrantee,
+        parentType: "firearm",
+        parentId: fa.id,
+        permission: "edit",
+      });
+      const created = await createLogEntry(isolatedGrantee, {
+        parentType: "firearm",
+        parentId: fa.id,
+        eventType: "cleaned",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+      });
+      expect(created.actorId).toBe(isolatedGrantee);
+
+      // Mirrors an admin deleting a single user account (app/(admin)/users/actions.ts):
+      // only the grantee is removed, not the owner.
+      await deleteUsers(isolatedGrantee);
+
+      const entries = await listLogForParent(isolatedOwner, "firearm", fa.id);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].id).toBe(created.id);
+      expect(entries[0].actorId).toBeNull();
+    } finally {
+      await deleteUsers(isolatedOwner);
+    }
+  });
 });

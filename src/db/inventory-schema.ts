@@ -236,11 +236,17 @@ export const grant = pgTable(
  * two parent tables), with a `parent_type` CHECK plus a parent-gated
  * `event_type` CHECK sourced from `domain/inventory-log/constants.ts` (R3
  * backstop; the domain validator is the primary gate). `actor_id` FKs to
- * `user` with `onDelete: "restrict"` — an actor's audit history must not be
- * deleted out from under an item merely because that user account was later
- * removed (R6). Rows are cleaned up via a parent-delete cascade trigger
- * (added by hand in the generated migration), matching the `grant` cleanup
- * pattern, since `parent_id` cannot carry an FK (R13).
+ * `user` with `onDelete: "set null"` — the log row is a child of its parent
+ * ITEM (already cleaned up by the parent-delete trigger below), not of the
+ * actor, so deleting a user account must never be blocked by entries that
+ * user authored on someone else's shared item. `actor_id` is always supplied
+ * at write time (never null on insert — `createLogEntry` always passes the
+ * acting user's id); it is only set to NULL later, if that actor's account
+ * is subsequently deleted, which preserves the owner's audit entry with
+ * degraded attribution rather than deleting it or blocking the user delete.
+ * Rows are cleaned up via a parent-delete cascade trigger (added by hand in
+ * the generated migration), matching the `grant` cleanup pattern, since
+ * `parent_id` cannot carry an FK (R13).
  */
 export const inventoryLog = pgTable(
   "inventory_log",
@@ -249,9 +255,9 @@ export const inventoryLog = pgTable(
     parentType: text("parent_type").notNull(),
     parentId: uuid("parent_id").notNull(),
     eventType: text("event_type").notNull(),
-    actorId: text("actor_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "restrict" }),
+    actorId: text("actor_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
     occurredAt: timestamp("occurred_at").defaultNow().notNull(),
     // Empty-not-null (R5).
     notes: text("notes").notNull().default(""),

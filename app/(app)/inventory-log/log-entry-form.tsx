@@ -14,7 +14,12 @@ import { validateLogEntry } from "@/src/domain/inventory-log/validate";
 import { firstMessage } from "@/src/domain/validation-messages";
 import { logEventAction } from "./log-actions";
 
-const EVENT_TYPE_CODES = ["invalidEventType"];
+// Codes that belong to the event-type field. `invalidParentType` is a
+// defense-in-depth boundary check in the validator (it should never fire
+// from this form, since `parentType` is fixed by the surrounding page), but
+// it must still render — and steal focus — on the event-type field rather
+// than being silently swallowed.
+const EVENT_TYPE_CODES = ["invalidEventType", "invalidParentType"];
 const OCCURRED_AT_CODES = ["occurredAtInFuture", "invalidOccurredAt"];
 
 /** Display label for a stored event type ("cleaned" -> "Cleaned"). */
@@ -66,6 +71,21 @@ export function LogEntryForm({
   const occurredAtId = useId();
   const notesId = useId();
 
+  /**
+   * Move focus to the first invalid field so a screen-reader user gets a
+   * cue after either validation path — client-side (below) or the
+   * server-side `result.codes` branch, which previously set codes but never
+   * moved focus (WCAG 2.2 AA). Event-type errors take priority since they
+   * render first in the form.
+   */
+  function focusFirstInvalid(found: readonly string[]): void {
+    if (found.length === 0) return;
+    const targetId = EVENT_TYPE_CODES.some((c) => found.includes(c))
+      ? eventTypeId
+      : occurredAtId;
+    document.getElementById(targetId)?.focus();
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     // The datetime-local value has no timezone of its own; the Date
@@ -81,11 +101,7 @@ export function LogEntryForm({
     setCodes(found);
     setServerError(null);
     if (found.length > 0) {
-      document
-        .getElementById(
-          found.includes("invalidEventType") ? eventTypeId : occurredAtId,
-        )
-        ?.focus();
+      focusFirstInvalid(found);
       return;
     }
     startTransition(async () => {
@@ -101,6 +117,7 @@ export function LogEntryForm({
         onDone();
       } else if (result.codes) {
         setCodes(result.codes);
+        focusFirstInvalid(result.codes);
       } else {
         setServerError(result.error ?? "Could not save.");
       }

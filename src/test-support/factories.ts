@@ -82,22 +82,27 @@ export async function makeRangeSession(
 
 /**
  * Insert an inventory-log row directly (U5). `actor_id` is a real FK to `user`
- * (`ON DELETE RESTRICT`), so callers must always supply a valid user id via
+ * (`ON DELETE SET NULL`), so callers must always supply a valid user id via
  * `overrides.actorId` — there is no sensible default actor to fall back to.
+ * `overrides` excludes `parentType`/`parentId`: those are separate params, so
+ * a caller can't accidentally insert a row for a different parent than the
+ * one it passed explicitly.
  */
 export async function makeLogEntry(
   parentType: ParentType,
   parentId: string,
-  overrides: Partial<typeof inventoryLog.$inferInsert> & { actorId: string },
+  overrides: Partial<
+    Omit<typeof inventoryLog.$inferInsert, "parentType" | "parentId">
+  > & { actorId: string },
 ): Promise<typeof inventoryLog.$inferSelect> {
   const [row] = await db
     .insert(inventoryLog)
     .values({
-      parentType,
-      parentId,
       eventType: "inventoried",
       occurredAt: new Date("2026-01-01T00:00:00.000Z"),
       ...overrides,
+      parentType,
+      parentId,
     })
     .returning();
   return row;

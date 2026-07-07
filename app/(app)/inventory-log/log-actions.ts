@@ -18,6 +18,13 @@ export interface LogEntryWithActor extends LogEntry {
   actorName: string;
 }
 
+/**
+ * Display label when `actorId` is `null` — the authoring account was later
+ * deleted (`actor_id` FK is `ON DELETE SET NULL`, see `inventory-schema.ts`);
+ * the entry itself is preserved, only attribution degrades.
+ */
+const UNKNOWN_ACTOR_LABEL = "Unknown";
+
 /** Mutations resolve the session themselves (R66) before touching the domain. */
 async function requireUserId(): Promise<string> {
   const user = await getCurrentUser();
@@ -71,15 +78,19 @@ export async function listLogAction(
   try {
     const userId = await requireUserId();
     const entries = await listLogForParent(userId, parentType, parentId);
-    const nameById = await namesByIds([
-      ...new Set(entries.map((e) => e.actorId)),
-    ]);
+    const actorIds = entries
+      .map((e) => e.actorId)
+      .filter((id): id is string => id !== null);
+    const nameById = await namesByIds([...new Set(actorIds)]);
     return {
       ok: true,
       data: {
         entries: entries.map((e) => ({
           ...e,
-          actorName: nameById.get(e.actorId) ?? e.actorId,
+          actorName:
+            e.actorId === null
+              ? UNKNOWN_ACTOR_LABEL
+              : (nameById.get(e.actorId) ?? e.actorId),
         })),
       },
     };

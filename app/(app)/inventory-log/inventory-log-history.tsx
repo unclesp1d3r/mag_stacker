@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
 } from "react";
@@ -66,11 +67,21 @@ export function InventoryLogHistory({
   const [formOpen, setFormOpen] = useState(false);
   const [loading, startLoad] = useTransition();
   const [marking, startMark] = useTransition();
+  // Identifies the in-flight request's parent so a slower, superseded
+  // response (e.g. after the user navigates to a different item) can be
+  // discarded instead of overwriting the current parent's entries.
+  const activeRequestRef = useRef<{
+    parentType: ParentType;
+    parentId: string;
+  } | null>(null);
 
   const load = useCallback(() => {
+    const request = { parentType, parentId };
+    activeRequestRef.current = request;
     setError(null);
     startLoad(async () => {
       const result = await listLogAction(parentType, parentId);
+      if (activeRequestRef.current !== request) return;
       if (result.ok) {
         setEntries(result.data?.entries ?? []);
       } else {
