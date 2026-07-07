@@ -6,12 +6,15 @@ reviewing the ammo-inventory feature (issue #7, plan `docs/plans/2026-07-06-002-
 Verdict: **Ready with fixes**. Finding #4 (schema-level CHECK/trigger tests) was applied on-branch
 as `fix(review): schema-level tests for ammo CHECKs and grants-cleanup trigger`.
 
-## Filed to tracker
+## Fixed on-branch (originally filed, then fixed per owner direction)
 
-- **P2** `src/domain/summary/summary.ts:173` — Summary caliber coverage joins firearm/ammo free
-  text by exact equality → [#52](https://github.com/unclesp1d3r/mag_stacker/issues/52)
-- **P2** `src/domain/ammo/validate.ts:27` — Numeric inventory fields lack int4 upper-bound
-  validation → [#53](https://github.com/unclesp1d3r/mag_stacker/issues/53)
+- **P2** `src/domain/summary/summary.ts` — Summary caliber coverage joined firearm/ammo free
+  text by exact equality → **fixed** (normalized comparison keys, raw display preserved) —
+  [#52](https://github.com/unclesp1d3r/mag_stacker/issues/52)
+- **P2** `src/domain/ammo/validate.ts` — Ammo numeric fields lacked int4 upper-bound validation →
+  **fixed for ammo** (`MAX_COUNT` int4 bound + `invalid*` codes/messages + form `max`) —
+  [#53](https://github.com/unclesp1d3r/mag_stacker/issues/53) stays open for the pre-existing
+  magazine capacity fields.
 
 ## Human decision gate (not tracker-filed — needs owner confirmation, not code)
 

@@ -143,6 +143,15 @@ export function computeSummary(
  * caliber counts only if it has zero lots, or every lot is low) — the two
  * intentionally diverge for a caliber with one low lot and one adequate lot.
  */
+/**
+ * Comparison key for cross-entity caliber matching. Caliber is free text on
+ * every entity, so raw equality would let "9MM " vs "9mm" produce a false
+ * "No ammo" coverage row (#52); trim + case-fold for matching, display raw.
+ */
+function caliberKey(caliber: string): string {
+  return caliber.trim().toLowerCase();
+}
+
 function computeAmmoRollups(
   firearms: FirearmIdentity[],
   ammo: AmmoSnapshot[],
@@ -152,25 +161,30 @@ function computeAmmoRollups(
   let ammoEntriesLow = 0;
 
   for (const lot of ammo) {
-    const lots = lotsByCaliber.get(lot.caliber) ?? [];
+    const key = caliberKey(lot.caliber);
+    const lots = lotsByCaliber.get(key) ?? [];
     lots.push(lot);
-    lotsByCaliber.set(lot.caliber, lots);
+    lotsByCaliber.set(key, lots);
     if (isLowStock(lot)) {
       ammoEntriesLow += 1;
-      lowCalibers.add(lot.caliber);
+      lowCalibers.add(key);
     }
   }
 
-  const firearmCalibers = new Set(
-    firearms
-      .map((f) => f.caliber)
-      .filter((c): c is string => Boolean(c && c.trim() !== "")),
-  );
+  // Normalized key -> first-seen display string (trimmed raw), so two
+  // firearms entered as "9MM" and "9mm " yield one coverage row.
+  const firearmCalibers = new Map<string, string>();
+  for (const f of firearms) {
+    const raw = f.caliber?.trim() ?? "";
+    if (raw === "") continue;
+    const key = caliberKey(raw);
+    if (!firearmCalibers.has(key)) firearmCalibers.set(key, raw);
+  }
 
-  const caliberCoverage: CaliberCoverage[] = [...firearmCalibers]
-    .sort((a, b) => a.localeCompare(b))
-    .flatMap((caliber): CaliberCoverage[] => {
-      const lots = lotsByCaliber.get(caliber) ?? [];
+  const caliberCoverage: CaliberCoverage[] = [...firearmCalibers.entries()]
+    .sort(([, a], [, b]) => a.localeCompare(b))
+    .flatMap(([key, caliber]): CaliberCoverage[] => {
+      const lots = lotsByCaliber.get(key) ?? [];
       if (lots.length === 0) return [{ caliber, reason: "no-ammo" }];
       if (lots.every((lot) => isLowStock(lot))) {
         return [{ caliber, reason: "low-stock-only" }];

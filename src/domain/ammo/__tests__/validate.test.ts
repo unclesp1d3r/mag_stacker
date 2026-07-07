@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { type AmmoFields, isLowStock, validateAmmo } from "../validate";
+import {
+  type AmmoFields,
+  isLowStock,
+  MAX_COUNT,
+  validateAmmo,
+} from "../validate";
 
 const base: AmmoFields = {
   caliber: "9mm",
@@ -46,6 +51,29 @@ describe("validateAmmo", () => {
     expect(codes).toContain("negativeQuantity");
     expect(codes).toContain("negativeThreshold");
     expect(codes).toHaveLength(4);
+  });
+
+  test("MAX_COUNT itself is storable; one above is not (int4 boundary, #53)", () => {
+    expect(validateAmmo({ ...base, quantityRounds: MAX_COUNT })).toEqual([]);
+    expect(validateAmmo({ ...base, quantityRounds: MAX_COUNT + 1 })).toEqual([
+      "invalidQuantity",
+    ]);
+  });
+
+  test("oversized grain and threshold yield invalidGrain / invalidThreshold (#53)", () => {
+    expect(validateAmmo({ ...base, grain: MAX_COUNT + 1 })).toEqual([
+      "invalidGrain",
+    ]);
+    expect(validateAmmo({ ...base, lowStockThreshold: MAX_COUNT + 1 })).toEqual(
+      ["invalidThreshold"],
+    );
+  });
+
+  test("non-integer and NaN counts are rejected, not passed to the DB (#53)", () => {
+    expect(validateAmmo({ ...base, grain: 3.5 })).toEqual(["invalidGrain"]);
+    expect(validateAmmo({ ...base, quantityRounds: Number.NaN })).toEqual([
+      "invalidQuantity",
+    ]);
   });
 });
 

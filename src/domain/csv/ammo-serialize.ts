@@ -9,6 +9,7 @@
  */
 
 import { isLowStock } from "@/src/domain/ammo/validate";
+import { toRecord } from "./csv-cell";
 
 export const CSV_AMMO_HEADERS = [
   "Brand",
@@ -32,24 +33,6 @@ export interface CsvAmmoRow {
   /** `YYYY-MM-DD` or null/empty when unset. */
   acquiredDate: string | null;
   notes: string;
-}
-
-// Characters that, as a cell's first char, trigger the formula-injection guard.
-const INJECTION_PREFIXES = new Set(["=", "+", "-", "@", "\t", "\r"]);
-
-function guardAndQuote(value: string): string {
-  let v = value;
-  if (v.length > 0 && INJECTION_PREFIXES.has(v[0])) {
-    v = `'${v}`; // apostrophe first (dotnet-extensions §1)
-  }
-  if (/[",\r\n]/.test(v)) {
-    v = `"${v.replace(/"/g, '""')}"`; // RFC-4180 quote with doubled quotes
-  }
-  return v;
-}
-
-function toRecord(cells: string[]): string {
-  return cells.map(guardAndQuote).join(",");
 }
 
 /**

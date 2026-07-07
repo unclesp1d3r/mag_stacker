@@ -16,7 +16,9 @@ export type ParentType = "firearm" | "magazine" | "ammo";
 /** Item-level permission the requester holds. `owner` is full control. */
 export type Permission = "owner" | "edit" | "view";
 
-function parentTable(parentType: ParentType) {
+/** Resolve a parent type to its Drizzle table — the one dispatch point the
+ * auth layer shares (also consumed by `authorize.ts`). */
+export function parentTable(parentType: ParentType) {
   if (parentType === "firearm") return firearm;
   if (parentType === "magazine") return magazine;
   return ammo;

@@ -12,7 +12,22 @@ export type AmmoValidationCode =
   | "emptyCaliber"
   | "negativeGrain"
   | "negativeQuantity"
-  | "negativeThreshold";
+  | "negativeThreshold"
+  | "invalidGrain"
+  | "invalidQuantity"
+  | "invalidThreshold";
+
+/**
+ * Upper bound for ammo counts: Postgres int4 max (#53). Validated here so an
+ * oversized or non-integer value fails with a field error instead of a raw
+ * out-of-range DB error; the form mirrors it as the inputs' `max`.
+ */
+export const MAX_COUNT = 2_147_483_647;
+
+/** True when `n` is a whole number the int4 columns can store. */
+function isStorableCount(n: number): boolean {
+  return Number.isInteger(n) && n <= MAX_COUNT;
+}
 
 export interface AmmoFields {
   caliber: string;
@@ -25,8 +40,13 @@ export function validateAmmo(input: AmmoFields): AmmoValidationCode[] {
   const codes: AmmoValidationCode[] = [];
   if (input.caliber.trim() === "") codes.push("emptyCaliber");
   if (input.grain < 0) codes.push("negativeGrain");
+  else if (!isStorableCount(input.grain)) codes.push("invalidGrain");
   if (input.quantityRounds < 0) codes.push("negativeQuantity");
+  else if (!isStorableCount(input.quantityRounds))
+    codes.push("invalidQuantity");
   if (input.lowStockThreshold < 0) codes.push("negativeThreshold");
+  else if (!isStorableCount(input.lowStockThreshold))
+    codes.push("invalidThreshold");
   return codes;
 }
 

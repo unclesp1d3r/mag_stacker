@@ -182,6 +182,27 @@ describe("computeSummary — ammo roll-ups (U5)", () => {
     ]);
   });
 
+  test("caliber matching is whitespace- and case-insensitive across entities (#52)", () => {
+    const firearms: FirearmIdentity[] = [
+      { id: "f1", name: "Spacey Gun", caliber: "9MM " }, // raw entry with case + trailing space
+      { id: "f2", name: "Dup Gun", caliber: "9mm" }, // same caliber, different casing
+      { id: "f3", name: "Uncovered Gun", caliber: ".45 ACP" },
+    ];
+    const ammo: AmmoSnapshot[] = [
+      { caliber: "9mm", quantityRounds: 500, lowStockThreshold: 20 }, // adequate
+      { caliber: " 9mm", quantityRounds: 0, lowStockThreshold: 10 }, // low, leading space
+    ];
+    const s = computeSummary(firearms, [], ammo);
+    // The two 9mm variants are one caliber: not flagged (has an adequate lot),
+    // and rendered as one row at most — only .45 ACP lacks ammo.
+    expect(s.caliberCoverage).toEqual([
+      { caliber: ".45 ACP", reason: "no-ammo" },
+    ]);
+    // The low " 9mm" lot still counts once toward the any-lot roll-up.
+    expect(s.ammoEntriesLow).toBe(1);
+    expect(s.ammoCalibersLow).toBe(1);
+  });
+
   test("any-vs-all divergence: one low + one adequate lot of the same caliber counts in ammoCalibersLow (R11) but NOT in caliberCoverage (R12)", () => {
     const firearms: FirearmIdentity[] = [
       { id: "f1", name: "Divergent Gun", caliber: "9mm" },

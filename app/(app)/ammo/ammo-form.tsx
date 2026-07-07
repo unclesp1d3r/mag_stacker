@@ -7,7 +7,7 @@ import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { COMMON_AMMO_TYPES } from "@/src/domain/ammo/constants";
-import { validateAmmo } from "@/src/domain/ammo/validate";
+import { MAX_COUNT, validateAmmo } from "@/src/domain/ammo/validate";
 import { firstMessage } from "@/src/domain/validation-messages";
 import { createAmmoAction, updateAmmoAction } from "./actions";
 
@@ -197,6 +197,7 @@ export function AmmoForm({
             id={grainId}
             type="number"
             min={0}
+            max={MAX_COUNT}
             value={values.grain}
             onChange={(e) => set("grain", e.target.value)}
             aria-invalid={codes.includes("negativeGrain")}
@@ -211,6 +212,7 @@ export function AmmoForm({
             id={qtyId}
             type="number"
             min={0}
+            max={MAX_COUNT}
             value={values.quantityRounds}
             onChange={(e) => set("quantityRounds", e.target.value)}
             aria-invalid={codes.includes("negativeQuantity")}
@@ -226,6 +228,7 @@ export function AmmoForm({
             id={thresholdId}
             type="number"
             min={0}
+            max={MAX_COUNT}
             value={values.lowStockThreshold}
             onChange={(e) => set("lowStockThreshold", e.target.value)}
             aria-invalid={codes.includes("negativeThreshold")}
