@@ -84,6 +84,7 @@ export async function shareItemAction(
     });
     revalidatePath("/firearms");
     revalidatePath("/magazines");
+    revalidatePath("/ammo");
     return { ok: true };
   } catch (error) {
     return toActionError(error);
@@ -100,6 +101,7 @@ export async function revokeGrantAction(
     await revokeGrant(db, { actorId: userId, granteeId, parentType, parentId });
     revalidatePath("/firearms");
     revalidatePath("/magazines");
+    revalidatePath("/ammo");
     return { ok: true };
   } catch (error) {
     return toActionError(error);
