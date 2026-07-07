@@ -17,10 +17,12 @@ export default async function SummaryPage() {
         description="A roll-up of the inventory visible to you."
       />
 
-      {summary.totalMagazines === 0 && summary.firearmCounts.length === 0 ? (
+      {summary.totalMagazines === 0 &&
+      summary.firearmCounts.length === 0 &&
+      summary.totalAmmoLots === 0 ? (
         <EmptyState
           title="Nothing to summarize yet"
-          description="Add magazines to see counts by caliber and by firearm."
+          description="Add firearms, magazines, or ammo to see counts by caliber, by firearm, and low-stock roll-ups."
         />
       ) : (
         <>
@@ -30,9 +32,16 @@ export default async function SummaryPage() {
             <Stat label="Firearms" value={summary.firearmCounts.length} />
           </div>
 
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Stat label="Total ammo lots" value={summary.totalAmmoLots} />
+            <Stat label="Ammo lots low" value={summary.ammoEntriesLow} />
+            <Stat label="Calibers low" value={summary.ammoCalibersLow} />
+          </div>
+
           <SummaryTables
             byCaliber={summary.byCaliber}
             firearmCounts={summary.firearmCounts}
+            caliberCoverage={summary.caliberCoverage}
           />
         </>
       )}
