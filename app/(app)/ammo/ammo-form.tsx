@@ -34,11 +34,11 @@ const DEFAULTS: AmmoFormValues = {
   notes: "",
 };
 
-// Non-finite input (cleared field, unparseable paste) becomes NaN, not 0, so
-// validateAmmo's isStorableCount rejects it visibly instead of silently saving
-// a zero-value lot (CodeRabbit).
+// Cleared ("" -> Number("") is 0!) or unparseable input becomes NaN, not a
+// silent value, so validateAmmo's isStorableCount rejects it visibly instead
+// of saving a zero-value lot (CodeRabbit).
 function num(value: string): number {
-  return Number(value);
+  return value.trim() === "" ? Number.NaN : Number(value);
 }
 
 /** Toast/dialog display label: "Brand Caliber", or just Caliber when brand is unset. */

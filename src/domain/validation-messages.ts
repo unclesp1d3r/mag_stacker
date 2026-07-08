@@ -18,7 +18,11 @@ export const VALIDATION_MESSAGES: Record<string, string> = {
   actionRequired: "Choose a firearm action",
   emptyBrandModel: "Brand/model is required",
   baseCapacityTooLow: "Base capacity must be at least 1",
+  baseCapacityInvalid:
+    "Base capacity must be a whole number of at most 2,147,483,647",
   negativeExtensionRounds: "Extension rounds cannot be negative",
+  extensionRoundsInvalid:
+    "Extension rounds must be a whole number of at most 2,147,483,647",
   invalidMagpulLabel: `Label may only contain ${MAGPUL_LABEL_ALLOWED_DESCRIPTION}`,
   magpulLabelTooLong: `Label must be ${MAX_LABEL_LENGTH} characters or fewer`,
   addCountTooLow: "Count must be at least 1",
