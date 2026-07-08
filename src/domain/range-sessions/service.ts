@@ -1,9 +1,14 @@
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { resolveAccessoryPermission } from "@/src/auth/accessory-visibility";
 import { authorizeUpdate } from "@/src/auth/authorize";
 import { NotFoundError } from "@/src/auth/errors";
 import { getVisibleIds, resolvePermission } from "@/src/auth/visibility";
 import { type DbOrTx, db } from "@/src/db/client";
-import { rangeSession } from "@/src/db/schema";
+import {
+  accessory,
+  rangeSession,
+  rangeSessionAccessory,
+} from "@/src/db/schema";
 import { ValidationError } from "../errors";
 import { type RangeSessionInput, validateRangeSession } from "./validate";
 
@@ -56,8 +61,30 @@ export async function createRangeSession(
       .insert(rangeSession)
       .values({ firearmId: input.firearmId, ...persistableFields(input) })
       .returning();
+    await snapshotMountedAccessories(tx, row.id, input.firearmId);
     return row;
   });
+}
+
+/**
+ * Snapshot the firearm's currently-mounted accessories into
+ * `range_session_accessory` at session-create time (R19) — the only mount
+ * history v1 keeps. A firearm with no accessories mounted inserts nothing.
+ * Must run inside the same transaction as the session insert.
+ */
+async function snapshotMountedAccessories(
+  tx: DbOrTx,
+  rangeSessionId: string,
+  firearmId: string,
+): Promise<void> {
+  const mounted = await tx
+    .select({ id: accessory.id })
+    .from(accessory)
+    .where(eq(accessory.currentFirearmId, firearmId));
+  if (mounted.length === 0) return;
+  await tx
+    .insert(rangeSessionAccessory)
+    .values(mounted.map((a) => ({ rangeSessionId, accessoryId: a.id })));
 }
 
 export async function updateRangeSession(
@@ -139,4 +166,97 @@ export async function lifetimeRoundTotals(
     .where(inArray(rangeSession.firearmId, [...visible]))
     .groupBy(rangeSession.firearmId);
   return new Map(rows.map((r) => [r.firearmId, Number(r.total)]));
+}
+
+/**
+ * Derived rounds-fired total for one accessory (U7 seed for future
+ * range-performance logging): `sum(rounds_fired)` over every session the
+ * accessory was linked to via `range_session_accessory`, regardless of
+ * whether the accessory is still mounted on that session's firearm today.
+ * Not-found when the accessory is outside the requester's visible set (R70).
+ */
+export async function accessoryRoundsFired(
+  actorId: string,
+  accessoryId: string,
+): Promise<number> {
+  const permission = await resolveAccessoryPermission(db, actorId, accessoryId);
+  if (permission === null) throw new NotFoundError();
+  const [row] = await db
+    .select({
+      // sum(integer) is bigint; the pg driver returns it as a string.
+      total: sql<string>`coalesce(sum(${rangeSession.roundsFired}), 0)`,
+    })
+    .from(rangeSessionAccessory)
+    .innerJoin(
+      rangeSession,
+      eq(rangeSessionAccessory.rangeSessionId, rangeSession.id),
+    )
+    .where(eq(rangeSessionAccessory.accessoryId, accessoryId));
+  return Number(row?.total ?? 0);
+}
+
+/** One linked accessory as seen by a particular viewer (U7). */
+export type SessionAccessoryLink =
+  | {
+      id: string;
+      visible: true;
+      category: string;
+      brand: string;
+      model: string;
+    }
+  | { id: string; visible: false };
+
+/**
+ * The accessories linked to a session (U7), gated by the VIEWER'S CURRENT
+ * permission on each — not the permission at session-create time. A join row
+ * whose `accessory_id` has gone null (the accessory was deleted, R19) carries
+ * no identifiable accessory and is omitted entirely. A join row whose
+ * accessory the viewer can no longer see (e.g. it has since been unmounted,
+ * R7) is returned as a `{ id, visible: false }` placeholder — never its
+ * serial/cost/other fields. Not-found when the session's parent firearm is
+ * outside the requester's visible set (R70 existence-hiding).
+ */
+export async function listSessionAccessories(
+  actorId: string,
+  rangeSessionId: string,
+): Promise<SessionAccessoryLink[]> {
+  const firearmId = await firearmIdFor(db, rangeSessionId);
+  const perm = await resolvePermission(db, actorId, "firearm", firearmId);
+  if (perm === null) throw new NotFoundError();
+
+  const links = await db
+    .select({ accessoryId: rangeSessionAccessory.accessoryId })
+    .from(rangeSessionAccessory)
+    .where(
+      and(
+        eq(rangeSessionAccessory.rangeSessionId, rangeSessionId),
+        isNotNull(rangeSessionAccessory.accessoryId),
+      ),
+    );
+
+  const results: SessionAccessoryLink[] = [];
+  for (const link of links) {
+    const id = link.accessoryId;
+    if (!id) continue;
+    const accessoryPerm = await resolveAccessoryPermission(db, actorId, id);
+    if (accessoryPerm === null) {
+      results.push({ id, visible: false });
+      continue;
+    }
+    const [row] = await db
+      .select({
+        category: accessory.category,
+        brand: accessory.brand,
+        model: accessory.model,
+      })
+      .from(accessory)
+      .where(eq(accessory.id, id))
+      .limit(1);
+    if (!row) {
+      results.push({ id, visible: false });
+      continue;
+    }
+    results.push({ id, visible: true, ...row });
+  }
+  return results;
 }

@@ -284,6 +284,41 @@ export const rangeSession = pgTable(
   ],
 );
 
+/**
+ * Range session ↔ accessory linkage (U7) — the only mount history v1 keeps
+ * (R19): when a session is created, the firearm's currently-mounted
+ * accessories are snapshotted into this join so per-accessory rounds fired
+ * can be derived later. Unlike `magazine_firearm`'s composite PK, this table
+ * uses a surrogate `id` PK because `accessory_id` must be nullable — deleting
+ * an accessory (`ON DELETE SET NULL`) leaves the session's linkage row intact
+ * with a null reference rather than deleting it, so the session's snapshot
+ * history survives the accessory's deletion. `range_session_id` is
+ * `ON DELETE CASCADE` (the join is a child of the session, R35-style). The
+ * unique constraint on (range_session_id, accessory_id) prevents duplicate
+ * snapshot rows for the same session/accessory pair; both columns are also
+ * indexed individually for the per-session and per-accessory lookups.
+ */
+export const rangeSessionAccessory = pgTable(
+  "range_session_accessory",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    rangeSessionId: uuid("range_session_id")
+      .notNull()
+      .references(() => rangeSession.id, { onDelete: "cascade" }),
+    accessoryId: uuid("accessory_id").references(() => accessory.id, {
+      onDelete: "set null",
+    }),
+  },
+  (t) => [
+    unique("range_session_accessory_unique").on(
+      t.rangeSessionId,
+      t.accessoryId,
+    ),
+    index("range_session_accessory_session_id_idx").on(t.rangeSessionId),
+    index("range_session_accessory_accessory_id_idx").on(t.accessoryId),
+  ],
+);
+
 export const grant = pgTable(
   "grant",
   {
