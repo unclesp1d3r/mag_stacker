@@ -317,8 +317,10 @@ live("inventorySummary (U7, viewer-relative)", () => {
     });
 
     const aSummary = await inventorySummary(userA);
-    expect(aSummary.totalAmmoLots).toBeGreaterThanOrEqual(2);
-    expect(aSummary.ammoEntriesLow).toBeGreaterThanOrEqual(1);
+    // userA is fresh to this file with exactly the two lots seeded above — one
+    // low (5.56 at 1/20), one adequate (9mm at 500/20) — so assert exact totals.
+    expect(aSummary.totalAmmoLots).toBe(2);
+    expect(aSummary.ammoEntriesLow).toBe(1);
     expect(
       aSummary.caliberCoverage.some(
         (row) => row.caliber === "5.56" && row.reason === "low-stock-only",

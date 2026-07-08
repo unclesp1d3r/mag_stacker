@@ -34,9 +34,11 @@ const DEFAULTS: AmmoFormValues = {
   notes: "",
 };
 
+// Non-finite input (cleared field, unparseable paste) becomes NaN, not 0, so
+// validateAmmo's isStorableCount rejects it visibly instead of silently saving
+// a zero-value lot (CodeRabbit).
 function num(value: string): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
+  return Number(value);
 }
 
 /** Toast/dialog display label: "Brand Caliber", or just Caliber when brand is unset. */
@@ -198,6 +200,7 @@ export function AmmoForm({
             type="number"
             min={0}
             max={MAX_COUNT}
+            step={1}
             value={values.grain}
             onChange={(e) => set("grain", e.target.value)}
             aria-invalid={
@@ -215,6 +218,7 @@ export function AmmoForm({
             type="number"
             min={0}
             max={MAX_COUNT}
+            step={1}
             value={values.quantityRounds}
             onChange={(e) => set("quantityRounds", e.target.value)}
             aria-invalid={
@@ -234,6 +238,7 @@ export function AmmoForm({
             type="number"
             min={0}
             max={MAX_COUNT}
+            step={1}
             value={values.lowStockThreshold}
             onChange={(e) => set("lowStockThreshold", e.target.value)}
             aria-invalid={

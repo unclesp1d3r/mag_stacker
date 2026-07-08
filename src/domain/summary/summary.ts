@@ -78,6 +78,15 @@ export interface Summary {
 }
 
 /**
+ * Comparison key for cross-entity caliber matching. Caliber is free text on
+ * every entity, so raw equality would let "9MM " vs "9mm" produce a false
+ * "No ammo" coverage row (#52); trim + case-fold for matching, display raw.
+ */
+function caliberKey(caliber: string): string {
+  return caliber.trim().toLowerCase();
+}
+
+/**
  * Pure aggregation (parity §7.2). Keyed by firearm IDENTITY (id), not name, so
  * two same-named firearms stay distinct (R39). A magazine referencing a firearm
  * absent from `firearms` still counts toward totals/per-caliber but yields no
@@ -150,15 +159,6 @@ export function computeSummary(
  * caliber counts only if it has zero lots, or every lot is low) — the two
  * intentionally diverge for a caliber with one low lot and one adequate lot.
  */
-/**
- * Comparison key for cross-entity caliber matching. Caliber is free text on
- * every entity, so raw equality would let "9MM " vs "9mm" produce a false
- * "No ammo" coverage row (#52); trim + case-fold for matching, display raw.
- */
-function caliberKey(caliber: string): string {
-  return caliber.trim().toLowerCase();
-}
-
 function computeAmmoRollups(
   firearms: FirearmIdentity[],
   ammo: AmmoSnapshot[],
