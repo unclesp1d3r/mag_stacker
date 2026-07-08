@@ -4,7 +4,7 @@ Shared domain vocabulary for this project — entities, named processes, and sta
 
 ## Relationships
 
-- A **User** owns **Firearms** and **Magazines** — these are the two owned **parents**. Everything a user can see is either owned by them or shared to them through a **Grant**.
+- A **User** owns **Firearms**, **Magazines**, and **Ammo** — these are the three owned **parents**. Everything a user can see is either owned by them or shared to them through a **Grant**.
 - A **Firearm** owns its **child records**; a **Range Session** is the first child family. Children inherit their parent's owner and grants — they are never shared or owned independently.
 - A **Magazine** and a **Firearm** relate many-to-many through **Compatibility** (which magazines fit which firearms).
 - A **Grant** connects an **Owner** to a **Grantee** for exactly one item, carrying a **Permission**.
@@ -12,10 +12,13 @@ Shared domain vocabulary for this project — entities, named processes, and sta
 ## Inventory entities
 
 ### Firearm
-An owned firearm in a user's inventory. One of the two owned parents. Carries a canonical product name plus an optional owner **Nickname**, manufacturer, caliber, and a controlled **Firearm Type** / **Firearm Action** classification. A Firearm is the root of the **child record** seam — its history and derived totals come from its children (currently **Range Sessions**).
+An owned firearm in a user's inventory. One of the three owned parents. Carries a canonical product name plus an optional owner **Nickname**, manufacturer, caliber, and a controlled **Firearm Type** / **Firearm Action** classification. A Firearm is the root of the **child record** seam — its history and derived totals come from its children (currently **Range Sessions**).
 
 ### Magazine
-An owned magazine in a user's inventory. The other owned parent. Carries brand/model, caliber, a **Total Capacity** (base capacity plus any extension), an optional **Label**, and an optional acquired date. A Magazine declares **Compatibility** with the firearms it fits.
+An owned magazine in a user's inventory. Another owned parent. Carries brand/model, caliber, a **Total Capacity** (base capacity plus any extension), an optional **Label**, and an optional acquired date. A Magazine declares **Compatibility** with the firearms it fits.
+
+### Ammo
+An owned ammunition lot in a user's inventory. The third owned parent, shared through the same **Grant** model as Firearms (edit grants included). A lot carries an optional brand, a caliber, an optional load type (free text with suggestions — FMJ, JHP, Match, and so on), a grain weight, a quantity in rounds, a **Low Stock** threshold, and an optional acquired date and notes. Lots with identical brand/caliber/type/grain stay separate — never merged; per-caliber views aggregate across them instead. Ammo has no **child record** families yet and does not participate in the **Inventory Log**.
 
 ### Range Session
 A single logged range trip for one Firearm — the date and the rounds fired that day. The first **child record** family. A Firearm's **Lifetime Total** is derived by summing its Range Sessions; there is no stored counter. A Range Session inherits its owner and grants from its parent Firearm and cannot be shared or owned on its own.
@@ -27,7 +30,7 @@ An append-only history of physical-handling events on a single Firearm or Magazi
 The controlled kind of a **Log Entry** (*inventoried* for any item; *cleaned*, *lubed* for Firearms), drawn from a fixed value set whose valid members depend on the parent family. Deliberately not called an "action" — that name already means a Firearm's operating mechanism (see **Firearm Action**).
 
 ### Child record
-A record that hangs off an owned parent (a Firearm or Magazine) and inherits that parent's owner and grants rather than carrying its own. Child records are never shared independently and are removed with their parent. **Range Session** and **Inventory Log** are the first child families; the pattern is the seam future child families follow.
+A record that hangs off an owned parent (currently a Firearm or Magazine; Ammo has no child families yet) and inherits that parent's owner and grants rather than carrying its own. Child records are never shared independently and are removed with their parent. **Range Session** and **Inventory Log** are the first child families; the pattern is the seam future child families follow.
 
 ### Compatibility
 The many-to-many relationship recording which Firearms a given Magazine fits. Removing either side removes the pairing.
@@ -79,6 +82,9 @@ A Magazine's full round capacity: its base capacity plus any extension. Derived,
 
 ### Lifetime Total
 A Firearm's cumulative rounds fired, derived by summing the rounds across all of its **Range Sessions**. Adding or removing a Range Session changes the total; there is no independent counter.
+
+### Low Stock
+The derived state of an **Ammo** lot whose quantity in rounds is at or under its own threshold. Never stored — computed from the lot's quantity and threshold wherever it is shown (list badge, summary roll-ups, CSV export). The summary counts it two ways: lots low (every low lot) and calibers low (distinct calibers with at least one low lot), and separately flags calibers the owner has firearms in but no lots — or only low lots — for (caliber coverage).
 
 ## Design identity
 

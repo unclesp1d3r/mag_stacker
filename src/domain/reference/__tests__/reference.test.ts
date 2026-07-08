@@ -131,6 +131,7 @@ live("distinctCalibers", () => {
   let db: Database;
   let makeFirearm: typeof FactoriesType.makeFirearm;
   let makeMagazine: typeof FactoriesType.makeMagazine;
+  let makeAmmo: typeof FactoriesType.makeAmmo;
   let createUser: typeof FactoriesType.createUser;
   let deleteUsers: typeof FactoriesType.deleteUsers;
 
@@ -144,6 +145,7 @@ live("distinctCalibers", () => {
     const factMod = await import("@/src/test-support/factories");
     makeFirearm = factMod.makeFirearm;
     makeMagazine = factMod.makeMagazine;
+    makeAmmo = factMod.makeAmmo;
     createUser = factMod.createUser;
     deleteUsers = factMod.deleteUsers;
 
@@ -207,6 +209,14 @@ live("distinctCalibers", () => {
     const calibers = await distinctCalibers(db, ownerAId);
     // Assert: appears only once
     expect(calibers.filter((c) => c === "9mm Luger")).toHaveLength(1);
+  });
+
+  // Ammo plan (U3): distinctCalibers unions ammo calibers alongside
+  // firearm/magazine calibers via the same getVisibleIds(..., "ammo") path.
+  test("returns a caliber that exists only on an ammo lot", async () => {
+    await makeAmmo(ownerAId, { caliber: "10mm Auto" });
+    const calibers = await distinctCalibers(db, ownerAId);
+    expect(calibers).toContain("10mm Auto");
   });
 });
 

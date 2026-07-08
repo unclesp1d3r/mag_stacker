@@ -30,6 +30,13 @@ export const VALIDATION_MESSAGES: Record<string, string> = {
   invalidEventType: "Select a valid event type",
   occurredAtInFuture: "Date/time cannot be in the future",
   invalidOccurredAt: "Enter a valid date and time",
+  negativeGrain: "Grain cannot be negative",
+  negativeQuantity: "Quantity cannot be negative",
+  negativeThreshold: "Low-stock threshold cannot be negative",
+  invalidGrain: "Grain must be a whole number of at most 2,147,483,647",
+  invalidQuantity: "Quantity must be a whole number of at most 2,147,483,647",
+  invalidThreshold:
+    "Low-stock threshold must be a whole number of at most 2,147,483,647",
 };
 
 export function messageForCode(code: string): string {

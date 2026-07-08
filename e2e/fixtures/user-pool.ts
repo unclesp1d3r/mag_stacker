@@ -27,6 +27,9 @@ export const SPEC_USER_KEYS = [
   "inventory-log",
   "inventory-log-share",
   "inventory-log-viewer",
+  "ammo",
+  "ammo-viewer",
+  "ammo-summary",
 ] as const;
 
 export type SpecUserKey = (typeof SPEC_USER_KEYS)[number];

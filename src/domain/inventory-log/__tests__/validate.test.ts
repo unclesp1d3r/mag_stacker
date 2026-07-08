@@ -36,8 +36,24 @@ describe("validateLogEntry", () => {
   test("an invalid parentType is rejected", () => {
     expect(
       validateLogEntry({
-        ...base,
         // @ts-expect-error intentionally invalid at the domain boundary
+        parentType: "not-a-real-parent",
+        parentId: base.parentId,
+        eventType: base.eventType,
+        occurredAt: base.occurredAt,
+      }),
+    ).toEqual(["invalidParentType"]);
+  });
+
+  // Regression (ammo plan, U2 blast radius): widening the shared `ParentType`
+  // union to include "ammo" (auth/visibility.ts) must NOT make ammo a legal
+  // inventory-log parent — ammo deliberately has no log participation (#46).
+  // This is now a real (non-`@ts-expect-error`) call because "ammo" is a
+  // valid `ParentType` member; the log validator still rejects it at runtime.
+  test("ammo is a valid ParentType but is still rejected as a log parent (#46)", () => {
+    expect(
+      validateLogEntry({
+        ...base,
         parentType: "ammo",
       }),
     ).toEqual(["invalidParentType"]);

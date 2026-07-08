@@ -2,7 +2,7 @@ import { and, inArray, ne } from "drizzle-orm";
 import { getVisibleIds } from "@/src/auth/visibility";
 import { CALIBERS_RAW, MANUFACTURERS_RAW } from "@/src/data/raw";
 import type { DbOrTx } from "@/src/db/client";
-import { firearm, magazine } from "@/src/db/schema";
+import { ammo, firearm, magazine } from "@/src/db/schema";
 
 // ---------------------------------------------------------------------------
 // Text-file headers to strip during parse.
@@ -75,39 +75,40 @@ export function manufacturers(): string[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Returns distinct non-blank calibers from the user's visible firearms and
- * magazines (owned ∪ granted), sorted ascending (R60).
+ * Returns distinct non-blank calibers from the user's visible firearms,
+ * magazines, and ammo lots (owned ∪ granted), sorted ascending (R60).
  */
 export async function distinctCalibers(
   db: DbOrTx,
   userId: string,
 ): Promise<string[]> {
-  const [firearmIds, magazineIds] = await Promise.all([
+  const [firearmIds, magazineIds, ammoIds] = await Promise.all([
     getVisibleIds(db, userId, "firearm"),
     getVisibleIds(db, userId, "magazine"),
+    getVisibleIds(db, userId, "ammo"),
+  ]);
+
+  // The three per-table lookups are independent — run them as one batch
+  // (result order is irrelevant: values land in a Set and sort at the end).
+  const distinctFrom = (
+    table: typeof firearm | typeof magazine | typeof ammo,
+    ids: Set<string>,
+  ) =>
+    ids.size > 0
+      ? db
+          .selectDistinct({ caliber: table.caliber })
+          .from(table)
+          .where(and(inArray(table.id, [...ids]), ne(table.caliber, "")))
+      : Promise.resolve([]);
+
+  const rows = await Promise.all([
+    distinctFrom(firearm, firearmIds),
+    distinctFrom(magazine, magazineIds),
+    distinctFrom(ammo, ammoIds),
   ]);
 
   const seen = new Set<string>();
-
-  if (firearmIds.size > 0) {
-    const rows = await db
-      .selectDistinct({ caliber: firearm.caliber })
-      .from(firearm)
-      .where(
-        and(inArray(firearm.id, [...firearmIds]), ne(firearm.caliber, "")),
-      );
-    for (const { caliber } of rows) seen.add(caliber);
-  }
-
-  if (magazineIds.size > 0) {
-    const rows = await db
-      .selectDistinct({ caliber: magazine.caliber })
-      .from(magazine)
-      .where(
-        and(inArray(magazine.id, [...magazineIds]), ne(magazine.caliber, "")),
-      );
-    for (const { caliber } of rows) seen.add(caliber);
-  }
+  for (const { caliber } of rows.flat()) seen.add(caliber);
 
   return [...seen].sort((a, b) => a.localeCompare(b));
 }
