@@ -82,6 +82,9 @@ export const firearm = pgTable(
     subtype: text("subtype").notNull().default(""),
     serialNumber: text("serial_number").notNull().default(""),
     notes: text("notes").notNull().default(""),
+    // NFA-regulated item flag (#accessory-nfa). Backfills existing rows to
+    // false on ADD COLUMN (R12-style).
+    isNfa: boolean("is_nfa").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -163,6 +166,50 @@ export const ammo = pgTable(
     check("ammo_grain_min", sql`${t.grain} >= 0`),
     check("ammo_quantity_min", sql`${t.quantityRounds} >= 0`),
     check("ammo_threshold_min", sql`${t.lowStockThreshold} >= 0`),
+  ],
+);
+
+/**
+ * Accessory (U1) — the fourth owned parent, mirroring `ammo`'s owner-scoped
+ * shape. Unlike `magazine_firearm` (a many-to-many join with an ordinal), an
+ * accessory mounts to at most one firearm at a time via `current_firearm_id`,
+ * which is nullable (an accessory can sit unmounted in inventory) and
+ * `onDelete: "set null"` — deleting a firearm unmounts its accessories rather
+ * than deleting them (they remain owner inventory). `category` is the only
+ * required text field (mirrors ammo's `caliber`); the rest are empty-not-null
+ * (R18). `cost_cents` is nullable (KTD-7-style: unset cost is unknown, not
+ * zero) with a non-negative CHECK that only bounds non-null values. `is_nfa`
+ * flags NFA-regulated accessories (suppressors, SBR stocks, etc.), mirroring
+ * the new `firearm.is_nfa` column.
+ */
+export const accessory = pgTable(
+  "accessory",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    currentFirearmId: uuid("current_firearm_id").references(() => firearm.id, {
+      onDelete: "set null",
+    }),
+    category: text("category").notNull(),
+    brand: text("brand").notNull().default(""),
+    model: text("model").notNull().default(""),
+    serialNumber: text("serial_number").notNull().default(""),
+    // NULL = unset (KTD-7); calendar date, no time component.
+    installedDate: date("installed_date"),
+    costCents: integer("cost_cents"),
+    notes: text("notes").notNull().default(""),
+    isNfa: boolean("is_nfa").notNull().default(false),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("accessory_owner_id_idx").on(t.ownerId),
+    index("accessory_current_firearm_id_idx").on(t.currentFirearmId),
+    // R26-style backstop — domain validation is the primary surface. Nullable
+    // column: the CHECK only bounds non-null cost values.
+    check("accessory_cost_cents_min", sql`${t.costCents} >= 0`),
   ],
 );
 
