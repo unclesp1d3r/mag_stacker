@@ -236,20 +236,6 @@ export async function listMountedForFirearm(
 }
 
 /**
- * Summed `costCents` (null treated as 0, KTD-7-style) of the accessories
- * mounted on `firearmId` — a derived read, never stored (R9). Mirrors
- * `listMountedForFirearm`'s visibility assumption (caller has already
- * authorized the firearm).
- */
-export async function firearmAccessoryValueCents(
-  actorId: string,
-  firearmId: string,
-): Promise<number> {
-  const mounted = await listMountedForFirearm(actorId, firearmId);
-  return mounted.reduce((sum, a) => sum + (a.costCents ?? 0), 0);
-}
-
-/**
  * Bespoke delete (accessories are not a grant `ParentType`, so
  * `authorizeAndDeleteParent` doesn't apply, and there are no grants to clean
  * up). Owner may always delete; an edit-grantee may delete a mounted
