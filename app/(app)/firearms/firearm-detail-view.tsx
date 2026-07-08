@@ -19,6 +19,10 @@ import { firearmDisplayName, hasNickname } from "@/src/domain/firearms/display";
 import { InventoryLogHistory } from "../inventory-log/inventory-log-history";
 import { deleteFirearmAction } from "./actions";
 import { FirearmForm, type FirearmFormValues } from "./firearm-form";
+import {
+  MountedAccessories,
+  type MountedAccessoryRow,
+} from "./mounted-accessories";
 import { RangeSessionHistory } from "./range-session-history";
 
 export interface FirearmDetail extends FirearmFormValues {
@@ -32,6 +36,9 @@ interface FirearmDetailViewProps {
   caliberSuggestions: string[];
   manufacturerSuggestions: string[];
   subtypeSuggestions: string[];
+  mountedAccessories: MountedAccessoryRow[];
+  /** Derived sum of the mounted accessories' `costCents` (null treated as 0); never stored (R9). */
+  accessoryValueCents: number;
 }
 
 /** One read-only label/value row. */
@@ -63,6 +70,8 @@ export function FirearmDetailView({
   caliberSuggestions,
   manufacturerSuggestions,
   subtypeSuggestions,
+  mountedAccessories,
+  accessoryValueCents,
 }: FirearmDetailViewProps) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -183,6 +192,16 @@ export function FirearmDetailView({
               value={<span className="tabular">{magazineCount}</span>}
             />
             <DetailRow
+              label="NFA item"
+              value={
+                firearm.isNfa ? (
+                  <Badge tone="destructive">NFA-regulated</Badge>
+                ) : (
+                  <span className="text-muted-foreground">No</span>
+                )
+              }
+            />
+            <DetailRow
               label="Notes"
               value={
                 firearm.notes.trim() !== "" ? (
@@ -195,6 +214,13 @@ export function FirearmDetailView({
           </dl>
         </Card>
       )}
+
+      <MountedAccessories
+        firearmId={firearm.id}
+        accessories={mountedAccessories}
+        totalValueCents={accessoryValueCents}
+        canEdit={canEdit}
+      />
 
       <RangeSessionHistory
         firearmId={firearm.id}

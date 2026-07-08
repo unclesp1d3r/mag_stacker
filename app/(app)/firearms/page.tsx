@@ -50,6 +50,7 @@ export default async function FirearmsPage() {
     subtype: f.subtype,
     serialNumber: f.serialNumber,
     notes: f.notes,
+    isNfa: f.isNfa,
     magazineCount: counts.get(f.id) ?? 0,
     roundTotal: roundTotals.get(f.id) ?? 0,
   }));

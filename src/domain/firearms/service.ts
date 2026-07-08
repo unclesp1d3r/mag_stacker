@@ -31,6 +31,8 @@ export interface FirearmCreateInput extends FirearmInput {
   subtype?: string;
   serialNumber?: string;
   notes?: string;
+  /** NFA-regulated item flag (#accessory-nfa); no validation constraint. */
+  isNfa?: boolean;
   /** Create-on-behalf target owner; defaults to the acting user (KTD-5). */
   ownerId?: string;
 }
@@ -54,6 +56,7 @@ function persistableFields(input: FirearmCreateInput | FirearmUpdateInput) {
     manufacturer: input.manufacturer ?? "",
     serialNumber: input.serialNumber ?? "",
     notes: input.notes ?? "",
+    isNfa: input.isNfa ?? false,
   };
 }
 

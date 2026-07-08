@@ -214,6 +214,42 @@ export async function listAccessories(actorId: string): Promise<Accessory[]> {
 }
 
 /**
+ * Accessories currently mounted on `firearmId` (U6). Per KTD1, every viewer
+ * who can see the firearm sees all of its mounted accessories — the caller
+ * (the firearm detail page) has already resolved firearm visibility via
+ * `getFirearm`, so this filters directly by `currentFirearmId` rather than
+ * re-deriving per-accessory permission. `actorId` is accepted for signature
+ * parity with the other service reads (and is available to a future caller
+ * that hasn't already authorized the firearm) but isn't used to gate this
+ * query.
+ */
+export async function listMountedForFirearm(
+  actorId: string,
+  firearmId: string,
+): Promise<Accessory[]> {
+  void actorId;
+  return db
+    .select()
+    .from(accessory)
+    .where(eq(accessory.currentFirearmId, firearmId))
+    .orderBy(asc(accessory.category), asc(accessory.brand));
+}
+
+/**
+ * Summed `costCents` (null treated as 0, KTD-7-style) of the accessories
+ * mounted on `firearmId` — a derived read, never stored (R9). Mirrors
+ * `listMountedForFirearm`'s visibility assumption (caller has already
+ * authorized the firearm).
+ */
+export async function firearmAccessoryValueCents(
+  actorId: string,
+  firearmId: string,
+): Promise<number> {
+  const mounted = await listMountedForFirearm(actorId, firearmId);
+  return mounted.reduce((sum, a) => sum + (a.costCents ?? 0), 0);
+}
+
+/**
  * Bespoke delete (accessories are not a grant `ParentType`, so
  * `authorizeAndDeleteParent` doesn't apply, and there are no grants to clean
  * up). Owner may always delete; an edit-grantee may delete a mounted

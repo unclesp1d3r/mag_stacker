@@ -2,6 +2,10 @@ import { notFound, redirect } from "next/navigation";
 import { NotFoundError } from "@/src/auth/errors";
 import { getCurrentUser } from "@/src/auth/session";
 import { db } from "@/src/db/client";
+import {
+  firearmAccessoryValueCents,
+  listMountedForFirearm,
+} from "@/src/domain/accessories/service";
 import { getFirearm, listFirearms } from "@/src/domain/firearms/service";
 import { magazineCountForFirearm } from "@/src/domain/magazines/service";
 import {
@@ -33,10 +37,18 @@ export default async function FirearmDetailPage({ params }: PageProps) {
     },
   );
 
-  const [caliberSuggestions, magazineCount, firearms] = await Promise.all([
+  const [
+    caliberSuggestions,
+    magazineCount,
+    firearms,
+    mountedAccessories,
+    accessoryValueCents,
+  ] = await Promise.all([
     calibersForInput(db, user.id),
     magazineCountForFirearm(user.id, id),
     listFirearms(user.id),
+    listMountedForFirearm(user.id, id),
+    firearmAccessoryValueCents(user.id, id),
   ]);
 
   const subtypeSuggestions = [
@@ -56,12 +68,15 @@ export default async function FirearmDetailPage({ params }: PageProps) {
         subtype: row.subtype,
         serialNumber: row.serialNumber,
         notes: row.notes,
+        isNfa: row.isNfa,
       }}
       permission={permission}
       magazineCount={magazineCount}
       caliberSuggestions={caliberSuggestions}
       manufacturerSuggestions={manufacturers()}
       subtypeSuggestions={subtypeSuggestions}
+      mountedAccessories={mountedAccessories}
+      accessoryValueCents={accessoryValueCents}
     />
   );
 }
