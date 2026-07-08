@@ -19,6 +19,7 @@ const NAV: NavItem[] = [
   { href: "/magazines", label: "Magazines" },
   { href: "/firearms", label: "Firearms" },
   { href: "/ammo", label: "Ammo" },
+  { href: "/accessories", label: "Accessories" },
   { href: "/summary", label: "Summary" },
   { href: "/settings", label: "Settings" },
 ];
