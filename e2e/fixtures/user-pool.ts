@@ -30,6 +30,8 @@ export const SPEC_USER_KEYS = [
   "ammo",
   "ammo-viewer",
   "ammo-summary",
+  "accessories",
+  "accessories-viewer",
 ] as const;
 
 export type SpecUserKey = (typeof SPEC_USER_KEYS)[number];
