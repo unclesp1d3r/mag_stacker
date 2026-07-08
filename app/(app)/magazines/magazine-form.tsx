@@ -23,7 +23,7 @@ import {
   MAGPUL_LABEL_DISALLOWED_CHAR_RE,
   MAX_LABEL_LENGTH,
 } from "@/src/domain/magazines/constants";
-import { validateMagazine } from "@/src/domain/magazines/validate";
+import { MAX_COUNT, validateMagazine } from "@/src/domain/magazines/validate";
 import { firstMessage } from "@/src/domain/validation-messages";
 import {
   bulkAddMagazinesAction,
@@ -63,9 +63,11 @@ const DEFAULTS: MagazineFormValues = {
 
 const PREVIEW_LIMIT = 6;
 
+// Cleared ("" -> Number("") is 0!) or unparseable input becomes NaN, not a
+// silent value, so validateMagazine rejects it visibly. See
+// docs/solutions/logic-errors/num-helper-coerces-nan-to-zero-bypassing-ammo-validation.md.
 function num(value: string): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
+  return value.trim() === "" ? Number.NaN : Number(value);
 }
 
 interface MagazineFormProps {
@@ -356,29 +358,45 @@ export function MagazineForm({
           label="Base capacity"
           controlId={baseId}
           required
-          error={firstMessage(codes, ["baseCapacityTooLow"])}
+          error={firstMessage(codes, [
+            "baseCapacityTooLow",
+            "baseCapacityInvalid",
+          ])}
         >
           <Input
             id={baseId}
             type="number"
             min={1}
+            max={MAX_COUNT}
+            step={1}
             value={values.baseCapacity}
             onChange={(e) => set("baseCapacity", e.target.value)}
-            aria-invalid={codes.includes("baseCapacityTooLow")}
+            aria-invalid={
+              codes.includes("baseCapacityTooLow") ||
+              codes.includes("baseCapacityInvalid")
+            }
           />
         </Field>
         <Field
           label="Extension rounds"
           controlId={extId}
-          error={firstMessage(codes, ["negativeExtensionRounds"])}
+          error={firstMessage(codes, [
+            "negativeExtensionRounds",
+            "extensionRoundsInvalid",
+          ])}
         >
           <Input
             id={extId}
             type="number"
             min={0}
+            max={MAX_COUNT}
+            step={1}
             value={values.extensionRounds}
             onChange={(e) => set("extensionRounds", e.target.value)}
-            aria-invalid={codes.includes("negativeExtensionRounds")}
+            aria-invalid={
+              codes.includes("negativeExtensionRounds") ||
+              codes.includes("extensionRoundsInvalid")
+            }
           />
         </Field>
       </div>
