@@ -47,6 +47,44 @@ describe("validateMagazine (parity §2)", () => {
     expect(validateMagazine(base, 1000)).toEqual([]);
   });
 
+  test("addCount NaN (e.g. cleared bulk-count field) → addCountTooLow (#53)", () => {
+    const base = {
+      brandModel: "X",
+      caliber: "9mm",
+      baseCapacity: 15,
+      extensionRounds: 0,
+    };
+    expect(validateMagazine(base, Number("abc"))).toEqual(["addCountTooLow"]);
+    expect(validateMagazine(base, 2.5)).toEqual(["addCountTooLow"]);
+  });
+
+  test("baseCapacity/extensionRounds reject NaN, non-integer, and > int4 max (#53)", () => {
+    const base = {
+      brandModel: "X",
+      caliber: "9mm",
+      baseCapacity: 15,
+      extensionRounds: 0,
+    };
+    // NaN from an unparseable/cleared field is rejected, not coerced to a value.
+    expect(
+      validateMagazine({ ...base, baseCapacity: Number("abc") }, 1),
+    ).toEqual(["baseCapacityInvalid"]);
+    expect(
+      validateMagazine({ ...base, extensionRounds: Number.NaN }, 1),
+    ).toEqual(["extensionRoundsInvalid"]);
+    // Non-integer and int4 overflow.
+    expect(validateMagazine({ ...base, baseCapacity: 15.5 }, 1)).toEqual([
+      "baseCapacityInvalid",
+    ]);
+    expect(
+      validateMagazine({ ...base, extensionRounds: 2_147_483_648 }, 1),
+    ).toEqual(["extensionRoundsInvalid"]);
+    // MAX_COUNT itself is storable.
+    expect(
+      validateMagazine({ ...base, extensionRounds: 2_147_483_647 }, 1),
+    ).toEqual([]);
+  });
+
   test("all seven failures at once (parity §12.2 multi-failure, including magpul codes)", () => {
     expect(
       validateMagazine(
