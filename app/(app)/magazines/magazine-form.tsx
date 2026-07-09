@@ -23,7 +23,7 @@ import {
   MAGPUL_LABEL_DISALLOWED_CHAR_RE,
   MAX_LABEL_LENGTH,
 } from "@/src/domain/magazines/constants";
-import { validateMagazine } from "@/src/domain/magazines/validate";
+import { MAX_COUNT, validateMagazine } from "@/src/domain/magazines/validate";
 import { firstMessage } from "@/src/domain/validation-messages";
 import {
   bulkAddMagazinesAction,
@@ -63,9 +63,11 @@ const DEFAULTS: MagazineFormValues = {
 
 const PREVIEW_LIMIT = 6;
 
+// Cleared ("" -> Number("") is 0!) or unparseable input becomes NaN, not a
+// silent value, so validateMagazine rejects it visibly. See
+// docs/solutions/logic-errors/num-helper-coerces-nan-to-zero-bypassing-ammo-validation.md.
 function num(value: string): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
+  return value.trim() === "" ? Number.NaN : Number(value);
 }
 
 interface MagazineFormProps {
@@ -269,7 +271,7 @@ export function MagazineForm({
             detail: labelPrefix.trim()
               ? `Label ${labelPrefix.trim()}`
               : undefined,
-            tone: "blaze",
+            tone: "primary",
           });
         } else {
           toast({ message: "Magazine seated", detail: values.brandModel });
@@ -285,7 +287,7 @@ export function MagazineForm({
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
-      {serverError ? <Callout tone="danger">{serverError}</Callout> : null}
+      {serverError ? <Callout tone="destructive">{serverError}</Callout> : null}
       <datalist id="magazine-calibers">
         {caliberSuggestions.map((c) => (
           <option key={c} value={c} />
@@ -299,7 +301,7 @@ export function MagazineForm({
 
       {!isEdit ? (
         <div
-          className="inline-flex w-fit rounded-[var(--radius)] border border-line-strong bg-paper-sunken p-0.5"
+          className="inline-flex w-fit rounded-md border border-input bg-muted p-0.5"
           role="tablist"
           aria-label="Add mode"
         >
@@ -311,9 +313,9 @@ export function MagazineForm({
               aria-selected={mode === m}
               onClick={() => setMode(m)}
               className={cn(
-                "rounded-[calc(var(--radius)-2px)] px-3 py-1 text-sm font-medium capitalize transition-colors",
+                "rounded-sm px-3 py-1 text-sm font-medium capitalize transition-colors",
                 mode === m
-                  ? "bg-paper-raised text-ink shadow-[var(--shadow-raised)]"
+                  ? "bg-card text-foreground shadow-[var(--shadow-raised)]"
                   : "text-ink-soft",
               )}
             >
@@ -356,29 +358,45 @@ export function MagazineForm({
           label="Base capacity"
           controlId={baseId}
           required
-          error={firstMessage(codes, ["baseCapacityTooLow"])}
+          error={firstMessage(codes, [
+            "baseCapacityTooLow",
+            "baseCapacityInvalid",
+          ])}
         >
           <Input
             id={baseId}
             type="number"
             min={1}
+            max={MAX_COUNT}
+            step={1}
             value={values.baseCapacity}
             onChange={(e) => set("baseCapacity", e.target.value)}
-            aria-invalid={codes.includes("baseCapacityTooLow")}
+            aria-invalid={
+              codes.includes("baseCapacityTooLow") ||
+              codes.includes("baseCapacityInvalid")
+            }
           />
         </Field>
         <Field
           label="Extension rounds"
           controlId={extId}
-          error={firstMessage(codes, ["negativeExtensionRounds"])}
+          error={firstMessage(codes, [
+            "negativeExtensionRounds",
+            "extensionRoundsInvalid",
+          ])}
         >
           <Input
             id={extId}
             type="number"
             min={0}
+            max={MAX_COUNT}
+            step={1}
             value={values.extensionRounds}
             onChange={(e) => set("extensionRounds", e.target.value)}
-            aria-invalid={codes.includes("negativeExtensionRounds")}
+            aria-invalid={
+              codes.includes("negativeExtensionRounds") ||
+              codes.includes("extensionRoundsInvalid")
+            }
           />
         </Field>
       </div>
@@ -497,35 +515,37 @@ export function MagazineForm({
       </div>
 
       <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium text-ink">
+        <legend className="text-sm font-medium text-foreground">
           Compatible firearms
         </legend>
         {firearmOptions.length === 0 ? (
-          <p className="text-xs text-ink-faint">
+          <p className="text-xs text-muted-foreground">
             <Link
               href="/firearms"
-              className="font-medium text-blaze underline-offset-2 hover:underline"
+              className="font-medium text-primary underline-offset-2 hover:underline"
             >
               Add a firearm
             </Link>{" "}
             first to link compatibility.
           </p>
         ) : (
-          <div className="max-h-44 overflow-y-auto rounded-[var(--radius)] border border-line bg-paper-raised p-1">
+          <div className="max-h-44 overflow-y-auto rounded-md border border-border bg-card p-1">
             {firearmOptions.map((f) => (
               <label
                 key={f.id}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-paper-sunken"
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
               >
                 <input
                   type="checkbox"
-                  className="size-4 accent-[var(--blaze)]"
+                  className="size-4 accent-primary"
                   checked={values.compatibleFirearmIds.includes(f.id)}
                   onChange={() => toggleFirearm(f.id)}
                 />
                 <span>{f.name}</span>
                 {f.hint ? (
-                  <span className="text-xs text-ink-faint">({f.hint})</span>
+                  <span className="text-xs text-muted-foreground">
+                    ({f.hint})
+                  </span>
                 ) : null}
               </label>
             ))}

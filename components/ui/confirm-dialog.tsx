@@ -10,7 +10,7 @@ import { Button } from "./button";
  * the keyboard path: `role="alertdialog"`, focus moves to the *non-destructive*
  * Cancel on open, Tab is trapped within the panel, Escape and backdrop click
  * cancel, and focus returns to the trigger on close. The destructive control
- * uses the shared `danger` button so it reads consistently with row actions.
+ * uses the shared `destructive` button so it reads consistently with row actions.
  */
 interface ConfirmDialogProps {
   open: boolean;
@@ -85,7 +85,7 @@ export function ConfirmDialog({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismissal is a convenience; Escape and Cancel are the primary paths.
     <div
-      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-ink/30 p-4"
+      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-foreground/30 p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}
@@ -96,11 +96,11 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
-        className="w-full max-w-sm rounded-[var(--radius-lg)] border border-line bg-paper-raised p-5 shadow-[var(--shadow-pop)]"
+        className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-[var(--shadow-pop)]"
       >
         <h2
           id={titleId}
-          className="text-pretty text-base font-semibold text-ink"
+          className="text-pretty text-base font-semibold text-foreground"
         >
           {title}
         </h2>
@@ -118,7 +118,7 @@ export function ConfirmDialog({
           >
             {cancelLabel}
           </Button>
-          <Button variant="danger" onClick={onConfirm} disabled={pending}>
+          <Button variant="destructive" onClick={onConfirm} disabled={pending}>
             {pending ? pendingLabel : confirmLabel}
           </Button>
         </div>

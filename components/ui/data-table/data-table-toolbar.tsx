@@ -40,7 +40,7 @@ export function DataTableToolbar<TData>({
   rowCount,
 }: DataTableToolbarProps<TData>) {
   return (
-    <div className="flex flex-col gap-3 border-line border-b bg-paper-raised px-4 py-3 md:flex-row md:items-center md:justify-between">
+    <div className="flex flex-col gap-3 border-border border-b bg-card px-4 py-3 md:flex-row md:items-center md:justify-between">
       <div className="flex flex-1 flex-wrap items-center gap-2">
         {filterSlot}
         {groupingSlot}

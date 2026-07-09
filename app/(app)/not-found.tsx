@@ -21,13 +21,13 @@ export default function AppNotFound() {
       >
         <Link
           href="/firearms"
-          className="font-medium text-blaze hover:underline"
+          className="font-medium text-primary hover:underline"
         >
           ← Firearms
         </Link>
         <Link
           href="/magazines"
-          className="font-medium text-blaze hover:underline"
+          className="font-medium text-primary hover:underline"
         >
           ← Magazines
         </Link>

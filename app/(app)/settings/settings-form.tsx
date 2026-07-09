@@ -46,12 +46,12 @@ export function SettingsForm({
     <section aria-labelledby="label-constraints-heading" className="space-y-4">
       <h2
         id="label-constraints-heading"
-        className="text-sm font-semibold text-ink"
+        className="text-sm font-semibold text-foreground"
       >
         Label constraints
       </h2>
       {error ? (
-        <Callout id="magpul-mode-error" tone="danger">
+        <Callout id="magpul-mode-error" tone="destructive">
           {error}
         </Callout>
       ) : null}
@@ -63,9 +63,9 @@ export function SettingsForm({
           disabled={pending}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? "magpul-mode-error" : undefined}
-          className="size-4 accent-[var(--blaze)]"
+          className="size-4 accent-primary"
         />
-        <span className="text-sm text-ink">
+        <span className="text-sm text-foreground">
           Magpul mode — enforce PMAG dot-matrix label constraints (A–Z, 0–9,
           hyphen, max 4 characters)
         </span>

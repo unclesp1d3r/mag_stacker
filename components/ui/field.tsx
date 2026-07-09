@@ -30,13 +30,16 @@ export function Field({
   const hintId = `${controlId}-hint`;
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
-      <label htmlFor={controlId} className="text-sm font-medium text-ink">
+      <label
+        htmlFor={controlId}
+        className="text-sm font-medium text-foreground"
+      >
         {label}
-        {required ? <span className="ml-0.5 text-danger">*</span> : null}
+        {required ? <span className="ml-0.5 text-destructive">*</span> : null}
       </label>
       {children}
       {hint && !error ? (
-        <p id={hintId} className="text-xs text-ink-faint">
+        <p id={hintId} className="text-xs text-muted-foreground">
           {hint}
         </p>
       ) : null}
@@ -44,7 +47,7 @@ export function Field({
         <p
           id={errorId}
           role="alert"
-          className="text-xs font-medium text-danger"
+          className="text-xs font-medium text-destructive"
         >
           {error}
         </p>

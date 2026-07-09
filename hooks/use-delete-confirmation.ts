@@ -64,7 +64,10 @@ export function useDeleteConfirmation<T extends { id: string }>({
         else router.refresh();
         return;
       }
-      toast({ message: result.error ?? "Could not delete.", tone: "danger" });
+      toast({
+        message: result.error ?? "Could not delete.",
+        tone: "destructive",
+      });
       setTarget(null);
     });
   }

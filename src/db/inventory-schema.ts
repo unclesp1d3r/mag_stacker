@@ -18,6 +18,10 @@ import {
   FIREARM_TYPES,
   UNSPECIFIED,
 } from "../domain/firearms/constants";
+import {
+  FIREARM_LOG_EVENTS,
+  MAGAZINE_LOG_EVENTS,
+} from "../domain/inventory-log/constants";
 import { user } from "./auth-schema";
 
 /**
@@ -34,19 +38,21 @@ function inList(values: readonly string[]): string {
  * Inventory + sharing schema (U3).
  *
  * Shape notes:
- * - Owned parents (`firearm`, `magazine`) carry `owner_id` (text — Better Auth
- *   user ids are text) with an index for visibility lookups (R72). Parents use
- *   uuid PKs (R8, R64).
+ * - Owned parents (`firearm`, `magazine`, `ammo`) carry `owner_id` (text —
+ *   Better Auth user ids are text) with an index for visibility lookups (R72).
+ *   Parents use uuid PKs (R8, R64).
  * - Optional TEXT fields are NOT NULL DEFAULT '' (the empty-not-null rule, R18).
  *   Optional date/numeric fields that can be "unset" use NULL (KTD-7).
  * - `magazine_firearm` carries the compatibility ordinal (KTD-8) with both FKs
  *   ON DELETE CASCADE (R35) and a composite PK preventing duplicate pairs (R34).
  * - A single polymorphic `grant` table attaches to a parent by type+id and
  *   carries the permission and the create-on-behalf opt-in flag (KTD-5, R11,
- *   R61). `parent_type` has a CHECK enumerating valid parent families; because
- *   `parent_id` cannot carry an FK, grant cleanup on item delete (R17b) runs in
- *   the same transaction as the delete in U4, with a per-parent ON DELETE
- *   trigger as a DB-layer backstop (added in the trigger migration).
+ *   R61). `parent_type` has a CHECK enumerating valid parent families
+ *   (`firearm`, `magazine`, `ammo`); because `parent_id` cannot carry an FK,
+ *   grant cleanup on item delete (R17b) runs in the same transaction as the
+ *   delete in U4, with a per-parent ON DELETE trigger as a DB-layer backstop
+ *   (added in the trigger migration; `ammo`'s cleanup trigger was added
+ *   alongside the ammo table in migration 0010).
  * - `idempotency` holds `(user_id, idempotency_key)` unique with the stored
  *   result and an expiry (R69, used by U10/U12).
  *
@@ -121,6 +127,46 @@ export const magazine = pgTable(
 );
 
 /**
+ * Ammo lot (#7). The third owned parent (KTD in the ammo plan) — mirrors
+ * `magazine`'s owner-scoped shape exactly. `brand`/`type`/`notes` are
+ * empty-not-null (R18); `caliber` is the only required text field (R2/AS3).
+ * `type` (load type — FMJ/JHP/...) is free text with UI suggestions, never a
+ * controlled/CHECK-enforced set (R6) — see `domain/ammo/constants.ts`.
+ * `grain`/`quantityRounds`/`lowStockThreshold` default to 0 so ADD COLUMN
+ * backfills cleanly (R12-style); low-stock (`quantityRounds <= lowStockThreshold`)
+ * is a derived read, never stored (R9). Deliberately excluded from
+ * `inventory_log` (#46) — the log's parent-type CHECK stays
+ * `('firearm', 'magazine')` (see that CHECK's comment).
+ */
+export const ammo = pgTable(
+  "ammo",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    brand: text("brand").notNull().default(""),
+    caliber: text("caliber").notNull(),
+    type: text("type").notNull().default(""),
+    grain: integer("grain").notNull().default(0),
+    quantityRounds: integer("quantity_rounds").notNull().default(0),
+    lowStockThreshold: integer("low_stock_threshold").notNull().default(0),
+    // NULL = unset (KTD-7); calendar date, no time component.
+    acquiredDate: date("acquired_date"),
+    notes: text("notes").notNull().default(""),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("ammo_owner_id_idx").on(t.ownerId),
+    // R26-style backstop — domain validation is the primary surface.
+    check("ammo_grain_min", sql`${t.grain} >= 0`),
+    check("ammo_quantity_min", sql`${t.quantityRounds} >= 0`),
+    check("ammo_threshold_min", sql`${t.lowStockThreshold} >= 0`),
+  ],
+);
+
+/**
  * Per-owner label-prefix list (#22). A flat set of prefix strings the owner has
  * used, extended on create (single or bulk). Feeds the single-add prefix
  * combobox and drives auto-numbering; the composite PK enforces one row per
@@ -163,8 +209,9 @@ export const magazineFirearm = pgTable(
  * `rounds_fired` over its rows (no stored counter). Inherits owner/grants from
  * the parent firearm: no `owner_id`, no own grant family. The FK ON DELETE
  * CASCADE drops sessions with the firearm (R35). `ammo_id` is a nullable seam for
- * the future Ammo inventory (#7) and intentionally carries NO FK — the ammo table
- * does not exist yet (KTD5).
+ * a future consumption/"consume rounds" feature (not yet filed) and intentionally
+ * carries NO FK even though the `ammo` table now exists (KTD5) — that linkage is
+ * out of scope for the ammo-inventory slice (no round deduction, no reservation).
  */
 export const rangeSession = pgTable(
   "range_session",
@@ -176,7 +223,7 @@ export const rangeSession = pgTable(
     // Calendar date of the session, no time component.
     date: date("date").notNull(),
     roundsFired: integer("rounds_fired").notNull(),
-    // Nullable #7 seam — no FK until the ammo table exists (KTD5).
+    // Nullable consumption seam — intentionally FK-less even though `ammo` now exists (KTD5).
     ammoId: uuid("ammo_id"),
     notes: text("notes").notNull().default(""),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -219,9 +266,63 @@ export const grant = pgTable(
     index("grant_grantee_parent_type_idx").on(t.granteeId, t.parentType),
     check(
       "grant_parent_type_valid",
-      sql`${t.parentType} in ('firearm', 'magazine')`,
+      sql`${t.parentType} in ('firearm', 'magazine', 'ammo')`,
     ),
     check("grant_permission_valid", sql`${t.permission} in ('view', 'edit')`),
+  ],
+);
+
+/**
+ * Inventory event log (U2/U3) — an append-only audit trail of actions taken
+ * against a firearm or magazine (inventoried, cleaned, lubed). Polymorphic
+ * `parent_type`/`parent_id` mirrors `grant`: no FK on `parent_id` (it spans
+ * two parent tables), with a `parent_type` CHECK plus a parent-gated
+ * `event_type` CHECK sourced from `domain/inventory-log/constants.ts` (R3
+ * backstop; the domain validator is the primary gate). `actor_id` FKs to
+ * `user` with `onDelete: "set null"` — the log row is a child of its parent
+ * ITEM (already cleaned up by the parent-delete trigger below), not of the
+ * actor, so deleting a user account must never be blocked by entries that
+ * user authored on someone else's shared item. `actor_id` is always supplied
+ * at write time (never null on insert — `createLogEntry` always passes the
+ * acting user's id); it is only set to NULL later, if that actor's account
+ * is subsequently deleted, which preserves the owner's audit entry with
+ * degraded attribution rather than deleting it or blocking the user delete.
+ * Rows are cleaned up via a parent-delete cascade trigger (added by hand in
+ * the generated migration), matching the `grant` cleanup pattern, since
+ * `parent_id` cannot carry an FK (R13).
+ */
+export const inventoryLog = pgTable(
+  "inventory_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    parentType: text("parent_type").notNull(),
+    parentId: uuid("parent_id").notNull(),
+    eventType: text("event_type").notNull(),
+    actorId: text("actor_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+    // Empty-not-null (R5).
+    notes: text("notes").notNull().default(""),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    // Newest-first per-item lookup (parent, then recency).
+    index("inventory_log_parent_idx").on(
+      t.parentType,
+      t.parentId,
+      t.occurredAt,
+    ),
+    check(
+      "inventory_log_parent_type_valid",
+      sql`${t.parentType} in ('firearm', 'magazine')`,
+    ),
+    // R3 backstop — domain validation is the primary surface. Value lists
+    // come from the single source in domain/inventory-log/constants.ts.
+    check(
+      "inventory_log_event_type_valid",
+      sql`(${t.parentType} = 'firearm' AND ${t.eventType} in (${sql.raw(inList(FIREARM_LOG_EVENTS))})) OR (${t.parentType} = 'magazine' AND ${t.eventType} in (${sql.raw(inList(MAGAZINE_LOG_EVENTS))}))`,
+    ),
   ],
 );
 

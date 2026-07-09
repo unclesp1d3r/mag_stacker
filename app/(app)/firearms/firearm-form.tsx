@@ -184,7 +184,7 @@ export function FirearmForm({
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
-      {serverError ? <Callout tone="danger">{serverError}</Callout> : null}
+      {serverError ? <Callout tone="destructive">{serverError}</Callout> : null}
       <datalist id="firearm-calibers">
         {caliberSuggestions.map((c) => (
           <option key={c} value={c} />

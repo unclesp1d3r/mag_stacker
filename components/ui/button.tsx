@@ -1,17 +1,18 @@
 import type { ButtonHTMLAttributes, Ref } from "react";
 import { cn } from "./cn";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "ghost" | "destructive";
 type Size = "sm" | "md";
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    "bg-blaze text-blaze-ink border-transparent hover:brightness-105 active:brightness-95 shadow-[var(--glow-blaze)]",
+    "bg-primary text-primary-foreground border-transparent hover:brightness-105 active:brightness-95 shadow-[var(--glow-primary)]",
   secondary:
-    "bg-paper-raised text-ink border-line-strong hover:bg-paper-sunken active:bg-paper-sunken",
+    "bg-card text-foreground border-input hover:bg-muted active:bg-muted",
   ghost:
-    "bg-transparent text-ink-soft border-transparent hover:bg-paper-sunken hover:text-ink",
-  danger: "bg-transparent text-danger border-danger/40 hover:bg-danger-soft",
+    "bg-transparent text-ink-soft border-transparent hover:bg-muted hover:text-foreground",
+  destructive:
+    "bg-transparent text-destructive border-destructive/40 hover:bg-danger-soft",
 };
 
 const SIZES: Record<Size, string> = {
@@ -38,7 +39,7 @@ export function Button({
       ref={ref}
       type={type}
       className={cn(
-        "inline-flex items-center justify-center rounded-[var(--radius)] border font-medium",
+        "inline-flex items-center justify-center rounded-md border font-medium",
         "transition-[filter,background-color,color,transform] duration-150",
         // Tactile press — the control settles under your finger, then releases.
         "active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0",

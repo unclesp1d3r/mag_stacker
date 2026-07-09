@@ -1,20 +1,24 @@
 ---
 name: MagStacker
 description: The Machined Console — a two-mode instrument for firearm & magazine inventory.
+# shadcn-canonical semantic token names (dark "Field Console" values shown),
+# plus directly-defined extensions the shadcn default set has no analog for:
+# ink-soft (middle of the ink ramp), steel (info), danger-soft (destructive
+# tint), ok (success). Light "Machined Instrument" values live in app/globals.css.
 colors:
-  anodized: "#ffb240"
-  anodized-ink: "#1a1205"
-  anodized-soft: "#2a2415"
-  paper: "#15181c"
-  paper-raised: "#1a1e24"
-  paper-sunken: "#11151a"
-  ink: "#e9edf1"
+  primary: "#ffb240"
+  primary-foreground: "#1a1205"
+  accent: "#2a2415"
+  background: "#15181c"
+  card: "#1a1e24"
+  muted: "#11151a"
+  foreground: "#e9edf1"
   ink-soft: "#c5ccd4"
-  ink-faint: "#8a929c"
-  line: "#2a3037"
-  line-strong: "#39414a"
+  muted-foreground: "#8a929c"
+  border: "#2a3037"
+  input: "#39414a"
   steel: "#8fb4e8"
-  danger: "#ff6b5e"
+  destructive: "#ff6b5e"
   danger-soft: "#2c1816"
   ok: "#57d98a"
 typography:
@@ -54,14 +58,14 @@ rounded:
   lg: "0.625rem"
 components:
   button-primary:
-    backgroundColor: "{colors.anodized}"
-    textColor: "{colors.anodized-ink}"
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.primary-foreground}"
     rounded: "{rounded.sm}"
     padding: "0 16px"
     height: "40px"
   button-secondary:
-    backgroundColor: "{colors.paper-raised}"
-    textColor: "{colors.ink}"
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.foreground}"
     rounded: "{rounded.sm}"
     padding: "0 16px"
     height: "40px"
@@ -72,19 +76,19 @@ components:
     padding: "0 12px"
     height: "32px"
   input:
-    backgroundColor: "{colors.paper-raised}"
-    textColor: "{colors.ink}"
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.foreground}"
     rounded: "{rounded.sm}"
     padding: "0 12px"
     height: "40px"
   badge:
-    backgroundColor: "{colors.anodized-soft}"
-    textColor: "{colors.anodized}"
+    backgroundColor: "{colors.accent}"
+    textColor: "{colors.primary}"
     rounded: "999px"
     padding: "4px 8px"
   table-header:
-    backgroundColor: "{colors.paper-sunken}"
-    textColor: "{colors.ink-faint}"
+    backgroundColor: "{colors.muted}"
+    textColor: "{colors.muted-foreground}"
     typography: "{typography.label}"
 ---
 

@@ -24,8 +24,8 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-[var(--radius-lg)] border border-dashed border-line-strong bg-paper-sunken/50 px-6 py-16 text-center">
-      <h2 className="text-base font-semibold text-ink">{title}</h2>
+    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-input bg-muted/50 px-6 py-16 text-center">
+      <h2 className="text-base font-semibold text-foreground">{title}</h2>
       {description ? (
         <p className="max-w-sm text-sm text-ink-soft">{description}</p>
       ) : null}
@@ -34,12 +34,12 @@ export function EmptyState({
   );
 }
 
-type Tone = "neutral" | "blaze" | "ok" | "danger";
+type Tone = "neutral" | "primary" | "ok" | "destructive";
 const TONES: Record<Tone, string> = {
-  neutral: "bg-paper-sunken text-ink-soft border-line-strong",
-  blaze: "bg-blaze-soft text-blaze border-blaze/30",
+  neutral: "bg-muted text-ink-soft border-input",
+  primary: "bg-accent text-accent-foreground border-primary/30",
   ok: "bg-[var(--ok)]/12 text-[var(--ok)] border-[var(--ok)]/30",
-  danger: "bg-danger-soft text-danger border-danger/30",
+  destructive: "bg-danger-soft text-destructive border-destructive/30",
 };
 
 export function Badge({
@@ -62,7 +62,7 @@ export function Badge({
 }
 
 export function Callout({
-  tone = "danger",
+  tone = "destructive",
   id,
   children,
 }: {
@@ -74,10 +74,7 @@ export function Callout({
   return (
     <div
       id={id}
-      className={cn(
-        "rounded-[var(--radius)] border px-3 py-2 text-sm",
-        TONES[tone],
-      )}
+      className={cn("rounded-md border px-3 py-2 text-sm", TONES[tone])}
       role="alert"
     >
       {children}

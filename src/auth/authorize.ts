@@ -1,18 +1,14 @@
 import { and, eq } from "drizzle-orm";
 import { type DbOrTx, db as defaultDb } from "@/src/db/client";
-import { firearm, grant, magazine } from "@/src/db/schema";
+import { grant } from "@/src/db/schema";
 import { NotAuthorizedError, NotFoundError } from "./errors";
-import { type ParentType, resolvePermission } from "./visibility";
+import { type ParentType, parentTable, resolvePermission } from "./visibility";
 
 /**
  * The single write-authorization gate (U4, KTD-3/KTD-5, R66/R70). Every
  * mutation routes through one of these so owner-only delete and create-on-behalf
  * are enforced in one place. Framework-agnostic (no Next.js imports).
  */
-
-function parentTable(parentType: ParentType) {
-  return parentType === "firearm" ? firearm : magazine;
-}
 
 /**
  * Resolve the owner for a create/bulk-create. Defaults to the actor; a different

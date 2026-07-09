@@ -1,0 +1,27 @@
+# Residual Review Findings
+
+Source: `ce-code-review` run `20260706-233438-bc8dfa9f` (mode:agent, full roster + cross-model
+adversarial via Codex) on branch `7-add-ammo-inventory-tracking-with-low-stock-alerts-and-summary-rollups`,
+reviewing the ammo-inventory feature (issue #7, plan `docs/plans/2026-07-06-002-feat-ammo-inventory-plan.md`).
+Verdict: **Ready with fixes**. Finding #4 (schema-level CHECK/trigger tests) was applied on-branch
+as `fix(review): schema-level tests for ammo CHECKs and grants-cleanup trigger`.
+
+## Fixed on-branch (originally filed, then fixed per owner direction)
+
+- **P2** `src/domain/summary/summary.ts` — Summary caliber coverage joined firearm/ammo free
+  text by exact equality → **fixed** (normalized comparison keys, raw display preserved) —
+  [#52](https://github.com/unclesp1d3r/mag_stacker/issues/52)
+- **P2** `src/domain/ammo/validate.ts` — Ammo numeric fields lacked int4 upper-bound validation →
+  **fixed for ammo** (`MAX_COUNT` int4 bound + `invalid*` codes/messages + form `max`) —
+  [#53](https://github.com/unclesp1d3r/mag_stacker/issues/53) stays open for the pre-existing
+  magazine capacity fields.
+
+## Human decision gate — RESOLVED (owner confirmed 2026-07-07)
+
+- **P1** `src/domain/ammo/service.ts:68` — **Existing create-on-behalf grants gain ammo-creation
+  authority (plan AS4/KTD7).** `resolveCreateOwner` has no `parentType` predicate, so shipping ammo
+  as a third owned parent silently widens every existing firearm/magazine create-on-behalf grant to
+  also authorize creating ammo lots for that owner. The plan documents this as intentional
+  whole-owner trust. **Owner confirmed on 2026-07-07: whole-owner trust is intended; keep as-is.**
+  `resolveCreateOwner` stays unscoped (AS4 closed). Flagged independently by the cross-model (Codex)
+  adversarial pass and three in-process reviewers.

@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
+import type { ParentType } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
 import {
+  ammo,
   firearm,
+  inventoryLog,
   magazine,
   magazineFirearm,
   rangeSession,
@@ -59,6 +62,26 @@ export async function makeMagazine(
   return row;
 }
 
+export async function makeAmmo(
+  ownerId: string,
+  overrides: Partial<typeof ammo.$inferInsert> = {},
+): Promise<typeof ammo.$inferSelect> {
+  const [row] = await db
+    .insert(ammo)
+    .values({
+      ownerId,
+      brand: "Test Ammo Co",
+      caliber: "9mm",
+      type: "FMJ",
+      grain: 115,
+      quantityRounds: 100,
+      lowStockThreshold: 0,
+      ...overrides,
+    })
+    .returning();
+  return row;
+}
+
 export async function linkMagazineFirearm(
   magazineId: string,
   firearmId: string,
@@ -74,6 +97,34 @@ export async function makeRangeSession(
   const [row] = await db
     .insert(rangeSession)
     .values({ firearmId, date: "2026-01-01", roundsFired: 50, ...overrides })
+    .returning();
+  return row;
+}
+
+/**
+ * Insert an inventory-log row directly (U5). `actor_id` is a real FK to `user`
+ * (`ON DELETE SET NULL`), so callers must always supply a valid user id via
+ * `overrides.actorId` — there is no sensible default actor to fall back to.
+ * `overrides` excludes `parentType`/`parentId`: those are separate params, so
+ * a caller can't accidentally insert a row for a different parent than the
+ * one it passed explicitly.
+ */
+export async function makeLogEntry(
+  parentType: ParentType,
+  parentId: string,
+  overrides: Partial<
+    Omit<typeof inventoryLog.$inferInsert, "parentType" | "parentId">
+  > & { actorId: string },
+): Promise<typeof inventoryLog.$inferSelect> {
+  const [row] = await db
+    .insert(inventoryLog)
+    .values({
+      eventType: "inventoried",
+      occurredAt: new Date("2026-01-01T00:00:00.000Z"),
+      ...overrides,
+      parentType,
+      parentId,
+    })
     .returning();
   return row;
 }

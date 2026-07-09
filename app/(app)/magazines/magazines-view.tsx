@@ -147,7 +147,7 @@ export function MagazinesView({
           <Link
             href={`/magazines/${row.original.id}`}
             aria-label={linkLabel(row.original)}
-            className="font-medium text-blaze hover:underline"
+            className="font-medium text-primary hover:underline"
           >
             {row.original.brandModel}
           </Link>
@@ -221,7 +221,7 @@ export function MagazinesView({
                 itemName={item.brandModel}
               />
               <Button
-                variant="danger"
+                variant="destructive"
                 size="sm"
                 onClick={() => requestDelete(item)}
               >
@@ -355,7 +355,8 @@ export function MagazinesView({
           htmlFor={searchId}
           className="mb-1 block text-xs font-medium text-ink-soft"
         >
-          Search brand / model <span className="text-ink-faint">( / )</span>
+          Search brand / model{" "}
+          <span className="text-muted-foreground">( / )</span>
         </label>
         <Input
           id={searchId}
@@ -467,7 +468,9 @@ export function MagazinesView({
 
       {form.open ? (
         <Card>
-          <h2 className="mb-4 text-sm font-semibold text-ink">New magazine</h2>
+          <h2 className="mb-4 text-sm font-semibold text-foreground">
+            New magazine
+          </h2>
           <MagazineForm
             firearmOptions={firearmOptions}
             caliberSuggestions={caliberSuggestions}

@@ -2,7 +2,14 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../client";
-import { firearm, grant, magazine, magazineFirearm, user } from "../schema";
+import {
+  ammo,
+  firearm,
+  grant,
+  magazine,
+  magazineFirearm,
+  user,
+} from "../schema";
 
 const live = process.env.DATABASE_URL ? describe : describe.skip;
 
@@ -203,6 +210,44 @@ live("core inventory schema (U3)", () => {
     expect(grants).toHaveLength(0);
   });
 
+  test("ammo CHECK constraints reject negative grain, quantity, and threshold", async () => {
+    await expectRejects(
+      db.insert(ammo).values({ ownerId, caliber: "9mm", grain: -1 }),
+    );
+
+    await expectRejects(
+      db.insert(ammo).values({ ownerId, caliber: "9mm", quantityRounds: -1 }),
+    );
+
+    await expectRejects(
+      db
+        .insert(ammo)
+        .values({ ownerId, caliber: "9mm", lowStockThreshold: -1 }),
+    );
+  });
+
+  test("deleting an ammo lot removes its grant rows via the cleanup trigger (R17b backstop)", async () => {
+    const [lot] = await db
+      .insert(ammo)
+      .values({ ownerId, caliber: "9mm" })
+      .returning();
+    await db.insert(grant).values({
+      ownerId,
+      granteeId: ownerId,
+      parentType: "ammo",
+      parentId: lot.id,
+      permission: "view",
+    });
+
+    await db.delete(ammo).where(eq(ammo.id, lot.id));
+
+    const grants = await db
+      .select()
+      .from(grant)
+      .where(and(eq(grant.parentType, "ammo"), eq(grant.parentId, lot.id)));
+    expect(grants).toHaveLength(0);
+  });
+
   test("visibility indexes exist on owner_id and grant (grantee_id, parent_type) (R72)", async () => {
     const rows = await db.execute<{ indexname: string }>(
       sql`select indexname from pg_indexes where schemaname = 'public'`,
@@ -210,6 +255,7 @@ live("core inventory schema (U3)", () => {
     const names = rows.rows.map((r) => r.indexname);
     expect(names).toContain("firearm_owner_id_idx");
     expect(names).toContain("magazine_owner_id_idx");
+    expect(names).toContain("ammo_owner_id_idx");
     expect(names).toContain("grant_grantee_parent_type_idx");
   });
 });

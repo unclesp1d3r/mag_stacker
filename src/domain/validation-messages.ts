@@ -18,7 +18,11 @@ export const VALIDATION_MESSAGES: Record<string, string> = {
   actionRequired: "Choose a firearm action",
   emptyBrandModel: "Brand/model is required",
   baseCapacityTooLow: "Base capacity must be at least 1",
+  baseCapacityInvalid:
+    "Base capacity must be a whole number of at most 2,147,483,647",
   negativeExtensionRounds: "Extension rounds cannot be negative",
+  extensionRoundsInvalid:
+    "Extension rounds must be a whole number of at most 2,147,483,647",
   invalidMagpulLabel: `Label may only contain ${MAGPUL_LABEL_ALLOWED_DESCRIPTION}`,
   magpulLabelTooLong: `Label must be ${MAX_LABEL_LENGTH} characters or fewer`,
   addCountTooLow: "Count must be at least 1",
@@ -26,6 +30,17 @@ export const VALIDATION_MESSAGES: Record<string, string> = {
   invalidRoundsFired: "Rounds fired must be a whole number of at least 1",
   emptyDate: "Date is required",
   invalidDate: "Enter a valid date",
+  invalidParentType: "Invalid inventory item type",
+  invalidEventType: "Select a valid event type",
+  occurredAtInFuture: "Date/time cannot be in the future",
+  invalidOccurredAt: "Enter a valid date and time",
+  negativeGrain: "Grain cannot be negative",
+  negativeQuantity: "Quantity cannot be negative",
+  negativeThreshold: "Low-stock threshold cannot be negative",
+  invalidGrain: "Grain must be a whole number of at most 2,147,483,647",
+  invalidQuantity: "Quantity must be a whole number of at most 2,147,483,647",
+  invalidThreshold:
+    "Low-stock threshold must be a whole number of at most 2,147,483,647",
 };
 
 export function messageForCode(code: string): string {

@@ -20,13 +20,28 @@ export type MagazineValidationCode =
   | "emptyBrandModel"
   | "emptyCaliber"
   | "baseCapacityTooLow"
+  | "baseCapacityInvalid"
   | "negativeExtensionRounds"
+  | "extensionRoundsInvalid"
   | "invalidMagpulLabel"
   | "magpulLabelTooLong"
   | "addCountTooLow"
   | "addCountTooHigh";
 
 export const MAX_BULK_ADD_COUNT = 1000;
+
+/**
+ * Postgres int4 max (#53). Numeric fields are validated as whole numbers within
+ * this bound so an oversized or non-integer value fails with a field error
+ * instead of a raw out-of-range DB error. Mirrors `MAX_COUNT` in the ammo
+ * validator — see docs/solutions/logic-errors/num-helper-coerces-nan-to-zero-bypassing-ammo-validation.md.
+ */
+export const MAX_COUNT = 2_147_483_647;
+
+/** True when `n` is a whole number the int4 columns can store. Rejects NaN. */
+function isStorableCount(n: number): boolean {
+  return Number.isInteger(n) && n <= MAX_COUNT;
+}
 
 export interface MagazineFields {
   brandModel: string;
@@ -60,7 +75,11 @@ export function validateMagazine(
   if (input.brandModel.trim() === "") codes.push("emptyBrandModel");
   if (input.caliber.trim() === "") codes.push("emptyCaliber");
   if (input.baseCapacity < 1) codes.push("baseCapacityTooLow");
+  else if (!isStorableCount(input.baseCapacity))
+    codes.push("baseCapacityInvalid");
   if (input.extensionRounds < 0) codes.push("negativeExtensionRounds");
+  else if (!isStorableCount(input.extensionRounds))
+    codes.push("extensionRoundsInvalid");
   if (context?.ownerMagpulMode === true && context.label !== undefined) {
     const isChanged =
       context.previousLabel === undefined ||
@@ -73,7 +92,9 @@ export function validateMagazine(
         codes.push("magpulLabelTooLong");
     }
   }
-  if (addCount < 1) codes.push("addCountTooLow");
+  // `!Number.isInteger` also rejects NaN from an unparseable/cleared bulk-count
+  // field (the same class of bug as baseCapacity/extensionRounds above).
+  if (!Number.isInteger(addCount) || addCount < 1) codes.push("addCountTooLow");
   if (addCount > MAX_BULK_ADD_COUNT) codes.push("addCountTooHigh");
   return codes;
 }

@@ -100,7 +100,7 @@ export function RangeSessionForm({
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
-      {serverError ? <Callout tone="danger">{serverError}</Callout> : null}
+      {serverError ? <Callout tone="destructive">{serverError}</Callout> : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
           label="Date"

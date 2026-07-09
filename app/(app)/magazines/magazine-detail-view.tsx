@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/surface";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import type { Permission } from "@/src/auth/visibility";
+import { InventoryLogHistory } from "../inventory-log/inventory-log-history";
 import { deleteMagazineAction } from "./actions";
 import {
   type FirearmOption,
@@ -38,11 +39,13 @@ interface MagazineDetailViewProps {
 /** One read-only label/value row. */
 function DetailRow({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex flex-col gap-0.5 border-b border-line py-2 last:border-b-0 sm:flex-row sm:gap-4">
-      <dt className="w-40 shrink-0 text-xs font-medium uppercase tracking-wide text-ink-faint">
+    <div className="flex flex-col gap-0.5 border-b border-border py-2 last:border-b-0 sm:flex-row sm:gap-4">
+      <dt className="w-40 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </dt>
-      <dd className="text-sm text-ink">{value}</dd>
+      <dd className="min-w-0 wrap-break-word text-sm text-foreground">
+        {value}
+      </dd>
     </div>
   );
 }
@@ -51,7 +54,7 @@ function orDash(value: string): ReactNode {
   return value.trim() !== "" ? (
     value
   ) : (
-    <span className="text-ink-faint">—</span>
+    <span className="text-muted-foreground">—</span>
   );
 }
 
@@ -88,17 +91,17 @@ export function MagazineDetailView({
     <div className="space-y-6">
       <Link
         href="/magazines"
-        className="inline-block text-sm font-medium text-blaze hover:underline"
+        className="inline-block text-sm font-medium text-primary hover:underline"
       >
         ← Magazines
       </Link>
 
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-line pb-4">
-        <div className="space-y-1">
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4">
+        <div className="min-w-0 space-y-1">
           <h1
             ref={headingRef}
             tabIndex={-1}
-            className="text-pretty text-[1.75rem] font-bold leading-none tracking-[-0.02em] text-ink outline-none"
+            className="text-pretty wrap-break-word text-[1.75rem] font-bold leading-none tracking-[-0.02em] text-foreground outline-none"
           >
             {magazine.brandModel}
           </h1>
@@ -107,7 +110,7 @@ export function MagazineDetailView({
               {/* Magazine actions are owner-only (R13), so a non-owner grantee is
                   functionally view-only regardless of the raw grant — don't
                   advertise an "edit" that can't do anything. */}
-              <Badge tone="blaze">Shared with you · view</Badge>
+              <Badge tone="primary">Shared with you · view</Badge>
             </p>
           ) : null}
         </div>
@@ -128,7 +131,7 @@ export function MagazineDetailView({
               </Button>
             ) : null}
             <Button
-              variant="danger"
+              variant="destructive"
               size="sm"
               onClick={() => del.request(magazine)}
             >
@@ -140,7 +143,9 @@ export function MagazineDetailView({
 
       {editing ? (
         <Card>
-          <h2 className="mb-4 text-sm font-semibold text-ink">Edit magazine</h2>
+          <h2 className="mb-4 text-sm font-semibold text-foreground">
+            Edit magazine
+          </h2>
           <MagazineForm
             initial={magazine}
             firearmOptions={firearmOptions}
@@ -215,10 +220,17 @@ export function MagazineDetailView({
         </Card>
       )}
 
+      {/* Magazine logging is owner-only (R13/KTD2), matching authorizeOwnerOnlyUpdate. */}
+      <InventoryLogHistory
+        parentType="magazine"
+        parentId={magazine.id}
+        canEdit={isOwner}
+      />
+
       <ConfirmDialog
         open={del.target !== null}
         title={`Delete “${magazine.brandModel}”?`}
-        description="This removes the magazine from your inventory and can’t be undone."
+        description="This removes the magazine from your inventory and can't be undone."
         pending={del.pending}
         onConfirm={del.confirm}
         onCancel={del.cancel}
