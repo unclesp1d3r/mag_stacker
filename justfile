@@ -167,6 +167,16 @@ build:
 start:
     {{ mise_exec }} bun run start
 
+# Regenerate every README demo image + the walkthrough gif from the current UI.
+# Run before a release. Requires Docker (Testcontainers) and ffmpeg. The demo
+# specs are gated behind DEMO=1 so they never run in the normal test suite.
+[group('docs')]
+demo-images:
+    DEMO=1 {{ mise_exec }} bun run test:e2e e2e/demo-accessories.spec.ts e2e/demo-magazines.spec.ts e2e/demo-summary.spec.ts e2e/demo-walkthrough.spec.ts
+    ffmpeg -y -i docs/images/demo-walkthrough.webm -vf "fps=12,scale=1000:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" docs/images/demo.gif
+    rm -rf docs/images/demo-walkthrough.webm docs/images/.video
+    echo "[demo-images] regenerated docs/images/*.png and demo.gif from the current UI"
+
 # Database
 
 # Generate Drizzle migrations from the schema
