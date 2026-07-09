@@ -1,5 +1,8 @@
 import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { resolveAccessoryPermission } from "@/src/auth/accessory-visibility";
+import {
+  listVisibleAccessoryIds,
+  resolveAccessoryPermission,
+} from "@/src/auth/accessory-visibility";
 import { authorizeUpdate } from "@/src/auth/authorize";
 import { NotFoundError } from "@/src/auth/errors";
 import { getVisibleIds, resolvePermission } from "@/src/auth/visibility";
@@ -172,8 +175,12 @@ export async function lifetimeRoundTotals(
  * Derived rounds-fired total for one accessory (U7 seed for future
  * range-performance logging): `sum(rounds_fired)` over every session the
  * accessory was linked to via `range_session_accessory`, regardless of
- * whether the accessory is still mounted on that session's firearm today.
- * Not-found when the accessory is outside the requester's visible set (R70).
+ * whether the accessory is still mounted on that session's firearm today —
+ * but ONLY over sessions whose firearm is in the requester's visible set.
+ * Without that filter, a visible (e.g. currently-owned) accessory that once
+ * rode on a firearm the actor can't see would leak that firearm's rounds
+ * fired into the total the moment the accessory is remounted. Not-found when
+ * the accessory itself is outside the requester's visible set (R70).
  */
 export async function accessoryRoundsFired(
   actorId: string,
@@ -181,6 +188,8 @@ export async function accessoryRoundsFired(
 ): Promise<number> {
   const permission = await resolveAccessoryPermission(db, actorId, accessoryId);
   if (permission === null) throw new NotFoundError();
+  const visibleFirearmIds = await getVisibleIds(db, actorId, "firearm");
+  if (visibleFirearmIds.size === 0) return 0;
   const [row] = await db
     .select({
       // sum(integer) is bigint; the pg driver returns it as a string.
@@ -191,7 +200,12 @@ export async function accessoryRoundsFired(
       rangeSession,
       eq(rangeSessionAccessory.rangeSessionId, rangeSession.id),
     )
-    .where(eq(rangeSessionAccessory.accessoryId, accessoryId));
+    .where(
+      and(
+        eq(rangeSessionAccessory.accessoryId, accessoryId),
+        inArray(rangeSession.firearmId, [...visibleFirearmIds]),
+      ),
+    );
   return Number(row?.total ?? 0);
 }
 
@@ -236,30 +250,43 @@ export async function listSessionAccessories(
         isNotNull(rangeSessionAccessory.accessoryId),
       ),
     );
+  const linkedIds = links
+    .map((link) => link.accessoryId)
+    .filter((id): id is string => id !== null);
+  if (linkedIds.length === 0) return [];
 
-  const results: SessionAccessoryLink[] = [];
-  for (const link of links) {
-    const id = link.accessoryId;
-    if (!id) continue;
-    const accessoryPerm = await resolveAccessoryPermission(db, actorId, id);
-    if (accessoryPerm === null) {
-      results.push({ id, visible: false });
-      continue;
-    }
-    const [row] = await db
-      .select({
-        category: accessory.category,
-        brand: accessory.brand,
-        model: accessory.model,
-      })
-      .from(accessory)
-      .where(eq(accessory.id, id))
-      .limit(1);
-    if (!row) {
-      results.push({ id, visible: false });
-      continue;
-    }
-    results.push({ id, visible: true, ...row });
-  }
-  return results;
+  // Compute the viewer's visible accessory set once (instead of resolving
+  // permission per linked accessory) and batch-fetch the visible rows in a
+  // single `inArray` query — avoids the prior per-accessory N+1.
+  const visibleAccessoryIds = await listVisibleAccessoryIds(db, actorId);
+  const visibleLinkedIds = linkedIds.filter((id) =>
+    visibleAccessoryIds.has(id),
+  );
+  const rows =
+    visibleLinkedIds.length === 0
+      ? []
+      : await db
+          .select({
+            id: accessory.id,
+            category: accessory.category,
+            brand: accessory.brand,
+            model: accessory.model,
+          })
+          .from(accessory)
+          .where(inArray(accessory.id, visibleLinkedIds));
+  const rowById = new Map(rows.map((row) => [row.id, row]));
+
+  return linkedIds.map((id): SessionAccessoryLink => {
+    const row = rowById.get(id);
+    // A visible id whose row vanished between the two queries (e.g. a
+    // concurrent delete) falls back to the same placeholder as "not visible".
+    if (!row) return { id, visible: false };
+    return {
+      id,
+      visible: true,
+      category: row.category,
+      brand: row.brand,
+      model: row.model,
+    };
+  });
 }

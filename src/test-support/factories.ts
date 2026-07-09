@@ -84,10 +84,10 @@ export async function makeAmmo(
 }
 
 /**
- * Insert an accessory row directly (U8). Mirrors the local helper duplicated
- * in `src/auth/__tests__/accessory-visibility.test.ts` and
- * `src/domain/accessories/__tests__/service.test.ts` — those predate this
- * unit and stayed inline; new tests should prefer this shared factory.
+ * Insert an accessory row directly (U8). A couple of earlier accessory specs
+ * (`src/auth/__tests__/accessory-visibility.test.ts`,
+ * `src/domain/accessories/__tests__/service.test.ts`) still seed rows with
+ * their own inline copies; new tests should prefer this shared factory.
  * `currentFirearmId` defaults unset (unmounted); pass it via `overrides` to
  * seed a mounted accessory.
  */

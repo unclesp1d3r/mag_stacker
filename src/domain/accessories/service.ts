@@ -62,7 +62,9 @@ function persistableFields(
 ) {
   return {
     // Raw values persisted verbatim (R18/R19); optional text is empty-not-null.
-    category: input.category,
+    // `category` is trimmed so the list view's exact-match category grouping
+    // can't be split by incidental leading/trailing whitespace.
+    category: input.category.trim(),
     brand: input.brand ?? "",
     model: input.model ?? "",
     serialNumber: input.serialNumber ?? "",
@@ -130,11 +132,14 @@ export async function createAccessory(
   return db.transaction(async (tx) => {
     const ownerId = await resolveCreateOwner(tx, actorId, input.ownerId);
 
-    if (input.firearmId) {
-      await authorizeCreateMount(tx, actorId, ownerId, input.firearmId);
+    // Normalize the mount target once so the authorization guard and the
+    // persisted value can never disagree: an empty-string `firearmId` is
+    // treated as unmounted everywhere, never persisted into the uuid FK.
+    const mountedFirearmId = input.firearmId || null;
+    if (mountedFirearmId) {
+      await authorizeCreateMount(tx, actorId, ownerId, mountedFirearmId);
     }
 
-    const mountedFirearmId = input.firearmId ?? null;
     const [row] = await tx
       .insert(accessory)
       .values({

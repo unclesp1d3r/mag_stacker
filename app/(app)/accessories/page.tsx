@@ -4,10 +4,9 @@ import { getCurrentUser } from "@/src/auth/session";
 import { visibleFirearmPermissions } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
 import { listAccessories } from "@/src/domain/accessories/service";
-import { firearmDisplayName } from "@/src/domain/firearms/display";
+import { buildFirearmMountContext } from "@/src/domain/firearms/mount-options";
 import { listFirearms } from "@/src/domain/firearms/service";
 import { AccessoriesView, type AccessoryListItem } from "./accessories-view";
-import type { EditableFirearmOption } from "./accessory-form";
 
 interface PageProps {
   searchParams: Promise<{ mountFirearm?: string }>;
@@ -25,28 +24,16 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
     visibleFirearmPermissions(db, user.id),
   ]);
 
-  // All firearms visible to the actor (owned ∪ shared) — enough to name a
-  // mounted accessory's current firearm even when the actor can't edit it
-  // (e.g. it's mounted on a firearm shared to them view-only).
-  const firearmNames: Record<string, string> = {};
-  for (const f of firearms) firearmNames[f.id] = firearmDisplayName(f);
-
-  // The mount selector only offers firearms the actor can EDIT (owner or
-  // edit permission, R17) AND that are owned by the accessory's future owner.
   // On create, the accessory's owner is the actor themself (KTD5's
   // same-owner mount guard), so a firearm the actor merely has an edit GRANT
   // on — but doesn't own — would pass permission but fail
   // `authorizeCreateMount`'s cross-tenant check at submit; excluding it here
   // keeps the picker's options a strict subset of what will actually save.
-  const editableFirearms: EditableFirearmOption[] = firearms
-    .filter((f) => {
-      const permission = permissions.get(f.id);
-      return (
-        f.ownerId === user.id &&
-        (permission === "owner" || permission === "edit")
-      );
-    })
-    .map((f) => ({ id: f.id, label: firearmDisplayName(f) }));
+  const { firearmNames, editableFirearms } = buildFirearmMountContext(
+    firearms,
+    permissions,
+    user.id,
+  );
 
   // Honor a pre-fill target from a firearm's "Add accessory" link (F1) only
   // when the actor can actually mount to it.

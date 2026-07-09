@@ -315,7 +315,7 @@ export function FirearmForm({
           className="size-4 accent-primary"
         />
         <span className="text-sm text-foreground">
-          NFA-regulated item (suppressor, SBR, SBS, etc.)
+          NFA-regulated item (SBR, SBS, AOW, etc.)
         </span>
       </label>
       <div className="flex items-center gap-2">

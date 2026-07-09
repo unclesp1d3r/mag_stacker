@@ -5,11 +5,10 @@ import { visibleFirearmPermissions } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
 import { costCentsToInputValue } from "@/src/domain/accessories/display";
 import { getAccessory } from "@/src/domain/accessories/service";
-import { firearmDisplayName } from "@/src/domain/firearms/display";
+import { buildFirearmMountContext } from "@/src/domain/firearms/mount-options";
 import { listFirearms } from "@/src/domain/firearms/service";
 import { isUuid } from "@/src/lib/uuid";
 import { AccessoryDetailView } from "../accessory-detail-view";
-import type { EditableFirearmOption } from "../accessory-form";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -39,20 +38,16 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
     visibleFirearmPermissions(db, user.id),
   ]);
 
-  const firearmNames: Record<string, string> = {};
-  for (const f of firearms) firearmNames[f.id] = firearmDisplayName(f);
-
   // The reassign-mount picker must offer only firearms owned by the
   // ACCESSORY's owner (`row.ownerId`, not the actor — an edit-grantee acting
   // on someone else's mounted accessory must still only relocate it among
   // that owner's own guns, KTD5's cross-tenant guard) AND editable by the
   // acting user.
-  const editableFirearms: EditableFirearmOption[] = firearms
-    .filter((f) => {
-      const p = permissions.get(f.id);
-      return f.ownerId === row.ownerId && (p === "owner" || p === "edit");
-    })
-    .map((f) => ({ id: f.id, label: firearmDisplayName(f) }));
+  const { firearmNames, editableFirearms } = buildFirearmMountContext(
+    firearms,
+    permissions,
+    row.ownerId,
+  );
 
   return (
     <AccessoryDetailView

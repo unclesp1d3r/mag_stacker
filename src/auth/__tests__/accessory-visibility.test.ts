@@ -33,8 +33,9 @@ async function expectRejects(fn: () => Promise<unknown>): Promise<void> {
 }
 
 /**
- * Insert an accessory row directly. Not added to test-support/factories.ts —
- * that file belongs to a different unit (U4). Mirrors that factory's shape.
+ * Insert an accessory row directly. A shared `makeAccessory` now lives in
+ * `src/test-support/factories.ts`; this local copy is kept inline to avoid
+ * churning this spec.
  */
 async function makeAccessory(
   ownerId: string,
