@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { NotFoundError } from "@/src/auth/errors";
+import { NotAuthorizedError, NotFoundError } from "@/src/auth/errors";
 import { createGrant } from "@/src/auth/grants";
 import { db } from "@/src/db/client";
 import { ValidationError } from "@/src/domain/errors";
@@ -176,5 +176,57 @@ live("accessory service (accessory plan U4)", () => {
     await expect(deleteAccessory(outsider, acc.id)).rejects.toBeInstanceOf(
       NotFoundError,
     );
+  });
+
+  test("a firearm VIEW-grantee cannot update, delete, or mount its mounted accessory (NotAuthorizedError)", async () => {
+    const viewer = await createUser("AccSvcViewGrantee");
+    const fa = await makeFirearm(owner, { name: "View-grantee FA" });
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: viewer,
+      parentType: "firearm",
+      parentId: fa.id,
+      permission: "view",
+    });
+    const mounted = await createAccessory(owner, {
+      category: "optic",
+      firearmId: fa.id,
+    });
+
+    await expect(
+      updateAccessory(viewer, mounted.id, { category: "optic", brand: "X" }),
+    ).rejects.toBeInstanceOf(NotAuthorizedError);
+    await expect(deleteAccessory(viewer, mounted.id)).rejects.toBeInstanceOf(
+      NotAuthorizedError,
+    );
+    await expect(
+      mountAccessory(viewer, mounted.id, null),
+    ).rejects.toBeInstanceOf(NotAuthorizedError);
+
+    await deleteUsers(viewer);
+  });
+
+  test("createAccessory with a firearmId owned by a different user than the accessory's resolved owner throws (cross-tenant mount guard)", async () => {
+    const otherOwnersFirearm = await makeFirearm(outsider, {
+      name: "Cross-tenant create-mount target FA",
+    });
+    // The actor (owner) can edit the outsider's firearm via a grant, but the
+    // new accessory's resolved owner is the actor themself — the firearm
+    // owner and the accessory owner differ, so `authorizeCreateMount` must
+    // reject even though the actor holds edit rights on the target.
+    await createGrant(db, {
+      actorId: outsider,
+      granteeId: owner,
+      parentType: "firearm",
+      parentId: otherOwnersFirearm.id,
+      permission: "edit",
+    });
+
+    await expect(
+      createAccessory(owner, {
+        category: "optic",
+        firearmId: otherOwnersFirearm.id,
+      }),
+    ).rejects.toBeInstanceOf(NotAuthorizedError);
   });
 });

@@ -12,6 +12,7 @@ import {
   listVisibleAccessoryIds,
   resolveAccessoryPermission,
 } from "../accessory-visibility";
+import { NotAuthorizedError } from "../errors";
 import { createGrant } from "../grants";
 
 const live = process.env.DATABASE_URL ? describe : describe.skip;
@@ -135,14 +136,35 @@ live("accessory visibility & mount authorization (U3)", () => {
     ).toBeNull();
   });
 
-  test("authorizeMount: mounting onto a firearm the actor can't edit throws", async () => {
+  test("authorizeMount: mounting onto a firearm the actor can't edit throws NotAuthorizedError", async () => {
     const acc = await makeAccessory(owner);
     const otherOwnersFirearm = await makeFirearm(outsider, {
       name: "Outsider's FA",
     });
+    // View-only grant: the actor can SEE the firearm (so it isn't "not-found")
+    // but can't edit it — a genuine can't-edit denial, distinct from a
+    // firearm the actor has no relation to at all (covered separately below).
+    await createGrant(db, {
+      actorId: outsider,
+      granteeId: owner,
+      parentType: "firearm",
+      parentId: otherOwnersFirearm.id,
+      permission: "view",
+    });
+
+    await expect(
+      authorizeMount(db, owner, acc.id, otherOwnersFirearm.id),
+    ).rejects.toBeInstanceOf(NotAuthorizedError);
+  });
+
+  test("authorizeMount: mounting onto a firearm the actor has no relation to at all is not-found (existence-hiding)", async () => {
+    const acc = await makeAccessory(owner);
+    const invisibleFirearm = await makeFirearm(outsider, {
+      name: "Invisible-to-actor FA",
+    });
 
     await expectRejects(() =>
-      authorizeMount(db, owner, acc.id, otherOwnersFirearm.id),
+      authorizeMount(db, owner, acc.id, invisibleFirearm.id),
     );
   });
 
@@ -180,9 +202,9 @@ live("accessory visibility & mount authorization (U3)", () => {
       .set({ currentFirearmId: ownersFirearm.id })
       .where(eq(accessory.id, acc.id));
 
-    await expectRejects(() =>
+    await expect(
       authorizeMount(db, grantee, acc.id, otherOwnersFirearm.id),
-    );
+    ).rejects.toBeInstanceOf(NotAuthorizedError);
 
     await deleteUsers(grantee);
   });
@@ -210,5 +232,24 @@ live("accessory visibility & mount authorization (U3)", () => {
   test("authorizeMount: outsider with no permission on the accessory is not-found", async () => {
     const acc = await makeAccessory(owner);
     await expectRejects(() => authorizeMount(db, outsider, acc.id, null));
+  });
+
+  test("authorizeMount: a firearm view-grantee cannot mount/reassign/unmount its mounted accessory (NotAuthorizedError)", async () => {
+    const viewer = await createUser("AccViewGranteeMount");
+    const fa = await makeFirearm(owner, { name: "View-only FA for mount" });
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: viewer,
+      parentType: "firearm",
+      parentId: fa.id,
+      permission: "view",
+    });
+    const acc = await makeAccessory(owner, { currentFirearmId: fa.id });
+
+    await expect(
+      authorizeMount(db, viewer, acc.id, null),
+    ).rejects.toBeInstanceOf(NotAuthorizedError);
+
+    await deleteUsers(viewer);
   });
 });
