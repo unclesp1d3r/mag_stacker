@@ -1,5 +1,5 @@
 /**
- * Accessory category suggestions (#accessory-nfa plan).
+ * Accessory category suggestions (#8 plan).
  *
  * `category` is free text, exactly like ammo's `caliber`/`type` (R6-style).
  * This list only seeds the UI combobox with common values; it is never

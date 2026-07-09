@@ -212,9 +212,12 @@ export type SessionAccessoryLink =
  * whose `accessory_id` has gone null (the accessory was deleted, R19) carries
  * no identifiable accessory and is omitted entirely. A join row whose
  * accessory the viewer can no longer see (e.g. it has since been unmounted,
- * R7) is returned as a `{ id, visible: false }` placeholder — never its
- * serial/cost/other fields. Not-found when the session's parent firearm is
- * outside the requester's visible set (R70 existence-hiding).
+ * R7) is returned as a `{ id, visible: false }` placeholder. When visible,
+ * this function only ever fetches category/brand/model — never serial or
+ * cost — so the placeholder branch has nothing sensitive to withhold; it
+ * exists purely to avoid naming an accessory the viewer can no longer see.
+ * Not-found when the session's parent firearm is outside the requester's
+ * visible set (R70 existence-hiding).
  */
 export async function listSessionAccessories(
   actorId: string,

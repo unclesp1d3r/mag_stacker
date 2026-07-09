@@ -21,9 +21,9 @@ export interface MountedAccessoryRow {
 interface MountedAccessoriesProps {
   firearmId: string;
   accessories: MountedAccessoryRow[];
-  /** Derived sum of `costCents` across `accessories` (null treated as 0). Never stored (R9). */
+  /** Derived sum of `costCents` across `accessories` (null treated as 0). Never stored (R11). */
   totalValueCents: number;
-  /** True when the actor owns or has edit rights on the firearm (KTD7). */
+  /** True when the actor owns or has edit rights on the firearm (R9). */
   canEdit: boolean;
 }
 

@@ -37,7 +37,7 @@ interface FirearmDetailViewProps {
   manufacturerSuggestions: string[];
   subtypeSuggestions: string[];
   mountedAccessories: MountedAccessoryRow[];
-  /** Derived sum of the mounted accessories' `costCents` (null treated as 0); never stored (R9). */
+  /** Derived sum of the mounted accessories' `costCents` (null treated as 0); never stored (R11). */
   accessoryValueCents: number;
 }
 

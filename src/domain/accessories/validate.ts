@@ -1,5 +1,5 @@
 /**
- * Accessory validation (#accessory-nfa plan). Pure — no DB, no Next.js.
+ * Accessory validation (#8 plan). Pure — no DB, no Next.js.
  *
  * Returns ALL failure codes together (parity with the ammo/firearm/magazine
  * validators), not first-only. `category` is the only required text field
