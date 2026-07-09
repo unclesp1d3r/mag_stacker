@@ -42,10 +42,15 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
   const firearmNames: Record<string, string> = {};
   for (const f of firearms) firearmNames[f.id] = firearmDisplayName(f);
 
+  // The reassign-mount picker must offer only firearms owned by the
+  // ACCESSORY's owner (`row.ownerId`, not the actor — an edit-grantee acting
+  // on someone else's mounted accessory must still only relocate it among
+  // that owner's own guns, KTD5's cross-tenant guard) AND editable by the
+  // acting user.
   const editableFirearms: EditableFirearmOption[] = firearms
     .filter((f) => {
       const p = permissions.get(f.id);
-      return p === "owner" || p === "edit";
+      return f.ownerId === row.ownerId && (p === "owner" || p === "edit");
     })
     .map((f) => ({ id: f.id, label: firearmDisplayName(f) }));
 

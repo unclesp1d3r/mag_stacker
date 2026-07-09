@@ -66,6 +66,13 @@ interface AccessoryFormProps {
    * firearm's detail page ("Add accessory", F1). Ignored on edit.
    */
   initialFirearmId?: string;
+  /**
+   * The accessory's current mount on edit (ignored on create, where the mount
+   * select below drives it instead). Gates the "Installed date" field (R6) —
+   * an unmounted accessory can never carry an installed date, so the field is
+   * hidden and submits nothing until a mount exists.
+   */
+  currentFirearmId?: string | null;
   /** `touchedId` flashes the just-created/edited row. */
   onDone: (touchedId?: string) => void;
   onCancel: () => void;
@@ -75,6 +82,7 @@ export function AccessoryForm({
   initial,
   editableFirearms,
   initialFirearmId,
+  currentFirearmId,
   onDone,
   onCancel,
 }: AccessoryFormProps) {
@@ -94,6 +102,13 @@ export function AccessoryForm({
   const [codes, setCodes] = useState<string[]>([]);
   const [serverError, setServerError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // The "Installed date" field only makes sense once a mount exists (R6): on
+  // create, that's whatever the mount select below currently holds; on edit,
+  // the mount select isn't shown at all, so it's the accessory's existing
+  // `currentFirearmId` (fixed for the form's lifetime — reassignment happens
+  // via the detail view's mount control, not this form).
+  const isMounted = isEdit ? Boolean(currentFirearmId) : firearmId !== "";
 
   const categoryId = useId();
   const brandId = useId();
@@ -119,7 +134,9 @@ export function AccessoryForm({
     const fields = {
       category: values.category,
       costCents,
-      installedDate: values.installedDate || null,
+      // Hidden/unmounted → submits nothing (R6); the service layer also
+      // backstops this on both create and update.
+      installedDate: isMounted ? values.installedDate || null : null,
     };
     const found = validateAccessory(fields);
     setCodes(found);
@@ -219,20 +236,25 @@ export function AccessoryForm({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field
-          label="Installed date"
-          controlId={dateId}
-          hint="Optional"
-          error={firstMessage(codes, ["invalidInstalledDate"])}
-        >
-          <Input
-            id={dateId}
-            type="date"
-            value={values.installedDate}
-            onChange={(e) => set("installedDate", e.target.value)}
-            aria-invalid={codes.includes("invalidInstalledDate")}
-          />
-        </Field>
+        {/* Installed date requires a mount (R6) — hidden and submits nothing
+            until one exists: the mount select below on create, or the
+            accessory's existing mount on edit. */}
+        {isMounted ? (
+          <Field
+            label="Installed date"
+            controlId={dateId}
+            hint="Optional"
+            error={firstMessage(codes, ["invalidInstalledDate"])}
+          >
+            <Input
+              id={dateId}
+              type="date"
+              value={values.installedDate}
+              onChange={(e) => set("installedDate", e.target.value)}
+              aria-invalid={codes.includes("invalidInstalledDate")}
+            />
+          </Field>
+        ) : null}
         <Field
           label="Cost"
           controlId={costId}
@@ -292,7 +314,14 @@ export function AccessoryForm({
           <Select
             id={mountId}
             value={firearmId}
-            onChange={(e) => setFirearmId(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setFirearmId(next);
+              // Clearing the mount hides the installed-date field again;
+              // drop any value it held so it can't resurface stale if the
+              // owner re-mounts before saving (R6).
+              if (next === "") set("installedDate", "");
+            }}
             disabled={editableFirearms.length === 0}
           >
             <option value="">Unmounted</option>

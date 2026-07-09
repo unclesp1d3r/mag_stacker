@@ -180,7 +180,7 @@ export function AccessoryDetailView({
               Edit
             </Button>
           ) : null}
-          {isOwner ? (
+          {canEdit ? (
             <Button
               variant="destructive"
               size="sm"
@@ -200,6 +200,7 @@ export function AccessoryDetailView({
           <AccessoryForm
             initial={accessory}
             editableFirearms={editableFirearms}
+            currentFirearmId={accessory.currentFirearmId}
             onDone={() => {
               setEditing(false);
               router.refresh();

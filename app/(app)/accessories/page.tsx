@@ -32,11 +32,19 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
   for (const f of firearms) firearmNames[f.id] = firearmDisplayName(f);
 
   // The mount selector only offers firearms the actor can EDIT (owner or
-  // edit permission, R17) — a strict subset of `firearms`.
+  // edit permission, R17) AND that are owned by the accessory's future owner.
+  // On create, the accessory's owner is the actor themself (KTD5's
+  // same-owner mount guard), so a firearm the actor merely has an edit GRANT
+  // on — but doesn't own — would pass permission but fail
+  // `authorizeCreateMount`'s cross-tenant check at submit; excluding it here
+  // keeps the picker's options a strict subset of what will actually save.
   const editableFirearms: EditableFirearmOption[] = firearms
     .filter((f) => {
       const permission = permissions.get(f.id);
-      return permission === "owner" || permission === "edit";
+      return (
+        f.ownerId === user.id &&
+        (permission === "owner" || permission === "edit")
+      );
     })
     .map((f) => ({ id: f.id, label: firearmDisplayName(f) }));
 

@@ -47,14 +47,26 @@ export type AccessoryUpdateInput = Omit<
   "ownerId" | "firearmId"
 >;
 
-function persistableFields(input: AccessoryInput) {
+/**
+ * `installedDate` records when the CURRENT mount began (R6), so it can never
+ * be set on an unmounted accessory — `mountedFirearmId` is the resolved mount
+ * target for this write (the create-time `firearmId`, or the row's persisted
+ * `currentFirearmId` on a plain update, which `updateAccessory` never
+ * changes). When there is no mount, the date is forced to null regardless of
+ * what the caller supplied, backstopped by the `accessory_installed_date_
+ * requires_mount` CHECK.
+ */
+function persistableFields(
+  input: AccessoryInput,
+  mountedFirearmId: string | null,
+) {
   return {
     // Raw values persisted verbatim (R18/R19); optional text is empty-not-null.
     category: input.category,
     brand: input.brand ?? "",
     model: input.model ?? "",
     serialNumber: input.serialNumber ?? "",
-    installedDate: input.installedDate ?? null,
+    installedDate: mountedFirearmId ? (input.installedDate ?? null) : null,
     costCents: input.costCents ?? null,
     notes: input.notes ?? "",
     isNfa: input.isNfa ?? false,
@@ -122,12 +134,13 @@ export async function createAccessory(
       await authorizeCreateMount(tx, actorId, ownerId, input.firearmId);
     }
 
+    const mountedFirearmId = input.firearmId ?? null;
     const [row] = await tx
       .insert(accessory)
       .values({
         ownerId,
-        currentFirearmId: input.firearmId ?? null,
-        ...persistableFields(input),
+        currentFirearmId: mountedFirearmId,
+        ...persistableFields(input, mountedFirearmId),
       })
       .returning();
     return row;
@@ -144,9 +157,23 @@ export async function updateAccessory(
 
   return db.transaction(async (tx) => {
     await requireEditPermission(tx, actorId, id);
+    // A plain update never changes the mount (mount is a separate op via
+    // `mountAccessory`) — load the CURRENT `currentFirearmId` so
+    // `persistableFields` can force `installedDate` to null when the
+    // accessory is unmounted (R6); an unmounted accessory can never acquire
+    // an installed date through this path.
+    const [existing] = await tx
+      .select({ currentFirearmId: accessory.currentFirearmId })
+      .from(accessory)
+      .where(eq(accessory.id, id))
+      .limit(1);
+    if (!existing) throw new NotFoundError();
     const [row] = await tx
       .update(accessory)
-      .set({ ...persistableFields(input), updatedAt: new Date() })
+      .set({
+        ...persistableFields(input, existing.currentFirearmId),
+        updatedAt: new Date(),
+      })
       .where(eq(accessory.id, id))
       .returning();
     if (!row) throw new NotFoundError();

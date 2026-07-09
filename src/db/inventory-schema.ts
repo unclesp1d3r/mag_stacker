@@ -82,7 +82,7 @@ export const firearm = pgTable(
     subtype: text("subtype").notNull().default(""),
     serialNumber: text("serial_number").notNull().default(""),
     notes: text("notes").notNull().default(""),
-    // NFA-regulated item flag (#accessory-nfa). Backfills existing rows to
+    // NFA-regulated item flag (#8). Backfills existing rows to
     // false on ADD COLUMN (R12-style).
     isNfa: boolean("is_nfa").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -210,6 +210,15 @@ export const accessory = pgTable(
     // R26-style backstop — domain validation is the primary surface. Nullable
     // column: the CHECK only bounds non-null cost values.
     check("accessory_cost_cents_min", sql`${t.costCents} >= 0`),
+    // R6 backstop — an installed date records when the CURRENT mount began, so
+    // it cannot exist without a mount. The service layer is the primary gate
+    // (it forces `installedDate` to null on create/update whenever the
+    // accessory is unmounted); this CHECK stops that invariant from being
+    // violated by a future direct write that bypasses the service.
+    check(
+      "accessory_installed_date_requires_mount",
+      sql`${t.installedDate} IS NULL OR ${t.currentFirearmId} IS NOT NULL`,
+    ),
   ],
 );
 
