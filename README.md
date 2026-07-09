@@ -1,16 +1,22 @@
 # MagStacker
 
-MagStacker keeps track of your firearms and magazines: what you own, what fits what, and how much it all holds. It's a self-hosted web app for shooting ranges, clubs, and individual owners who'd rather not keep their inventory in a spreadsheet or somebody else's cloud.
+MagStacker keeps track of your firearms, magazines, ammo, and aftermarket accessories: what you own, what fits what, how much it all holds, and what it's worth. It's a self-hosted web app for shooting ranges, clubs, and individual owners who'd rather not keep their inventory in a spreadsheet or somebody else's cloud.
 
 You run it on your own server, behind your own login, and the data stays with you.
 
-![MagStacker walkthrough: adding a magazine, mapping firearm compatibility, the caliber summary, and switching themes](docs/images/demo.gif)
+![MagStacker walkthrough: the magazine list, a firearm and its mounted accessories, the accessories tracker, the caliber summary, and switching themes](docs/images/demo.gif)
 
 It ships a two-mode interface that follows your system by default — a dark "Field Console" and a light "Machined Instrument":
 
 |                             Dark                              |                              Light                              |
 | :-----------------------------------------------------------: | :-------------------------------------------------------------: |
 | ![Magazines list, dark theme](docs/images/magazines-dark.png) | ![Magazines list, light theme](docs/images/magazines-light.png) |
+
+Track the aftermarket parts on each firearm — optics, suppressors, triggers, lights — with cost, serial, and NFA status, and see the total value mounted on a gun:
+
+|                          Accessories                          |                            On a firearm                             |
+| :-----------------------------------------------------------: | :-----------------------------------------------------------------: |
+| ![Accessories list](docs/images/accessories-dark.png)         | ![A firearm's mounted accessories and value total](docs/images/firearm-accessories.png) |
 
 ## Who it's for
 
@@ -26,6 +32,8 @@ Everyone sees only what they own or what's been shared with them, and only an it
 - Link each magazine to the firearms it fits. The order you set is the order it shows up in everywhere else.
 - Bulk-add a labeled batch in one go (say, 60 mags numbered `AR-01` through `AR-60`), and the count picks up where it left off the next time you add.
 - Filter magazines by brand or model, exact caliber, or which firearm they fit.
+- Track ammo lots by caliber, load, and grain, with a low-stock threshold that flags when you're running short.
+- Track the accessories on each firearm — optics, suppressors, triggers, grips — with cost, serial, installed date, and NFA status. Move a part between guns and it keeps its identity; a firearm's page rolls up the total value mounted on it. Suppressors and other NFA items are flagged, and their serials stay sensitive.
 - Check a summary: a running total, plus counts per caliber and per firearm, over everything you can see.
 - Export to CSV for a spreadsheet. Serial numbers stay out of the export, and a cell that starts with `=` won't turn into a live formula when someone opens the file.
 - Share one item with another account at view or edit, optionally let them add records on your behalf, and take the access back whenever you want.
@@ -117,6 +125,8 @@ bun test                       # unit + integration
 ```
 
 > `mise` (`mise.toml`) pins the toolchain and loads `.env` into your shell, then caches it. After you edit `.env`, run `mise cache clear`, or a stale value can shadow both your tooling and `docker compose`.
+
+The README's demo images and walkthrough gif are generated from the live UI. Regenerate them all before a release with `just demo-images` (needs Docker + ffmpeg). The generators are `e2e/demo-*.spec.ts`, gated behind `DEMO=1` so they stay out of the normal test run, and they share one sample dataset from `e2e/fixtures/demo-seed.ts`.
 
 Layout:
 

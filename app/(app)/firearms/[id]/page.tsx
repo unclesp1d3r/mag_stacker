@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { NotFoundError } from "@/src/auth/errors";
 import { getCurrentUser } from "@/src/auth/session";
 import { db } from "@/src/db/client";
+import { listMountedForFirearm } from "@/src/domain/accessories/service";
 import { getFirearm, listFirearms } from "@/src/domain/firearms/service";
 import { magazineCountForFirearm } from "@/src/domain/magazines/service";
 import {
@@ -33,11 +34,20 @@ export default async function FirearmDetailPage({ params }: PageProps) {
     },
   );
 
-  const [caliberSuggestions, magazineCount, firearms] = await Promise.all([
-    calibersForInput(db, user.id),
-    magazineCountForFirearm(user.id, id),
-    listFirearms(user.id),
-  ]);
+  const [caliberSuggestions, magazineCount, firearms, mountedAccessories] =
+    await Promise.all([
+      calibersForInput(db, user.id),
+      magazineCountForFirearm(user.id, id),
+      listFirearms(user.id),
+      listMountedForFirearm(user.id, id),
+    ]);
+
+  // Derive the value total from the already-fetched accessories rather than
+  // re-querying (the total is a pure read over the same rows).
+  const accessoryValueCents = mountedAccessories.reduce(
+    (sum, a) => sum + (a.costCents ?? 0),
+    0,
+  );
 
   const subtypeSuggestions = [
     ...new Set(firearms.map((f) => f.subtype).filter((s) => s.trim() !== "")),
@@ -56,12 +66,15 @@ export default async function FirearmDetailPage({ params }: PageProps) {
         subtype: row.subtype,
         serialNumber: row.serialNumber,
         notes: row.notes,
+        isNfa: row.isNfa,
       }}
       permission={permission}
       magazineCount={magazineCount}
       caliberSuggestions={caliberSuggestions}
       manufacturerSuggestions={manufacturers()}
       subtypeSuggestions={subtypeSuggestions}
+      mountedAccessories={mountedAccessories}
+      accessoryValueCents={accessoryValueCents}
     />
   );
 }

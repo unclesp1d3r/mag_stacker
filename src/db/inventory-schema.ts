@@ -82,6 +82,9 @@ export const firearm = pgTable(
     subtype: text("subtype").notNull().default(""),
     serialNumber: text("serial_number").notNull().default(""),
     notes: text("notes").notNull().default(""),
+    // NFA-regulated item flag (#8). Backfills existing rows to
+    // false on ADD COLUMN (R12-style).
+    isNfa: boolean("is_nfa").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -167,6 +170,59 @@ export const ammo = pgTable(
 );
 
 /**
+ * Accessory (U1) — the fourth owned parent, mirroring `ammo`'s owner-scoped
+ * shape. Unlike `magazine_firearm` (a many-to-many join with an ordinal), an
+ * accessory mounts to at most one firearm at a time via `current_firearm_id`,
+ * which is nullable (an accessory can sit unmounted in inventory) and
+ * `onDelete: "set null"` — deleting a firearm unmounts its accessories rather
+ * than deleting them (they remain owner inventory). `category` is the only
+ * required text field (mirrors ammo's `caliber`); the rest are empty-not-null
+ * (R18). `cost_cents` is nullable (KTD-7-style: unset cost is unknown, not
+ * zero) with a non-negative CHECK that only bounds non-null values. `is_nfa`
+ * flags NFA-regulated accessories (suppressors, SBR stocks, etc.), mirroring
+ * the new `firearm.is_nfa` column.
+ */
+export const accessory = pgTable(
+  "accessory",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    currentFirearmId: uuid("current_firearm_id").references(() => firearm.id, {
+      onDelete: "set null",
+    }),
+    category: text("category").notNull(),
+    brand: text("brand").notNull().default(""),
+    model: text("model").notNull().default(""),
+    serialNumber: text("serial_number").notNull().default(""),
+    // NULL = unset (KTD-7); calendar date, no time component.
+    installedDate: date("installed_date"),
+    costCents: integer("cost_cents"),
+    notes: text("notes").notNull().default(""),
+    isNfa: boolean("is_nfa").notNull().default(false),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("accessory_owner_id_idx").on(t.ownerId),
+    index("accessory_current_firearm_id_idx").on(t.currentFirearmId),
+    // R26-style backstop — domain validation is the primary surface. Nullable
+    // column: the CHECK only bounds non-null cost values.
+    check("accessory_cost_cents_min", sql`${t.costCents} >= 0`),
+    // R6 backstop — an installed date records when the CURRENT mount began, so
+    // it cannot exist without a mount. The service layer is the primary gate
+    // (it forces `installedDate` to null on create/update whenever the
+    // accessory is unmounted); this CHECK stops that invariant from being
+    // violated by a future direct write that bypasses the service.
+    check(
+      "accessory_installed_date_requires_mount",
+      sql`${t.installedDate} IS NULL OR ${t.currentFirearmId} IS NOT NULL`,
+    ),
+  ],
+);
+
+/**
  * Per-owner label-prefix list (#22). A flat set of prefix strings the owner has
  * used, extended on create (single or bulk). Feeds the single-add prefix
  * combobox and drives auto-numbering; the composite PK enforces one row per
@@ -234,6 +290,41 @@ export const rangeSession = pgTable(
     index("range_session_firearm_id_idx").on(t.firearmId),
     // R26-style backstop — domain validation is the primary surface (KTD4).
     check("range_session_rounds_fired_min", sql`${t.roundsFired} >= 1`),
+  ],
+);
+
+/**
+ * Range session ↔ accessory linkage (U7) — the only mount history v1 keeps
+ * (R19): when a session is created, the firearm's currently-mounted
+ * accessories are snapshotted into this join so per-accessory rounds fired
+ * can be derived later. Unlike `magazine_firearm`'s composite PK, this table
+ * uses a surrogate `id` PK because `accessory_id` must be nullable — deleting
+ * an accessory (`ON DELETE SET NULL`) leaves the session's linkage row intact
+ * with a null reference rather than deleting it, so the session's snapshot
+ * history survives the accessory's deletion. `range_session_id` is
+ * `ON DELETE CASCADE` (the join is a child of the session, R35-style). The
+ * unique constraint on (range_session_id, accessory_id) prevents duplicate
+ * snapshot rows for the same session/accessory pair; both columns are also
+ * indexed individually for the per-session and per-accessory lookups.
+ */
+export const rangeSessionAccessory = pgTable(
+  "range_session_accessory",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    rangeSessionId: uuid("range_session_id")
+      .notNull()
+      .references(() => rangeSession.id, { onDelete: "cascade" }),
+    accessoryId: uuid("accessory_id").references(() => accessory.id, {
+      onDelete: "set null",
+    }),
+  },
+  (t) => [
+    unique("range_session_accessory_unique").on(
+      t.rangeSessionId,
+      t.accessoryId,
+    ),
+    index("range_session_accessory_session_id_idx").on(t.rangeSessionId),
+    index("range_session_accessory_accessory_id_idx").on(t.accessoryId),
   ],
 );
 

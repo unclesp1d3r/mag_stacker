@@ -78,6 +78,27 @@
       "when": 1783392033667,
       "tag": "0010_goofy_purifiers",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783482333377,
+      "tag": "0011_daffy_microbe",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783484536557,
+      "tag": "0012_dapper_reavers",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1783564214559,
+      "tag": "0013_mature_christian_walker",
+      "breakpoints": true
     }
   ]
 }

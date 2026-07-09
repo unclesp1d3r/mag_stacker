@@ -33,6 +33,7 @@ export interface FirearmFormValues {
   subtype: string;
   serialNumber: string;
   notes: string;
+  isNfa: boolean;
 }
 
 interface FirearmFormProps {
@@ -55,6 +56,7 @@ const EMPTY: FirearmFormValues = {
   subtype: "",
   serialNumber: "",
   notes: "",
+  isNfa: false,
 };
 
 const TYPE_CODES: FirearmValidationCode[] = ["invalidType", "typeRequired"];
@@ -303,6 +305,19 @@ export function FirearmForm({
           onChange={(e) => set("notes", e.target.value)}
         />
       </Field>
+      <label className="flex cursor-pointer items-center gap-3">
+        <input
+          type="checkbox"
+          checked={values.isNfa}
+          onChange={(e) =>
+            setValues((v) => ({ ...v, isNfa: e.target.checked }))
+          }
+          className="size-4 accent-primary"
+        />
+        <span className="text-sm text-foreground">
+          NFA-regulated item (SBR, SBS, AOW, etc.)
+        </span>
+      </label>
       <div className="flex items-center gap-2">
         <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : isEdit ? "Save changes" : "Add firearm"}

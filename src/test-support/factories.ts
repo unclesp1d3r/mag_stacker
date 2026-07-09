@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { ParentType } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
 import {
+  accessory,
   ammo,
   firearm,
   inventoryLog,
@@ -76,6 +77,30 @@ export async function makeAmmo(
       grain: 115,
       quantityRounds: 100,
       lowStockThreshold: 0,
+      ...overrides,
+    })
+    .returning();
+  return row;
+}
+
+/**
+ * Insert an accessory row directly (U8). A couple of earlier accessory specs
+ * (`src/auth/__tests__/accessory-visibility.test.ts`,
+ * `src/domain/accessories/__tests__/service.test.ts`) still seed rows with
+ * their own inline copies; new tests should prefer this shared factory.
+ * `currentFirearmId` defaults unset (unmounted); pass it via `overrides` to
+ * seed a mounted accessory.
+ */
+export async function makeAccessory(
+  ownerId: string,
+  overrides: Partial<typeof accessory.$inferInsert> = {},
+): Promise<typeof accessory.$inferSelect> {
+  const [row] = await db
+    .insert(accessory)
+    .values({
+      ownerId,
+      category: "Optic",
+      brand: "Test Accessory Co",
       ...overrides,
     })
     .returning();

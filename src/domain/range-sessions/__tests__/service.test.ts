@@ -4,7 +4,16 @@ import { NotAuthorizedError, NotFoundError } from "@/src/auth/errors";
 import { createGrant } from "@/src/auth/grants";
 import { visibleFirearmPermissions } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
-import { firearm, rangeSession } from "@/src/db/schema";
+import {
+  accessory,
+  firearm,
+  rangeSession,
+  rangeSessionAccessory,
+} from "@/src/db/schema";
+import {
+  createAccessory,
+  mountAccessory,
+} from "@/src/domain/accessories/service";
 import { ValidationError } from "@/src/domain/errors";
 import { expectRejects } from "@/src/test-support/assertions";
 import {
@@ -14,9 +23,11 @@ import {
   makeRangeSession,
 } from "@/src/test-support/factories";
 import {
+  accessoryRoundsFired,
   createRangeSession,
   deleteRangeSession,
   lifetimeRoundTotals,
+  listSessionAccessories,
   listSessionsForFirearm,
   updateRangeSession,
 } from "../service";
@@ -228,5 +239,169 @@ live("range-session service (#11)", () => {
         .insert(rangeSession)
         .values({ firearmId: fa.id, date: "2026-01-01", roundsFired: 0 }),
     );
+  });
+
+  describe("range session <-> accessory linkage (#U7)", () => {
+    test("covers R19: creating a session snapshots the firearm's currently-mounted accessories", async () => {
+      const fa = await makeFirearm(owner);
+      const mounted = await createAccessory(owner, {
+        category: "optic",
+        firearmId: fa.id,
+      });
+      const unmounted = await createAccessory(owner, { category: "bipod" });
+
+      const session = await createRangeSession(owner, {
+        firearmId: fa.id,
+        date: "2026-02-10",
+        roundsFired: 20,
+      });
+
+      const links = await db
+        .select()
+        .from(rangeSessionAccessory)
+        .where(eq(rangeSessionAccessory.rangeSessionId, session.id));
+      expect(links).toHaveLength(1);
+      expect(links[0].accessoryId).toBe(mounted.id);
+      // The unmounted accessory is never linked.
+      expect(links.some((l) => l.accessoryId === unmounted.id)).toBe(false);
+    });
+
+    test("a firearm with no mounted accessories snapshots nothing", async () => {
+      const fa = await makeFirearm(owner);
+      const session = await createRangeSession(owner, {
+        firearmId: fa.id,
+        date: "2026-02-11",
+        roundsFired: 20,
+      });
+      const links = await db
+        .select()
+        .from(rangeSessionAccessory)
+        .where(eq(rangeSessionAccessory.rangeSessionId, session.id));
+      expect(links).toHaveLength(0);
+    });
+
+    test("accessoryRoundsFired sums rounds across the sessions an accessory was linked to", async () => {
+      const fa = await makeFirearm(owner);
+      const acc = await createAccessory(owner, {
+        category: "optic",
+        firearmId: fa.id,
+      });
+      await createRangeSession(owner, {
+        firearmId: fa.id,
+        date: "2026-02-12",
+        roundsFired: 30,
+      });
+      await createRangeSession(owner, {
+        firearmId: fa.id,
+        date: "2026-02-13",
+        roundsFired: 15,
+      });
+      // Unmount before a third session — it must not be linked to this one.
+      await mountAccessory(owner, acc.id, null);
+      await createRangeSession(owner, {
+        firearmId: fa.id,
+        date: "2026-02-14",
+        roundsFired: 100,
+      });
+
+      expect(await accessoryRoundsFired(owner, acc.id)).toBe(45);
+    });
+
+    test("covers R19: deleting an accessory leaves its join rows intact with accessoryId null", async () => {
+      const fa = await makeFirearm(owner);
+      const acc = await createAccessory(owner, {
+        category: "optic",
+        firearmId: fa.id,
+      });
+      const session = await createRangeSession(owner, {
+        firearmId: fa.id,
+        date: "2026-02-15",
+        roundsFired: 20,
+      });
+      await db.delete(accessory).where(eq(accessory.id, acc.id));
+
+      const links = await db
+        .select()
+        .from(rangeSessionAccessory)
+        .where(eq(rangeSessionAccessory.rangeSessionId, session.id));
+      expect(links).toHaveLength(1);
+      expect(links[0].accessoryId).toBeNull();
+      // The session itself survives the accessory's deletion.
+      const sessions = await listSessionsForFirearm(owner, fa.id);
+      expect(sessions.some((s) => s.id === session.id)).toBe(true);
+    });
+
+    test("reassigning/unmounting an accessory after a session does not change that session's existing linkage", async () => {
+      const fa = await makeFirearm(owner);
+      const otherFa = await makeFirearm(owner);
+      const acc = await createAccessory(owner, {
+        category: "optic",
+        firearmId: fa.id,
+      });
+      const session = await createRangeSession(owner, {
+        firearmId: fa.id,
+        date: "2026-02-16",
+        roundsFired: 20,
+      });
+
+      await mountAccessory(owner, acc.id, otherFa.id);
+
+      const links = await db
+        .select()
+        .from(rangeSessionAccessory)
+        .where(eq(rangeSessionAccessory.rangeSessionId, session.id));
+      expect(links).toHaveLength(1);
+      expect(links[0].accessoryId).toBe(acc.id);
+    });
+
+    test("covers R7: listSessionAccessories hides an accessory the viewer can no longer see, shows one still mounted", async () => {
+      const fa = await makeFirearm(owner);
+      const stillMounted = await createAccessory(owner, {
+        category: "optic",
+        firearmId: fa.id,
+      });
+      const laterUnmounted = await createAccessory(owner, {
+        category: "grip",
+        firearmId: fa.id,
+      });
+      const session = await createRangeSession(owner, {
+        firearmId: fa.id,
+        date: "2026-02-17",
+        roundsFired: 20,
+      });
+
+      await createGrant(db, {
+        actorId: owner,
+        granteeId: viewer,
+        parentType: "firearm",
+        parentId: fa.id,
+        permission: "view",
+      });
+
+      // Unmount one of the two linked accessories after the session was
+      // logged — it becomes owner-only, so the view-grantee can no longer
+      // see it, even though the session's linkage row is untouched.
+      await mountAccessory(owner, laterUnmounted.id, null);
+
+      const links = await listSessionAccessories(viewer, session.id);
+      expect(links).toHaveLength(2);
+
+      const visibleLink = links.find((l) => l.id === stillMounted.id);
+      expect(visibleLink?.visible).toBe(true);
+      if (visibleLink?.visible) {
+        expect(visibleLink.category).toBe("optic");
+      }
+
+      const hiddenLink = links.find((l) => l.id === laterUnmounted.id);
+      expect(hiddenLink).toEqual({ id: laterUnmounted.id, visible: false });
+    });
+
+    test("listSessionAccessories is not-found for a session outside the requester's visible set", async () => {
+      const fa = await makeFirearm(owner);
+      const session = await makeRangeSession(fa.id, { roundsFired: 10 });
+      await expect(
+        listSessionAccessories(stranger, session.id),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
   });
 });

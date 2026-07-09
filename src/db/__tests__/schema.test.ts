@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../client";
 import {
+  accessory,
   ammo,
   firearm,
   grant,
@@ -256,6 +257,74 @@ live("core inventory schema (U3)", () => {
     expect(names).toContain("firearm_owner_id_idx");
     expect(names).toContain("magazine_owner_id_idx");
     expect(names).toContain("ammo_owner_id_idx");
+    expect(names).toContain("accessory_owner_id_idx");
+    expect(names).toContain("accessory_current_firearm_id_idx");
     expect(names).toContain("grant_grantee_parent_type_idx");
+  });
+
+  test("firearm.is_nfa defaults to false", async () => {
+    const [f] = await db
+      .insert(firearm)
+      .values({ ownerId, name: "Non-NFA FA", caliber: "9mm" })
+      .returning();
+    expect(f.isNfa).toBe(false);
+  });
+
+  test("accessory inherits owner-scoped empty-not-null defaults and is unmounted by default", async () => {
+    const [acc] = await db
+      .insert(accessory)
+      .values({ ownerId, category: "optic" })
+      .returning();
+
+    expect(acc.brand).toBe("");
+    expect(acc.model).toBe("");
+    expect(acc.serialNumber).toBe("");
+    expect(acc.notes).toBe("");
+    expect(acc.isNfa).toBe(false);
+    expect(acc.currentFirearmId).toBeNull();
+    expect(acc.installedDate).toBeNull();
+    expect(acc.costCents).toBeNull();
+  });
+
+  test("inserting an accessory without owner_id fails (ownership mandatory, R8)", async () => {
+    await expectRejects(
+      db.execute(sql`insert into accessory (category) values ('optic')`),
+    );
+  });
+
+  test("accessory_cost_cents_min CHECK rejects a negative cost but allows null (R26)", async () => {
+    await expectRejects(
+      db.insert(accessory).values({
+        ownerId,
+        category: "optic",
+        costCents: -1,
+      }),
+    );
+
+    const [acc] = await db
+      .insert(accessory)
+      .values({ ownerId, category: "sling", costCents: 0 })
+      .returning();
+    expect(acc.costCents).toBe(0);
+  });
+
+  test("deleting a firearm sets current_firearm_id to null on mounted accessories instead of deleting them", async () => {
+    const [f] = await db
+      .insert(firearm)
+      .values({ ownerId, name: "Mount FA", caliber: "9mm" })
+      .returning();
+    const [acc] = await db
+      .insert(accessory)
+      .values({ ownerId, category: "optic", currentFirearmId: f.id })
+      .returning();
+
+    await db.delete(firearm).where(eq(firearm.id, f.id));
+
+    const [reloaded] = await db
+      .select()
+      .from(accessory)
+      .where(eq(accessory.id, acc.id));
+    expect(reloaded).toBeDefined();
+    expect(reloaded.currentFirearmId).toBeNull();
   });
 });
