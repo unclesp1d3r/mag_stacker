@@ -50,23 +50,28 @@ export async function processImage(
     );
   }
 
-  const original = await reencode(bytes, mimeType).toBuffer();
-  const thumb = await reencode(bytes, mimeType)
-    .resize({
-      width: THUMB_MAX_EDGE,
-      height: THUMB_MAX_EDGE,
-      fit: "inside",
-      withoutEnlargement: true,
-    })
-    .toBuffer();
-  const preview = await reencode(bytes, mimeType)
-    .resize({
-      width: PREVIEW_MAX_EDGE,
-      height: PREVIEW_MAX_EDGE,
-      fit: "inside",
-      withoutEnlargement: true,
-    })
-    .toBuffer();
+  // The three re-encodes are independent — each builds its own fresh `sharp`
+  // pipeline (see `reencode`) — so they run concurrently rather than
+  // sequentially.
+  const [original, thumb, preview] = await Promise.all([
+    reencode(bytes, mimeType).toBuffer(),
+    reencode(bytes, mimeType)
+      .resize({
+        width: THUMB_MAX_EDGE,
+        height: THUMB_MAX_EDGE,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .toBuffer(),
+    reencode(bytes, mimeType)
+      .resize({
+        width: PREVIEW_MAX_EDGE,
+        height: PREVIEW_MAX_EDGE,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .toBuffer(),
+  ]);
 
   return { original, thumb, preview, width, height };
 }

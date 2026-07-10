@@ -6,6 +6,7 @@ import { type DbOrTx, db } from "@/src/db/client";
 import { firearmPhoto } from "@/src/db/schema";
 import {
   type DerivativeVariant,
+  deletePhotoBlobs,
   deriveKey,
   generateKey,
   storage,
@@ -72,30 +73,6 @@ const EXTENSION_BY_MIME_TYPE: Record<string, string> = {
  * rejected any mime type outside the allow-list by the time this runs. */
 function extFromMimeType(mimeType: string): string {
   return EXTENSION_BY_MIME_TYPE[mimeType] ?? "bin";
-}
-
-/**
- * Deletes a photo's original + derivative blobs, best-effort (R8/R19): the
- * row delete already committed by the time this runs, so a blob-delete
- * failure here must not surface as a caller-visible error — it leaves an
- * orphaned blob for the orphan-sweep utility (U5) to reclaim later, rather
- * than blocking (or half-completing) the delete flow.
- */
-async function deleteBlobsBestEffort(storageKey: string): Promise<void> {
-  const keys = [
-    storageKey,
-    deriveKey(storageKey, "thumb"),
-    deriveKey(storageKey, "preview"),
-  ];
-  await Promise.all(
-    keys.map(async (key) => {
-      try {
-        await storage.delete(key);
-      } catch (error) {
-        console.error(`firearm-photos: failed to delete blob ${key}`, error);
-      }
-    }),
-  );
 }
 
 /**
@@ -219,7 +196,7 @@ export async function deletePhoto(
       .returning();
     if (!deleted) throw new NotFoundError();
 
-    await deleteBlobsBestEffort(deleted.storageKey);
+    await deletePhotoBlobs(deleted.storageKey);
 
     if (deleted.isPrimary) {
       const [next] = await tx
@@ -372,7 +349,11 @@ export async function getServablePhoto(
   variant: PhotoVariant,
 ): Promise<ServablePhoto | null> {
   const [row] = await db
-    .select()
+    .select({
+      firearmId: firearmPhoto.firearmId,
+      storageKey: firearmPhoto.storageKey,
+      mimeType: firearmPhoto.mimeType,
+    })
     .from(firearmPhoto)
     .where(eq(firearmPhoto.id, photoId))
     .limit(1);

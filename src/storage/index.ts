@@ -6,6 +6,7 @@ export { requireUploadDir } from "./env";
 export type { DerivativeVariant } from "./keys";
 export { DERIVATIVE_SUFFIXES, deriveKey, generateKey } from "./keys";
 export { LocalFilesystemAdapter, PathTraversalError } from "./local-fs-adapter";
+export { deletePhotoBlobs } from "./photo-blobs";
 export type { StorageKey, StorageService } from "./service";
 
 /**

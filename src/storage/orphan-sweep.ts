@@ -6,9 +6,10 @@ import { activeStorageRoot, deriveKey, storage } from "./index";
 /**
  * Reclaims blobs left orphaned by a partial delete failure (R8, U5): a
  * `firearm_photo` row delete's best-effort blob cleanup (see
- * `cleanupFirearmPhotoBlobs` in `src/domain/firearms/service.ts`, and
- * `deleteBlobsBestEffort` in `src/domain/firearm-photos/service.ts`) can leave
- * a blob behind when a single `storage.delete` call throws. This sweep is the
+ * `deletePhotoBlobs` in `src/storage/photo-blobs.ts`, called from both
+ * `cleanupFirearmPhotoBlobs` in `src/domain/firearms/service.ts` and
+ * `deletePhoto` in `src/domain/firearm-photos/service.ts`) can leave a blob
+ * behind when a single `storage.delete` call throws. This sweep is the
  * reclaim path: any file directly under `UPLOAD_DIR` whose key (or derivative
  * key) is not referenced by a live `firearm_photo` row is deleted.
  *
@@ -51,11 +52,10 @@ export async function orphanSweep(): Promise<OrphanSweepResult> {
     ownedKeys.add(deriveKey(row.storageKey, "preview"));
   }
 
-  const deletedKeys: string[] = [];
-  for (const key of fileNames) {
-    if (ownedKeys.has(key)) continue;
-    await storage.delete(key);
-    deletedKeys.push(key);
-  }
-  return { deletedKeys, scannedCount: fileNames.length };
+  // `storage.delete` is idempotent (no-op on a missing key), so the orphan
+  // deletes have no ordering dependency on one another and can run
+  // concurrently rather than one at a time.
+  const orphanKeys = fileNames.filter((key) => !ownedKeys.has(key));
+  await Promise.all(orphanKeys.map((key) => storage.delete(key)));
+  return { deletedKeys: orphanKeys, scannedCount: fileNames.length };
 }

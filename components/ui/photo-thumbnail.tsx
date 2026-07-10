@@ -1,4 +1,5 @@
 import { ImageOff } from "lucide-react";
+import { photoVariantUrl } from "@/src/domain/firearm-photos/urls";
 import { cn } from "./cn";
 
 /** Compact-thumbnail footprint (DESIGN.md "sm" fixed height, 32px) — shared by
@@ -45,7 +46,7 @@ export function PhotoThumbnail({ photo, alt, className }: PhotoThumbnailProps) {
   return (
     // biome-ignore lint/performance/noImgElement: served through an authenticated Route Handler (R13), not a public asset next/image's optimizer can fetch.
     <img
-      src={`/api/photos/${photo.id}/thumb`}
+      src={photoVariantUrl(photo.id, "thumb")}
       alt={alt}
       width={THUMBNAIL_SIZE}
       height={THUMBNAIL_SIZE}

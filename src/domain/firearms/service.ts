@@ -12,7 +12,7 @@ import {
 } from "@/src/auth/visibility";
 import { type DbOrTx, db } from "@/src/db/client";
 import { firearm, firearmPhoto } from "@/src/db/schema";
-import { deriveKey, storage } from "@/src/storage";
+import { deletePhotoBlobs } from "@/src/storage";
 import { ValidationError } from "../errors";
 import { type FirearmInput, validateFirearm } from "./validate";
 
@@ -99,30 +99,6 @@ export async function updateFirearm(
 }
 
 /**
- * Best-effort deletes a photo's original + derivative blobs, logging (not
- * throwing) on failure. Duplicated from
- * `src/domain/firearm-photos/service.ts`'s `deleteBlobsBestEffort` rather
- * than imported: that module is out of scope for this unit, and the loop is
- * small enough that the duplication is cheaper than widening the boundary.
- */
-async function deletePhotoBlobBestEffort(storageKey: string): Promise<void> {
-  const keys = [
-    storageKey,
-    deriveKey(storageKey, "thumb"),
-    deriveKey(storageKey, "preview"),
-  ];
-  await Promise.all(
-    keys.map(async (key) => {
-      try {
-        await storage.delete(key);
-      } catch (error) {
-        console.error(`firearms: failed to delete photo blob ${key}`, error);
-      }
-    }),
-  );
-}
-
-/**
  * Pre-delete hook (U5, KTD8, R8) wired only into the firearm-delete path
  * below — magazine/ammo delete reuse `authorizeAndDeleteParent` unchanged and
  * never pass a hook. Runs inside the delete transaction, after authorization
@@ -140,9 +116,7 @@ async function cleanupFirearmPhotoBlobs(
     .select({ storageKey: firearmPhoto.storageKey })
     .from(firearmPhoto)
     .where(eq(firearmPhoto.firearmId, firearmId));
-  await Promise.all(
-    photos.map((photo) => deletePhotoBlobBestEffort(photo.storageKey)),
-  );
+  await Promise.all(photos.map((photo) => deletePhotoBlobs(photo.storageKey)));
 }
 
 /**

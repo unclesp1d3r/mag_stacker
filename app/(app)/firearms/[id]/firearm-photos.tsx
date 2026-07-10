@@ -15,6 +15,7 @@ import {
   THUMB_MAX_EDGE,
 } from "@/src/domain/firearm-photos/constants";
 import type { CreatePhotoFailureCode } from "@/src/domain/firearm-photos/service";
+import { photoVariantUrl } from "@/src/domain/firearm-photos/urls";
 import {
   deletePhotoAction,
   reorderPhotosAction,
@@ -78,10 +79,6 @@ function uploadFailureMessage(code: string): string {
     UPLOAD_FAILURE_MESSAGES[code as keyof typeof UPLOAD_FAILURE_MESSAGES] ??
     "could not upload this file"
   );
-}
-
-function photoUrl(photoId: string, variant: "thumb" | "preview"): string {
-  return `/api/photos/${photoId}/${variant}`;
 }
 
 /** Mirrors sharp's `fit: "inside", withoutEnlargement: true` (`pipeline.ts`)
@@ -366,7 +363,7 @@ export function FirearmPhotos({
         {primary && primaryDims ? (
           <figure className="w-fit">
             <img
-              src={photoUrl(primary.id, "preview")}
+              src={photoVariantUrl(primary.id, "preview")}
               alt={photoAccessibleName(primary, primaryIndex + 1, firearmName)}
               width={primaryDims.width}
               height={primaryDims.height}
@@ -410,7 +407,7 @@ export function FirearmPhotos({
             >
               <div className="relative flex h-28 items-center justify-center overflow-hidden rounded-sm bg-muted">
                 <img
-                  src={photoUrl(photo.id, "thumb")}
+                  src={photoVariantUrl(photo.id, "thumb")}
                   alt={name}
                   width={dims.width}
                   height={dims.height}
