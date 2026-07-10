@@ -32,10 +32,12 @@ export const SPEC_USER_KEYS = [
   "ammo-summary",
   "accessories",
   "accessories-viewer",
+  "firearm-photos",
   "demo-accessories",
   "demo-magazines",
   "demo-summary",
   "demo-walkthrough",
+  "firearm-list-thumbnails",
 ] as const;
 
 export type SpecUserKey = (typeof SPEC_USER_KEYS)[number];

@@ -17,6 +17,7 @@ import {
 } from "@/src/domain/firearms/constants";
 import { firearmDisplayName, hasNickname } from "@/src/domain/firearms/display";
 import { InventoryLogHistory } from "../inventory-log/inventory-log-history";
+import { type FirearmPhotoRow, FirearmPhotos } from "./[id]/firearm-photos";
 import { deleteFirearmAction } from "./actions";
 import { FirearmForm, type FirearmFormValues } from "./firearm-form";
 import {
@@ -39,6 +40,8 @@ interface FirearmDetailViewProps {
   mountedAccessories: MountedAccessoryRow[];
   /** Derived sum of the mounted accessories' `costCents` (null treated as 0); never stored (R11). */
   accessoryValueCents: number;
+  /** Server-loaded via `listPhotos`, ordered by `sortOrder` ascending (U7). */
+  photos: FirearmPhotoRow[];
 }
 
 /** One read-only label/value row. */
@@ -72,6 +75,7 @@ export function FirearmDetailView({
   subtypeSuggestions,
   mountedAccessories,
   accessoryValueCents,
+  photos,
 }: FirearmDetailViewProps) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -214,6 +218,13 @@ export function FirearmDetailView({
           </dl>
         </Card>
       )}
+
+      <FirearmPhotos
+        firearmId={firearm.id}
+        firearmName={displayName}
+        photos={photos}
+        canEdit={canEdit}
+      />
 
       <MountedAccessories
         firearmId={firearm.id}
