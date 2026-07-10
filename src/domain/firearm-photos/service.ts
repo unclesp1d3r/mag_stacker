@@ -142,10 +142,14 @@ export async function createPhotos(
       try {
         processed = await processImage(input.bytes, input.mimeType);
       } catch (error) {
-        console.error(
-          `firearm-photos: processImage failed for firearm ${firearmId} (mime=${input.mimeType})`,
+        // Pass dynamic values (incl. the user-controlled mimeType) as separate
+        // args, never interpolated into the first/format-string position, so a
+        // crafted mimeType can't act as a format string (js/tainted-format-string).
+        console.error("firearm-photos: processImage failed", {
+          firearmId,
+          mimeType: input.mimeType,
           error,
-        );
+        });
         results.push({ ok: false, codes: ["processingFailed"] });
         continue;
       }
