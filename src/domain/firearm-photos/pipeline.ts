@@ -1,6 +1,7 @@
 import type { Sharp } from "sharp";
 import sharp from "sharp";
 import {
+  isAllowedRasterFormat,
   MAX_INPUT_PIXELS,
   PREVIEW_MAX_EDGE,
   THUMB_MAX_EDGE,
@@ -42,6 +43,17 @@ export async function processImage(
   const metadata = await sharp(bytes, {
     limitInputPixels: MAX_INPUT_PIXELS,
   }).metadata();
+
+  // `.metadata()` reads header bytes only — it does not rasterize and so
+  // cannot trigger the SSRF this guard defends against. Reject BEFORE the
+  // re-encode below (which does rasterize) so an SVG (or any other
+  // non-raster format) mislabeled with an allowed MIME type never reaches a
+  // format-specific loader (R9, format-confusion SSRF hardening).
+  if (!isAllowedRasterFormat(metadata.format)) {
+    throw new Error(
+      `firearm-photos/pipeline: unsupported image format "${metadata.format ?? "unknown"}"`,
+    );
+  }
 
   const { width, height } = metadata;
   if (!width || !height) {

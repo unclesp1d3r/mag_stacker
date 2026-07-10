@@ -25,6 +25,31 @@ export function isAllowedMimeType(
   return ALLOWED_MIME_TYPE_SET.has(mimeType);
 }
 
+/**
+ * Raster formats `sharp` may rasterize (R9, SSRF hardening). Derived from
+ * `ALLOWED_MIME_TYPES` (stripping the `image/` prefix) rather than declared
+ * independently, so the two allow-lists can never drift: `sharp`'s detected
+ * `metadata().format` is a bare token (`"jpeg"`, not `"image/jpeg"`), unlike
+ * the MIME-typed allow-list above.
+ */
+const ALLOWED_RASTER_FORMAT_SET: ReadonlySet<string> = new Set(
+  ALLOWED_MIME_TYPES.map((mimeType) => mimeType.slice("image/".length)),
+);
+
+/**
+ * True when `format` (from `sharp().metadata()`, reading only header bytes)
+ * is one of the controlled raster formats. `sharp` auto-detects the REAL
+ * format from magic bytes independent of any caller-declared MIME type, so
+ * this guards against format confusion (e.g. SVG bytes mislabeled
+ * `image/png`) that would otherwise reach a format-specific loader — for
+ * SVG, the librsvg loader, which fetches external `<image href>` references
+ * during rasterization (SSRF against internal hosts). Must run BEFORE any
+ * re-encode/rasterization step, never after.
+ */
+export function isAllowedRasterFormat(format: string | undefined): boolean {
+  return format !== undefined && ALLOWED_RASTER_FORMAT_SET.has(format);
+}
+
 /** Maximum accepted upload size, in bytes (R9). */
 export const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
 

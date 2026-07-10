@@ -114,6 +114,20 @@ describe("processImage — decompression-bomb rejection (R9)", () => {
   });
 });
 
+describe("processImage — format-confusion rejection (R9, SSRF hardening)", () => {
+  test("SVG bytes are rejected even when the caller declares an allowed image MIME type", async () => {
+    const svg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="red"/></svg>',
+    );
+
+    // The caller's declared mimeType is `image/png` — matching the allow-list
+    // — but the bytes are SVG. `sharp` auto-detects the real format from
+    // magic bytes regardless of what's declared, so this must still reject
+    // rather than reach the SVG (librsvg) rasterizer.
+    await expectRejects(() => processImage(svg, "image/png"));
+  });
+});
+
 describe("processImage — corrupt input rejection", () => {
   test("a truncated/corrupt buffer is rejected without throwing past the boundary", async () => {
     const corrupt = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0x01, 0x02, 0x03]);

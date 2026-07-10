@@ -181,12 +181,19 @@ export async function listPhotos(
  * its original + derivative blobs. If the deleted photo was primary, the
  * next photo by sort order is auto-promoted to primary (R23, AE8); if none
  * remain, the firearm has no primary.
+ *
+ * The transaction does DB work only (row delete + auto-promotion); blob
+ * deletion runs AFTER the transaction resolves, once the row delete has
+ * actually committed. If a later statement inside the transaction were to
+ * throw, the row delete rolls back — running the blob delete beforehand
+ * would have already destroyed bytes a rolled-back (still-live) row points
+ * at, leaving no way to recover them.
  */
 export async function deletePhoto(
   actorId: string,
   photoId: string,
 ): Promise<void> {
-  await db.transaction(async (tx) => {
+  const storageKey = await db.transaction(async (tx) => {
     const firearmId = await firearmIdFor(tx, photoId);
     await authorizeUpdate(tx, actorId, "firearm", firearmId);
 
@@ -195,8 +202,6 @@ export async function deletePhoto(
       .where(eq(firearmPhoto.id, photoId))
       .returning();
     if (!deleted) throw new NotFoundError();
-
-    await deletePhotoBlobs(deleted.storageKey);
 
     if (deleted.isPrimary) {
       const [next] = await tx
@@ -212,7 +217,11 @@ export async function deletePhoto(
           .where(eq(firearmPhoto.id, next.id));
       }
     }
+
+    return deleted.storageKey;
   });
+
+  await deletePhotoBlobs(storageKey);
 }
 
 /**
@@ -248,6 +257,15 @@ export async function setPrimary(
  * every photo id for `firearmId` in its new order; the `firearmId` guard on
  * each update means an id for a different firearm is silently a no-op rather
  * than cross-contaminating another firearm's gallery.
+ *
+ * `orderedPhotoIds.length` is capped at `MAX_PHOTOS_PER_FIREARM` (mirroring
+ * `assertBatchSize` in `validate.ts`) so an authorized editor can't submit an
+ * arbitrarily large id list and force that many sequential UPDATEs inside one
+ * transaction — a firearm can never legitimately hold more photos than the
+ * quota, so any longer list is already invalid. Checked AFTER authorization,
+ * matching this module's authorize-before-validate rule (see file doc
+ * comment), so an invisible/forbidden firearm still yields NotFound/
+ * NotAuthorized rather than leaking a validation result.
  */
 export async function reorderPhotos(
   actorId: string,
@@ -256,6 +274,11 @@ export async function reorderPhotos(
 ): Promise<void> {
   await db.transaction(async (tx) => {
     await authorizeUpdate(tx, actorId, "firearm", firearmId);
+
+    if (orderedPhotoIds.length > MAX_PHOTOS_PER_FIREARM) {
+      throw new ValidationError(["tooManyPhotos"]);
+    }
+
     for (const [index, photoId] of orderedPhotoIds.entries()) {
       await tx
         .update(firearmPhoto)

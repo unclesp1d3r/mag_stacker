@@ -218,6 +218,25 @@ live("firearm-photo service (#9, U4)", () => {
     expect(photos.map((p) => p.id)).toEqual([photoC.id, photoA.id, photoB.id]);
   });
 
+  test("reorderPhotos rejects an id list longer than MAX_PHOTOS_PER_FIREARM (DoS cap)", async () => {
+    const fa = await makeFirearm(owner);
+    const [created] = await createPhotos(owner, fa.id, [await jpegInput()]);
+    const photo = expectOk(created);
+
+    const oversized = Array.from(
+      { length: MAX_PHOTOS_PER_FIREARM + 1 },
+      () => photo.id,
+    );
+
+    await expect(reorderPhotos(owner, fa.id, oversized)).rejects.toBeInstanceOf(
+      ValidationError,
+    );
+
+    // Rejected before any UPDATE runs — the existing order is untouched.
+    const photos = await listPhotos(owner, fa.id);
+    expect(photos.map((p) => p.id)).toEqual([photo.id]);
+  });
+
   test("quota: exceeding MAX_PHOTOS_PER_FIREARM is rejected", async () => {
     const fa = await makeFirearm(owner);
     for (let i = 0; i < MAX_PHOTOS_PER_FIREARM; i++) {
