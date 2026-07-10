@@ -52,7 +52,10 @@ test("upload, mixed-validity batch, primary, keyboard reorder, delete, and empty
     await expect(gallery.getByRole("listitem")).toHaveCount(2);
     await expect(page.getByText("No photos yet")).toHaveCount(0);
     await expect(
-      gallery.getByRole("listitem").first().getByText("Primary"),
+      gallery
+        .getByRole("listitem")
+        .first()
+        .getByText("Primary", { exact: true }),
     ).toBeVisible();
   });
 
@@ -96,11 +99,15 @@ test("upload, mixed-validity batch, primary, keyboard reorder, delete, and empty
     const detailItem = gallery.getByRole("listitem").filter({
       hasText: "Detail",
     });
-    await expect(detailItem.getByText("Primary")).toBeVisible();
+    await expect(
+      detailItem.getByText("Primary", { exact: true }),
+    ).toBeVisible();
     const frontItem = gallery.getByRole("listitem").filter({
       hasText: "Front",
     });
-    await expect(frontItem.getByText("Primary")).toHaveCount(0);
+    await expect(frontItem.getByText("Primary", { exact: true })).toHaveCount(
+      0,
+    );
     // The primary preview slot swaps to the newly-primary photo.
     await expect(page.getByRole("figure").getByText("Detail")).toBeVisible();
   });
@@ -130,7 +137,7 @@ test("upload, mixed-validity batch, primary, keyboard reorder, delete, and empty
     const frontItem = gallery.getByRole("listitem").filter({
       hasText: "Front",
     });
-    await expect(frontItem.getByText("Primary")).toBeVisible();
+    await expect(frontItem.getByText("Primary", { exact: true })).toBeVisible();
     await expect(page.getByRole("figure").getByText("Front")).toBeVisible();
   });
 

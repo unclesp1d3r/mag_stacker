@@ -28,8 +28,9 @@
  */
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
@@ -133,6 +134,12 @@ async function main(): Promise<void> {
   process.env.BETTER_AUTH_URL = BASE_URL;
   process.env.ADMIN_EMAIL = adminEmail;
   process.env.ADMIN_PASSWORD = adminPassword;
+  // Photo uploads (#9) write blobs under UPLOAD_DIR; the served app's
+  // requireUploadDir() throws without it. An ephemeral temp dir per run keeps
+  // e2e uploads isolated and disposable.
+  process.env.UPLOAD_DIR = mkdtempSync(
+    join(tmpdir(), "magstacker-e2e-uploads-"),
+  );
 
   // 2. Ephemeral Postgres (built-in wait strategy; Ryuk reaps on exit). Fail
   //    fast with a clear message if it can't start — otherwise the error escapes
