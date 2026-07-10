@@ -16,13 +16,23 @@ export type { StorageKey, StorageService } from "./service";
  * without an upload directory configured. `requireUploadDir()` then fails
  * fast at first *access*, mirroring `src/db/client.ts`.
  */
-let activeStorage: StorageService | undefined;
+let activeStorage: LocalFilesystemAdapter | undefined;
 
-function connect(): StorageService {
+function connect(): LocalFilesystemAdapter {
   if (!activeStorage) {
     activeStorage = new LocalFilesystemAdapter(requireUploadDir());
   }
   return activeStorage;
+}
+
+/**
+ * The resolved upload root the shared `storage` singleton reads and writes.
+ * Consumers that scan the directory directly (e.g. the orphan sweep) must use
+ * this rather than resolving `UPLOAD_DIR` themselves, so they always agree with
+ * where blobs were actually written.
+ */
+export function activeStorageRoot(): string {
+  return connect().root;
 }
 
 /** Lazy proxy: forwards to the real object built on first property access. */

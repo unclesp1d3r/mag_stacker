@@ -10,8 +10,9 @@ import {
   type Permission,
   resolvePermission,
 } from "@/src/auth/visibility";
-import { db } from "@/src/db/client";
-import { firearm } from "@/src/db/schema";
+import { type DbOrTx, db } from "@/src/db/client";
+import { firearm, firearmPhoto } from "@/src/db/schema";
+import { deriveKey, storage } from "@/src/storage";
 import { ValidationError } from "../errors";
 import { type FirearmInput, validateFirearm } from "./validate";
 
@@ -97,12 +98,69 @@ export async function updateFirearm(
   });
 }
 
-/** Owner-only delete; removes this firearm's join rows + grants (R23, R35, R17b). */
+/**
+ * Best-effort deletes a photo's original + derivative blobs, logging (not
+ * throwing) on failure. Duplicated from
+ * `src/domain/firearm-photos/service.ts`'s `deleteBlobsBestEffort` rather
+ * than imported: that module is out of scope for this unit, and the loop is
+ * small enough that the duplication is cheaper than widening the boundary.
+ */
+async function deletePhotoBlobBestEffort(storageKey: string): Promise<void> {
+  const keys = [
+    storageKey,
+    deriveKey(storageKey, "thumb"),
+    deriveKey(storageKey, "preview"),
+  ];
+  await Promise.all(
+    keys.map(async (key) => {
+      try {
+        await storage.delete(key);
+      } catch (error) {
+        console.error(`firearms: failed to delete photo blob ${key}`, error);
+      }
+    }),
+  );
+}
+
+/**
+ * Pre-delete hook (U5, KTD8, R8) wired only into the firearm-delete path
+ * below — magazine/ammo delete reuse `authorizeAndDeleteParent` unchanged and
+ * never pass a hook. Runs inside the delete transaction, after authorization
+ * and before the row delete: enumerates the firearm's photo blobs and
+ * removes them best-effort. A blob-delete failure never aborts the firearm
+ * delete; anything left behind is reclaimable via `orphanSweep` (U5). The
+ * `firearm_photo` rows themselves are removed by the FK's ON DELETE CASCADE
+ * once the firearm row is deleted, not by this hook.
+ */
+async function cleanupFirearmPhotoBlobs(
+  tx: DbOrTx,
+  firearmId: string,
+): Promise<void> {
+  const photos = await tx
+    .select({ storageKey: firearmPhoto.storageKey })
+    .from(firearmPhoto)
+    .where(eq(firearmPhoto.firearmId, firearmId));
+  await Promise.all(
+    photos.map((photo) => deletePhotoBlobBestEffort(photo.storageKey)),
+  );
+}
+
+/**
+ * Owner-only delete; removes this firearm's join rows + grants (R23, R35,
+ * R17b) and best-effort deletes its photo blobs before the row cascade (R8,
+ * KTD8).
+ */
 export async function deleteFirearm(
   actorId: string,
   id: string,
 ): Promise<void> {
-  await authorizeAndDeleteParent(actorId, "firearm", id);
+  await authorizeAndDeleteParent(
+    actorId,
+    "firearm",
+    id,
+    db,
+    cleanupFirearmPhotoBlobs,
+  );
 }
 
 /** Get a single firearm, or not-found if it is outside the requester's visible set. */

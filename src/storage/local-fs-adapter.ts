@@ -19,7 +19,10 @@ export class PathTraversalError extends Error {
  * somewhere unexpected.
  */
 export class LocalFilesystemAdapter implements StorageService {
-  private readonly root: string;
+  /** Resolved upload root. Public so the orphan sweep scans the same
+   * directory this adapter actually reads/writes, rather than re-resolving
+   * `UPLOAD_DIR` independently (which can drift from the constructed root). */
+  readonly root: string;
 
   constructor(uploadDir: string) {
     this.root = resolve(uploadDir);
