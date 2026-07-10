@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,6 +31,7 @@ import {
   listPhotos,
   primaryThumbnailsFor,
   reorderPhotos,
+  setCaption,
   setPrimary,
 } from "../service";
 
@@ -113,6 +115,100 @@ live("firearm-photo service (#9, U4)", () => {
 
     await expect(
       createPhotos(stranger, fa.id, [await jpegInput()]),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  test("deletePhoto: a view-grantee is not authorized; a stranger and an unknown photo id are not-found", async () => {
+    const fa = await makeFirearm(owner);
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: viewer,
+      parentType: "firearm",
+      parentId: fa.id,
+      permission: "view",
+    });
+    const photo = await makeFirearmPhoto(fa.id, 0);
+
+    await expect(deletePhoto(viewer, photo.id)).rejects.toBeInstanceOf(
+      NotAuthorizedError,
+    );
+    await expect(deletePhoto(stranger, photo.id)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    // Unknown photo id — exercises `firearmIdFor`'s not-found path directly,
+    // independent of the parent-firearm authz checked above.
+    await expect(deletePhoto(owner, randomUUID())).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+
+    // None of the rejected calls actually deleted the photo.
+    const photos = await listPhotos(owner, fa.id);
+    expect(photos).toHaveLength(1);
+  });
+
+  test("setPrimary: a view-grantee is not authorized; a stranger and an unknown photo id are not-found", async () => {
+    const fa = await makeFirearm(owner);
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: viewer,
+      parentType: "firearm",
+      parentId: fa.id,
+      permission: "view",
+    });
+    const photo = await makeFirearmPhoto(fa.id, 0);
+
+    await expect(setPrimary(viewer, photo.id)).rejects.toBeInstanceOf(
+      NotAuthorizedError,
+    );
+    await expect(setPrimary(stranger, photo.id)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    await expect(setPrimary(owner, randomUUID())).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+  });
+
+  test("reorderPhotos: a view-grantee is not authorized; a stranger is not-found", async () => {
+    const fa = await makeFirearm(owner);
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: viewer,
+      parentType: "firearm",
+      parentId: fa.id,
+      permission: "view",
+    });
+    const photo = await makeFirearmPhoto(fa.id, 0);
+
+    // `reorderPhotos` authorizes on `firearmId` directly (no `firearmIdFor`
+    // lookup — unlike the photo-id-keyed mutations above), so its not-found
+    // coverage is the invisible-firearm case, mirrored from AE3.
+    await expect(
+      reorderPhotos(viewer, fa.id, [photo.id]),
+    ).rejects.toBeInstanceOf(NotAuthorizedError);
+    await expect(
+      reorderPhotos(stranger, fa.id, [photo.id]),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  test("setCaption: a view-grantee is not authorized; a stranger and an unknown photo id are not-found", async () => {
+    const fa = await makeFirearm(owner);
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: viewer,
+      parentType: "firearm",
+      parentId: fa.id,
+      permission: "view",
+    });
+    const photo = await makeFirearmPhoto(fa.id, 0);
+
+    await expect(setCaption(viewer, photo.id, "nope")).rejects.toBeInstanceOf(
+      NotAuthorizedError,
+    );
+    await expect(setCaption(stranger, photo.id, "nope")).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    await expect(
+      setCaption(owner, randomUUID(), "nope"),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 

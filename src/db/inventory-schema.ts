@@ -11,6 +11,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import {
@@ -364,6 +365,17 @@ export const firearmPhoto = pgTable(
     index("firearm_photo_firearm_id_idx").on(t.firearmId),
     // R26-style backstop — domain validation is the primary surface (KTD4).
     check("firearm_photo_sort_order_min", sql`${t.sortOrder} >= 0`),
+    // DB backstop (R7): at most one primary photo per firearm. A partial
+    // unique index (only rows where `is_primary` is true) rather than a plain
+    // unique constraint on `(firearm_id, is_primary)`, which would also
+    // forbid more than one NON-primary row per firearm. `setPrimary` clears
+    // the old primary then sets the new one inside one transaction — both the
+    // intermediate all-false state and the final single-true state satisfy
+    // this index — and `createPhotos` sets `is_primary` on at most the first
+    // photo of a batch, so neither normal flow can violate it.
+    uniqueIndex("firearm_photo_one_primary_per_firearm")
+      .on(t.firearmId)
+      .where(sql`${t.isPrimary}`),
   ],
 );
 

@@ -12,7 +12,11 @@ import {
   storage,
 } from "@/src/storage";
 import { ValidationError } from "../errors";
-import { MAX_PHOTOS_PER_FIREARM } from "./constants";
+import {
+  type AllowedMimeType,
+  isAllowedMimeType,
+  MAX_PHOTOS_PER_FIREARM,
+} from "./constants";
 import { processImage } from "./pipeline";
 import {
   assertBatchSize,
@@ -62,7 +66,7 @@ async function firearmIdFor(tx: DbOrTx, id: string): Promise<string> {
   return row.firearmId;
 }
 
-const EXTENSION_BY_MIME_TYPE: Record<string, string> = {
+const EXTENSION_BY_MIME_TYPE: Record<AllowedMimeType, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
@@ -71,8 +75,8 @@ const EXTENSION_BY_MIME_TYPE: Record<string, string> = {
 
 /** File extension for a storage key. `validatePhotoUpload` has already
  * rejected any mime type outside the allow-list by the time this runs. */
-function extFromMimeType(mimeType: string): string {
-  return EXTENSION_BY_MIME_TYPE[mimeType] ?? "bin";
+function extFromMimeType(mimeType: AllowedMimeType): string {
+  return EXTENSION_BY_MIME_TYPE[mimeType];
 }
 
 /**
@@ -121,11 +125,27 @@ export async function createPhotos(
         results.push({ ok: false, codes });
         continue;
       }
+      // `validatePhotoUpload` above already confirmed `input.mimeType` is in
+      // the allow-list (that's what "codes.length === 0" means) — this
+      // repeats the same check purely so TypeScript can narrow
+      // `input.mimeType` from `string` to `AllowedMimeType` for the pipeline
+      // calls below, threading the validated-boundary type instead of a bare
+      // `string` (drift protection: a mime type can no longer reach
+      // `processImage`/`extFromMimeType` without going through the guard).
+      // Unreachable in practice, not a new failure path.
+      if (!isAllowedMimeType(input.mimeType)) {
+        results.push({ ok: false, codes: ["disallowedMimeType"] });
+        continue;
+      }
 
       let processed: Awaited<ReturnType<typeof processImage>>;
       try {
         processed = await processImage(input.bytes, input.mimeType);
-      } catch {
+      } catch (error) {
+        console.error(
+          `firearm-photos: processImage failed for firearm ${firearmId} (mime=${input.mimeType})`,
+          error,
+        );
         results.push({ ok: false, codes: ["processingFailed"] });
         continue;
       }

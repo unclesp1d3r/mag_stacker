@@ -1,6 +1,7 @@
 import type { Sharp } from "sharp";
 import sharp from "sharp";
 import {
+  type AllowedMimeType,
   isAllowedRasterFormat,
   MAX_INPUT_PIXELS,
   PREVIEW_MAX_EDGE,
@@ -38,7 +39,7 @@ export interface ProcessedImage {
  */
 export async function processImage(
   bytes: Uint8Array | Buffer,
-  mimeType: string,
+  mimeType: AllowedMimeType,
 ): Promise<ProcessedImage> {
   const metadata = await sharp(bytes, {
     limitInputPixels: MAX_INPUT_PIXELS,
@@ -94,7 +95,10 @@ export async function processImage(
  * per output (rather than `.clone()`) keeps each derivative's pipeline
  * independent and side-effect free.
  */
-function reencode(bytes: Uint8Array | Buffer, mimeType: string): Sharp {
+function reencode(
+  bytes: Uint8Array | Buffer,
+  mimeType: AllowedMimeType,
+): Sharp {
   const pipeline = sharp(bytes, { limitInputPixels: MAX_INPUT_PIXELS });
   switch (mimeType) {
     case "image/jpeg":

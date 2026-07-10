@@ -14,7 +14,9 @@ import type { StorageKey } from "./service";
  *     leave a live row pointing at a missing blob.
  *   - `cleanupFirearmPhotoBlobs` (`src/domain/firearms/service.ts`) calls
  *     this INSIDE the firearm-delete transaction, before that transaction
- *     commits — unchanged here; see that function's own doc comment.
+ *     commits — a blob-delete failure there still never aborts the firearm
+ *     delete (best-effort, per this function's own contract); see that
+ *     function's own doc comment for why pre-commit timing is safe there.
  */
 export async function deletePhotoBlobs(storageKey: StorageKey): Promise<void> {
   const keys = [

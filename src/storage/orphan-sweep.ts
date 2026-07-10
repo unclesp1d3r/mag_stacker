@@ -36,7 +36,17 @@ export interface OrphanSweepResult {
 export async function orphanSweep(): Promise<OrphanSweepResult> {
   const uploadDir = activeStorageRoot();
   const entries = await readdir(uploadDir, { withFileTypes: true }).catch(
-    () => [],
+    (error: NodeJS.ErrnoException) => {
+      // A fresh install may not have created UPLOAD_DIR yet — nothing to
+      // sweep, not an error. Any other failure (permissions, I/O) is a real
+      // problem and must not be swallowed silently.
+      if (error.code === "ENOENT") return [];
+      console.error(
+        `storage: orphanSweep failed to read UPLOAD_DIR (${uploadDir})`,
+        error,
+      );
+      throw error;
+    },
   );
   const fileNames = entries
     .filter((entry) => entry.isFile())

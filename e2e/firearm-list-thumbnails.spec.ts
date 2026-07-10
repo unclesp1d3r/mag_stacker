@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { authTest, expect } from "./fixtures/auth";
+import { authTest, expect, readArtifact } from "./fixtures/auth";
 
 /**
  * Primary-photo thumbnails on the firearm list (U8; R16, R17, R18, R22;
@@ -78,13 +78,34 @@ test("firearm list shows the primary thumbnail, and a neutral placeholder when t
     ).toBeVisible();
   });
 
+  let thumbUrl = "";
+
   await test.step("the list shows the primary thumbnail via the /thumb variant", async () => {
     await page.goto("/firearms");
     const photoRow = page.getByRole("row").filter({ hasText: PHOTO_FIREARM });
     const thumb = photoRow.getByRole("img", { name: PHOTO_FIREARM });
     await expect(thumb).toBeVisible();
     await expect(thumb).toHaveAttribute("src", /\/api\/photos\/[^/]+\/thumb$/);
+    // Resolve to an absolute URL against the app origin so the request in the
+    // next step targets the serving route directly.
+    const src = (await thumb.getAttribute("src")) ?? "";
+    thumbUrl = new URL(src, readArtifact().baseURL).href;
   });
+
+  await test.step("the serving route sends an image content-type with the nosniff header (R13)", async () => {
+    const res = await page.request.get(thumbUrl);
+    expect(res.ok()).toBe(true);
+    expect(res.headers()["content-type"]).toMatch(/^image\//);
+    expect(res.headers()["x-content-type-options"]).toBe("nosniff");
+  });
+
+  // The serving route's unauthenticated-request rejection (401 on no session)
+  // is covered by the route's explicit `getCurrentUser()` guard plus the
+  // domain-layer authz coverage in
+  // `src/domain/firearm-photos/__tests__/serving.test.ts` (getServablePhoto
+  // returns null for a no-access actor -> 404) and AE2. It is not asserted here
+  // because the pre-minted-session e2e harness cannot construct a genuinely
+  // sessionless browser context to exercise it cleanly.
 
   await test.step("a firearm with no primary shows the placeholder, never a broken image", async () => {
     const noPhotoRow = page
