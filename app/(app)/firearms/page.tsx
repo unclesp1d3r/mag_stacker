@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/src/auth/session";
 import { visibleFirearmPermissions } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
+import { primaryThumbnailsFor } from "@/src/domain/firearm-photos/service";
 import { listFirearms } from "@/src/domain/firearms/service";
 import { lifetimeRoundTotals } from "@/src/domain/range-sessions/service";
 import {
@@ -15,12 +16,19 @@ export default async function FirearmsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [firearms, summary, caliberSuggestions, permissions] =
+  // Needs the visible firearm id set, so it can't join the Promise.all below —
+  // still a single batched query (R18), just sequenced after the list fetch
+  // rather than run per row.
+  const firearms = await listFirearms(user.id);
+  const [summary, caliberSuggestions, permissions, primaryThumbnails] =
     await Promise.all([
-      listFirearms(user.id),
       inventorySummary(user.id),
       calibersForInput(db, user.id),
       visibleFirearmPermissions(db, user.id),
+      primaryThumbnailsFor(
+        user.id,
+        firearms.map((f) => f.id),
+      ),
     ]);
   // Reuse the permission map's keys (the visible firearm set) so the round-total
   // aggregation doesn't re-derive owned∪granted a second time.
@@ -53,6 +61,7 @@ export default async function FirearmsPage() {
     isNfa: f.isNfa,
     magazineCount: counts.get(f.id) ?? 0,
     roundTotal: roundTotals.get(f.id) ?? 0,
+    primaryPhoto: primaryThumbnails.get(f.id) ?? null,
   }));
   // Serial column shows only when at least one visible firearm has a serial (R71).
   const showSerial = firearms.some((f) => f.serialNumber.trim() !== "");

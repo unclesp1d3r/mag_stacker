@@ -25,6 +25,10 @@ import {
   type TableViewState,
 } from "@/components/ui/data-table/types";
 import { EmptyState } from "@/components/ui/feedback";
+import {
+  PhotoThumbnail,
+  type ThumbnailPhoto,
+} from "@/components/ui/photo-thumbnail";
 import { Select } from "@/components/ui/select";
 import { Card, PageHeader } from "@/components/ui/surface";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
@@ -49,6 +53,9 @@ export interface FirearmListItem extends FirearmFormValues {
   magazineCount: number;
   /** Derived lifetime rounds fired across this firearm's sessions (#11). */
   roundTotal: number;
+  /** This firearm's primary photo, batch-resolved by the page loader via
+   * `primaryThumbnailsFor` (R18) — `null` when it has none (R22). */
+  primaryPhoto: ThumbnailPhoto | null;
 }
 
 interface FirearmsViewProps {
@@ -123,6 +130,18 @@ export function FirearmsView({
 
   const columns = useMemo<ColumnDef<FirearmListItem>[]>(() => {
     const cols: ColumnDef<FirearmListItem>[] = [
+      {
+        id: "photo",
+        header: () => <span className="sr-only">Photo</span>,
+        enableSorting: false,
+        enableHiding: false,
+        cell: ({ row }) => (
+          <PhotoThumbnail
+            photo={row.original.primaryPhoto}
+            alt={firearmDisplayName(row.original)}
+          />
+        ),
+      },
       {
         id: "name",
         accessorFn: (item) => firearmDisplayName(item),
