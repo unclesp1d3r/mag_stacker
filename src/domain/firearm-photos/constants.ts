@@ -43,3 +43,11 @@ export const PREVIEW_MAX_EDGE = 1024;
  * can exhaust memory or CPU (R9). Passed to sharp's `limitInputPixels`.
  */
 export const MAX_INPUT_PIXELS = 24_000_000;
+
+/**
+ * Maximum number of photos a single firearm may hold (R20) — a per-firearm
+ * quota so a low-trust edit-grantee cannot exhaust disk for the whole
+ * instance. Enforced by `createPhotos` (U4), independent of the per-request
+ * file cap (`MAX_FILES_PER_REQUEST`, R26).
+ */
+export const MAX_PHOTOS_PER_FIREARM = 50;
