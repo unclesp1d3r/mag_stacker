@@ -31,6 +31,7 @@
     "rate-limiter-flexible": "^11.2.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "sharp": "^0.35.3",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
@@ -52,7 +53,6 @@
     "typescript": "^5.9.3"
   },
   "ignoreScripts": [
-    "sharp",
     "unrs-resolver"
   ],
   "trustedDependencies": [
