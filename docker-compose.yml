@@ -94,6 +94,9 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-magstacker}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-magstacker}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - magstacker-uploads:/data/uploads
     ports:
       - "${APP_HOST_PORT:-3000}:3000"
     depends_on:
@@ -102,3 +105,7 @@ services:
 
 volumes:
   magstacker-pgdata:
+  # Photo/attachment blobs (originals + derivatives) written by the local-
+  # filesystem storage adapter (KTD1). Back this up alongside the Postgres
+  # dump — the `firearm_photo` rows and these blobs are independent stores.
+  magstacker-uploads:
