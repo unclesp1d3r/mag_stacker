@@ -6,6 +6,7 @@ import {
   accessory,
   ammo,
   firearm,
+  firearmPhoto,
   inventoryLog,
   magazine,
   magazineFirearm,
@@ -122,6 +123,35 @@ export async function makeRangeSession(
   const [row] = await db
     .insert(rangeSession)
     .values({ firearmId, date: "2026-01-01", roundsFired: 50, ...overrides })
+    .returning();
+  return row;
+}
+
+/**
+ * Insert a firearm-photo row directly (U2/U4). No `owner_id`/grants — the row
+ * is a firearm child and inherits authz through `firearmId` (R6). `sortOrder`
+ * has no sensible default (callers place it in the gallery), so it's a
+ * required param rather than an overridable default.
+ */
+export async function makeFirearmPhoto(
+  firearmId: string,
+  sortOrder: number,
+  overrides: Partial<
+    Omit<typeof firearmPhoto.$inferInsert, "firearmId" | "sortOrder">
+  > = {},
+): Promise<typeof firearmPhoto.$inferSelect> {
+  const [row] = await db
+    .insert(firearmPhoto)
+    .values({
+      storageKey: `test/${randomUUID()}`,
+      mimeType: "image/jpeg",
+      sizeBytes: 1024,
+      width: 800,
+      height: 600,
+      ...overrides,
+      firearmId,
+      sortOrder,
+    })
     .returning();
   return row;
 }

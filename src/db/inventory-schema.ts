@@ -328,6 +328,45 @@ export const rangeSessionAccessory = pgTable(
   ],
 );
 
+/**
+ * Firearm photo (#9) — a firearm child record (R62), mirroring `rangeSession`'s
+ * shape: no `owner_id`, no own grant family — every read/write authorizes
+ * through the parent firearm (R6). The FK ON DELETE CASCADE drops photo rows
+ * with the firearm; blob cleanup for the underlying storage objects is handled
+ * separately in the delete flow (U5), not by this table. `storageKey` is the
+ * server-generated key for the original blob; derivatives (thumbnail/preview)
+ * are addressable via a deterministic convention derived from that key (R5) —
+ * no separate derivative table or manifest column. `caption` is
+ * empty-not-null (R18). `uploadedAt` is a single timestamp column (not
+ * `createdAt`/`updatedAt` — photos aren't mutated in place beyond caption/sort/
+ * primary, and `uploadedAt` is the field the product surfaces).
+ */
+export const firearmPhoto = pgTable(
+  "firearm_photo",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    firearmId: uuid("firearm_id")
+      .notNull()
+      .references(() => firearm.id, { onDelete: "cascade" }),
+    storageKey: text("storage_key").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    // Empty-not-null (R18).
+    caption: text("caption").notNull().default(""),
+    sortOrder: integer("sort_order").notNull(),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  },
+  (t) => [
+    // Per-firearm gallery lookup.
+    index("firearm_photo_firearm_id_idx").on(t.firearmId),
+    // R26-style backstop — domain validation is the primary surface (KTD4).
+    check("firearm_photo_sort_order_min", sql`${t.sortOrder} >= 0`),
+  ],
+);
+
 export const grant = pgTable(
   "grant",
   {
