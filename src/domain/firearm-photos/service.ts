@@ -4,7 +4,12 @@ import { NotFoundError } from "@/src/auth/errors";
 import { getVisibleIds, resolvePermission } from "@/src/auth/visibility";
 import { type DbOrTx, db } from "@/src/db/client";
 import { firearmPhoto } from "@/src/db/schema";
-import { deriveKey, generateKey, storage } from "@/src/storage";
+import {
+  type DerivativeVariant,
+  deriveKey,
+  generateKey,
+  storage,
+} from "@/src/storage";
 import { ValidationError } from "../errors";
 import { MAX_PHOTOS_PER_FIREARM } from "./constants";
 import { processImage } from "./pipeline";
@@ -341,4 +346,50 @@ export async function primaryThumbnailsFor(
   return new Map(
     rows.map((row) => [row.firearmId, { id: row.id, mimeType: row.mimeType }]),
   );
+}
+
+/** A servable photo variant: the original or one of its derivatives. */
+export type PhotoVariant = "original" | DerivativeVariant;
+
+export interface ServablePhoto {
+  bytes: Buffer;
+  mimeType: string;
+}
+
+/**
+ * Resolve a photo's bytes + stored MIME type for authenticated streaming
+ * (U6, KTD6, R12, R13). Authz is resolved against the PARENT FIREARM via
+ * `resolvePermission` — any visibility level (owner/edit/view) can read, per
+ * the read/write split (R12 vs R14: reads need only visibility, writes need
+ * edit). Returns null when the photo id doesn't exist OR the actor holds no
+ * permission on its parent firearm — the two cases are indistinguishable to
+ * the caller so the Route Handler maps both to a bare 404 without revealing
+ * which one occurred (existence-hiding, AE2).
+ */
+export async function getServablePhoto(
+  actorId: string,
+  photoId: string,
+  variant: PhotoVariant,
+): Promise<ServablePhoto | null> {
+  const [row] = await db
+    .select()
+    .from(firearmPhoto)
+    .where(eq(firearmPhoto.id, photoId))
+    .limit(1);
+  if (!row) return null;
+
+  const permission = await resolvePermission(
+    db,
+    actorId,
+    "firearm",
+    row.firearmId,
+  );
+  if (permission === null) return null;
+
+  const key =
+    variant === "original"
+      ? row.storageKey
+      : deriveKey(row.storageKey, variant);
+  const bytes = await storage.read(key);
+  return { bytes, mimeType: row.mimeType };
 }
