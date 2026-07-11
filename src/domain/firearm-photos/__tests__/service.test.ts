@@ -15,6 +15,7 @@ import { NotAuthorizedError, NotFoundError } from "@/src/auth/errors";
 import { createGrant } from "@/src/auth/grants";
 import { db } from "@/src/db/client";
 import { ValidationError } from "@/src/domain/errors";
+import { activeStorageRoot } from "@/src/storage";
 import {
   createUser,
   deleteUsers,
@@ -330,21 +331,20 @@ live("firearm-photo service (#9, U4)", () => {
     const [created] = await createPhotos(owner, fa.id, [await jpegInput()]);
     const photo = expectOk(created);
 
-    expect(existsSync(join(uploadDir, photo.storageKey))).toBe(true);
-    expect(existsSync(join(uploadDir, `${photo.storageKey}.thumb`))).toBe(true);
-    expect(existsSync(join(uploadDir, `${photo.storageKey}.preview`))).toBe(
-      true,
-    );
+    // Resolve the blob root from the storage singleton rather than this file's
+    // module-scope `uploadDir`: the lazy `storage` singleton binds to whichever
+    // test file first touched it, so reading `activeStorageRoot()` keeps these
+    // filesystem assertions correct regardless of test-file load order.
+    const root = activeStorageRoot();
+    expect(existsSync(join(root, photo.storageKey))).toBe(true);
+    expect(existsSync(join(root, `${photo.storageKey}.thumb`))).toBe(true);
+    expect(existsSync(join(root, `${photo.storageKey}.preview`))).toBe(true);
 
     await deletePhoto(owner, photo.id);
 
-    expect(existsSync(join(uploadDir, photo.storageKey))).toBe(false);
-    expect(existsSync(join(uploadDir, `${photo.storageKey}.thumb`))).toBe(
-      false,
-    );
-    expect(existsSync(join(uploadDir, `${photo.storageKey}.preview`))).toBe(
-      false,
-    );
+    expect(existsSync(join(root, photo.storageKey))).toBe(false);
+    expect(existsSync(join(root, `${photo.storageKey}.thumb`))).toBe(false);
+    expect(existsSync(join(root, `${photo.storageKey}.preview`))).toBe(false);
   });
 
   test("reorderPhotos persists the new order", async () => {

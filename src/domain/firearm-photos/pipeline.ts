@@ -2,7 +2,7 @@ import type { Sharp } from "sharp";
 import sharp from "sharp";
 import {
   type AllowedMimeType,
-  isAllowedRasterFormat,
+  isAllowedDetectedType,
   MAX_INPUT_PIXELS,
   PREVIEW_MAX_EDGE,
   THUMB_MAX_EDGE,
@@ -49,10 +49,12 @@ export async function processImage(
   // cannot trigger the SSRF this guard defends against. Reject BEFORE the
   // re-encode below (which does rasterize) so an SVG (or any other
   // non-raster format) mislabeled with an allowed MIME type never reaches a
-  // format-specific loader (R9, format-confusion SSRF hardening).
-  if (!isAllowedRasterFormat(metadata.format)) {
+  // format-specific loader (R9, format-confusion SSRF hardening). Gated on the
+  // magic-byte-detected `mediaType`, not `format` — `format` reports AVIF as
+  // its container token `"heif"`, which the allow-list rejects.
+  if (!isAllowedDetectedType(metadata.mediaType)) {
     throw new Error(
-      `firearm-photos/pipeline: unsupported image format "${metadata.format ?? "unknown"}"`,
+      `firearm-photos/pipeline: unsupported image media type "${metadata.mediaType ?? "unknown"}"`,
     );
   }
 

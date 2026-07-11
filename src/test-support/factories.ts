@@ -143,7 +143,10 @@ export async function makeFirearmPhoto(
   const [row] = await db
     .insert(firearmPhoto)
     .values({
-      storageKey: `test/${randomUUID()}`,
+      // Flat, separator-free, extension-bearing key matching production shape
+      // (`generateKey(ext)` — see src/storage/keys.ts); a `test/…` prefix would
+      // contradict the separator-free invariant the orphan sweep relies on.
+      storageKey: `${randomUUID()}.jpg`,
       mimeType: "image/jpeg",
       sizeBytes: 1024,
       width: 800,

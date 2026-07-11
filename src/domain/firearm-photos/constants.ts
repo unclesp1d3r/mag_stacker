@@ -26,28 +26,27 @@ export function isAllowedMimeType(
 }
 
 /**
- * Raster formats `sharp` may rasterize (R9, SSRF hardening). Derived from
- * `ALLOWED_MIME_TYPES` (stripping the `image/` prefix) rather than declared
- * independently, so the two allow-lists can never drift: `sharp`'s detected
- * `metadata().format` is a bare token (`"jpeg"`, not `"image/jpeg"`), unlike
- * the MIME-typed allow-list above.
- */
-const ALLOWED_RASTER_FORMAT_SET: ReadonlySet<string> = new Set(
-  ALLOWED_MIME_TYPES.map((mimeType) => mimeType.slice("image/".length)),
-);
-
-/**
- * True when `format` (from `sharp().metadata()`, reading only header bytes)
- * is one of the controlled raster formats. `sharp` auto-detects the REAL
- * format from magic bytes independent of any caller-declared MIME type, so
- * this guards against format confusion (e.g. SVG bytes mislabeled
- * `image/png`) that would otherwise reach a format-specific loader — for
- * SVG, the librsvg loader, which fetches external `<image href>` references
- * during rasterization (SSRF against internal hosts). Must run BEFORE any
+ * True when `mediaType` (from `sharp().metadata()`, reading only header bytes)
+ * is one of the controlled upload types. `sharp` resolves `mediaType` from the
+ * REAL bytes via magic-byte detection, independent of any caller-declared MIME
+ * type, so gating on it does double duty:
+ *
+ *   - It accepts every allowed raster type by its true MIME. Crucially this is
+ *     `mediaType`, NOT `metadata.format`: `format` is the container token, and
+ *     for AVIF that token is `"heif"` (with `compression: "av1"`), not
+ *     `"avif"` — checking `format` against the allow-list rejected every valid
+ *     AVIF upload. `mediaType` reports `"image/avif"` and matches directly.
+ *   - It rejects format confusion (e.g. SVG bytes mislabeled `image/png`, whose
+ *     real `mediaType` is `"image/svg+xml"`) that would otherwise reach a
+ *     format-specific loader — for SVG, the librsvg loader, which fetches
+ *     external `<image href>` references during rasterization (SSRF against
+ *     internal hosts).
+ *
+ * Fails closed when `sharp` can't determine a media type. Must run BEFORE any
  * re-encode/rasterization step, never after.
  */
-export function isAllowedRasterFormat(format: string | undefined): boolean {
-  return format !== undefined && ALLOWED_RASTER_FORMAT_SET.has(format);
+export function isAllowedDetectedType(mediaType: string | undefined): boolean {
+  return mediaType !== undefined && isAllowedMimeType(mediaType);
 }
 
 /** Maximum accepted upload size, in bytes (R9). */

@@ -44,8 +44,12 @@ export class LocalFilesystemAdapter implements StorageService {
 
   async save(key: StorageKey, bytes: Uint8Array): Promise<void> {
     const path = this.resolvePath(key);
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, bytes);
+    // Owner-only modes rather than inheriting the process umask (which can
+    // leave 0755 dirs / 0644 blobs): private photos must not be readable by
+    // other local OS users on a self-hosted or bind-mounted UPLOAD_DIR — the
+    // only legitimate read path is the authenticated serving route.
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    await writeFile(path, bytes, { mode: 0o600 });
   }
 
   async read(key: StorageKey): Promise<Buffer> {

@@ -114,6 +114,33 @@ describe("processImage — decompression-bomb rejection (R9)", () => {
   });
 });
 
+describe("processImage — AVIF acceptance (regression: sharp reports AVIF as heif)", () => {
+  test("a valid AVIF is accepted and yields original + thumb + preview", async () => {
+    // sharp's `metadata().format` reports AVIF as its container token "heif"
+    // (with compression "av1"), not "avif" — gating on `format` rejected every
+    // valid AVIF upload. The pipeline gates on the magic-byte `mediaType`
+    // ("image/avif"), so this must now succeed for an allow-listed type.
+    const avif = await sharp({
+      create: {
+        width: SOURCE_WIDTH,
+        height: SOURCE_HEIGHT,
+        channels: 3,
+        background: { r: 40, g: 80, b: 120 },
+      },
+    })
+      .avif()
+      .toBuffer();
+
+    const result = await processImage(avif, "image/avif");
+
+    expect(result.width).toBe(SOURCE_WIDTH);
+    expect(result.height).toBe(SOURCE_HEIGHT);
+    expect(result.original.length).toBeGreaterThan(0);
+    expect(result.thumb.length).toBeGreaterThan(0);
+    expect(result.preview.length).toBeGreaterThan(0);
+  });
+});
+
 describe("processImage — format-confusion rejection (R9, SSRF hardening)", () => {
   test("SVG bytes are rejected even when the caller declares an allowed image MIME type", async () => {
     const svg = Buffer.from(

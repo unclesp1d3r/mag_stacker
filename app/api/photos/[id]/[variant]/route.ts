@@ -59,7 +59,18 @@ export async function GET(
     return new Response(null, { status: 404 });
   }
 
-  return new Response(new Uint8Array(photo.bytes), {
+  // A zero-copy Uint8Array VIEW over the Buffer's existing memory (matching its
+  // offset/length), rather than `new Uint8Array(photo.bytes)` which copies every
+  // image byte into a second allocation per request. The `as ArrayBuffer` cast
+  // narrows Buffer's `ArrayBufferLike` backing (which BodyInit rejects as it
+  // admits SharedArrayBuffer): a Buffer from `fs.readFile` is always backed by a
+  // real ArrayBuffer, never shared.
+  const body = new Uint8Array(
+    photo.bytes.buffer as ArrayBuffer,
+    photo.bytes.byteOffset,
+    photo.bytes.byteLength,
+  );
+  return new Response(body, {
     headers: {
       "Content-Type": photo.mimeType,
       "X-Content-Type-Options": "nosniff",

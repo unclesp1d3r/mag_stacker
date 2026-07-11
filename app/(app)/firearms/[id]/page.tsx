@@ -46,7 +46,13 @@ export default async function FirearmDetailPage({ params }: PageProps) {
     magazineCountForFirearm(user.id, id),
     listFirearms(user.id),
     listMountedForFirearm(user.id, id),
-    listPhotos(user.id, id),
+    // If access is revoked between the getFirearm check above and here (a
+    // narrow race), listPhotos' NotFoundError becomes the same clean 404 the
+    // page otherwise guarantees, not a generic 500.
+    listPhotos(user.id, id).catch((error: unknown) => {
+      if (error instanceof NotFoundError) notFound();
+      throw error;
+    }),
   ]);
 
   // Derive the value total from the already-fetched accessories rather than

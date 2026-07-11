@@ -28,7 +28,13 @@
  */
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -125,6 +131,14 @@ function runScript(args: string[], label: string): void {
   }
 }
 
+/** The ephemeral upload dir created below, tracked so every exit path can
+ * remove it (mkdtempSync otherwise leaks a temp dir per run). */
+let uploadDir: string | undefined;
+
+function cleanupUploadDir(): void {
+  if (uploadDir) rmSync(uploadDir, { recursive: true, force: true });
+}
+
 async function main(): Promise<void> {
   // 1. Secrets first — seed-admin.ts and the in-process auth import need these
   //    at module load, so they must be set before any `@/auth` import.
@@ -137,9 +151,8 @@ async function main(): Promise<void> {
   // Photo uploads (#9) write blobs under UPLOAD_DIR; the served app's
   // requireUploadDir() throws without it. An ephemeral temp dir per run keeps
   // e2e uploads isolated and disposable.
-  process.env.UPLOAD_DIR = mkdtempSync(
-    join(tmpdir(), "magstacker-e2e-uploads-"),
-  );
+  uploadDir = mkdtempSync(join(tmpdir(), "magstacker-e2e-uploads-"));
+  process.env.UPLOAD_DIR = uploadDir;
 
   // 2. Ephemeral Postgres (built-in wait strategy; Ryuk reaps on exit). Fail
   //    fast with a clear message if it can't start — otherwise the error escapes
@@ -156,6 +169,7 @@ async function main(): Promise<void> {
       "[e2e] container failed to start (is Docker running?):",
       error,
     );
+    cleanupUploadDir();
     process.exit(1);
   }
   process.env.DATABASE_URL = container.getConnectionUri();
@@ -173,6 +187,7 @@ async function main(): Promise<void> {
     } catch (error) {
       console.error("[e2e] container.stop() failed:", error);
     }
+    cleanupUploadDir();
     process.exit(code);
   };
 
@@ -276,5 +291,6 @@ async function main(): Promise<void> {
 
 main().catch((error) => {
   console.error("[e2e] launcher crashed:", error);
+  cleanupUploadDir();
   process.exit(1);
 });

@@ -64,8 +64,21 @@ export async function orphanSweep(): Promise<OrphanSweepResult> {
 
   // `storage.delete` is idempotent (no-op on a missing key), so the orphan
   // deletes have no ordering dependency on one another and can run
-  // concurrently rather than one at a time.
+  // concurrently rather than one at a time. Best-effort per key (like
+  // `deletePhotoBlobs`): a single delete failure (permissions, transient FS
+  // error) is logged and skipped so the rest of the sweep still reclaims —
+  // this is a cleanup utility, one bad key must not abort the whole run.
   const orphanKeys = fileNames.filter((key) => !ownedKeys.has(key));
-  await Promise.all(orphanKeys.map((key) => storage.delete(key)));
-  return { deletedKeys: orphanKeys, scannedCount: fileNames.length };
+  const deletedKeys: string[] = [];
+  await Promise.all(
+    orphanKeys.map(async (key) => {
+      try {
+        await storage.delete(key);
+        deletedKeys.push(key);
+      } catch (error) {
+        console.error(`storage: orphanSweep failed to delete ${key}`, error);
+      }
+    }),
+  );
+  return { deletedKeys, scannedCount: fileNames.length };
 }
