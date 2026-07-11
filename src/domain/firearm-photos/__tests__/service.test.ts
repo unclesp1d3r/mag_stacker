@@ -54,7 +54,6 @@ async function jpegInput(
   return {
     bytes,
     mimeType: "image/jpeg",
-    sizeBytes: bytes.length,
     ...overrides,
   };
 }
@@ -212,6 +211,25 @@ live("firearm-photo service (#9, U4)", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
+  test("listPhotos: a stranger is not-found (existence-hiding); a view-grantee can read", async () => {
+    const fa = await makeFirearm(owner);
+    await makeFirearmPhoto(fa.id, 0);
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: viewer,
+      parentType: "firearm",
+      parentId: fa.id,
+      permission: "view",
+    });
+
+    await expect(listPhotos(stranger, fa.id)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    // A read needs only visibility, not edit (R12): a view-grantee succeeds.
+    const asViewer = await listPhotos(viewer, fa.id);
+    expect(asViewer).toHaveLength(1);
+  });
+
   test("covers AE7: a mixed-validity batch returns per-file results without blocking valid files", async () => {
     const fa = await makeFirearm(owner);
     const valid1 = await jpegInput();
@@ -227,6 +245,36 @@ live("firearm-photo service (#9, U4)", () => {
 
     const photos = await listPhotos(owner, fa.id);
     expect(photos).toHaveLength(2);
+  });
+
+  test("createPhotos: an allowed-MIME file with undecodable bytes fails as processingFailed, leaving survivors gapless with exactly one primary", async () => {
+    const fa = await makeFirearm(owner);
+    const valid1 = await jpegInput();
+    // Allowed MIME + within the size cap, so it clears validatePhotoUpload, but
+    // the bytes aren't a decodable image — processImage throws, exercising the
+    // per-file processingFailed catch path. Distinct from AE7's SVG case, which
+    // is rejected at validation and never reaches processing.
+    const corrupt: CreatePhotoInput = {
+      bytes: new Uint8Array([1, 2, 3, 4, 5]),
+      mimeType: "image/jpeg",
+    };
+    const valid2 = await jpegInput();
+
+    const results = await createPhotos(owner, fa.id, [valid1, corrupt, valid2]);
+
+    expect(results).toHaveLength(3);
+    const first = expectOk(results[0]);
+    expect(results[1]).toEqual({ ok: false, codes: ["processingFailed"] });
+    const third = expectOk(results[2]);
+
+    const photos = await listPhotos(owner, fa.id);
+    expect(photos.map((p) => p.id)).toEqual([first.id, third.id]);
+    // The failed middle file consumes no sort slot — survivors stay gapless.
+    expect(photos.map((p) => p.sortOrder)).toEqual([0, 1]);
+    // Primary goes to the first SUCCESSFUL insert, not the first input.
+    const primaries = photos.filter((p) => p.isPrimary);
+    expect(primaries).toHaveLength(1);
+    expect(primaries[0].id).toBe(first.id);
   });
 
   test("the first uploaded photo auto-becomes primary; a second does not", async () => {
@@ -312,6 +360,33 @@ live("firearm-photo service (#9, U4)", () => {
 
     const photos = await listPhotos(owner, fa.id);
     expect(photos.map((p) => p.id)).toEqual([photoC.id, photoA.id, photoB.id]);
+  });
+
+  test("reorderPhotos: an id from another firearm is a silent no-op, never re-parenting or reordering it", async () => {
+    const faA = await makeFirearm(owner);
+    const photoA1 = expectOk(
+      (await createPhotos(owner, faA.id, [await jpegInput()]))[0],
+    );
+    const photoA2 = expectOk(
+      (await createPhotos(owner, faA.id, [await jpegInput()]))[0],
+    );
+
+    const faB = await makeFirearm(owner);
+    const photoB1 = expectOk(
+      (await createPhotos(owner, faB.id, [await jpegInput()]))[0],
+    );
+
+    // Firearm B's photo id is smuggled into firearm A's reorder payload. The
+    // compound (id, firearmId) guard means B's photo is untouched — not
+    // re-parented into A's gallery, not reordered — while A's own ids reorder
+    // by their payload positions (A2 at 0, A1 at 2).
+    await reorderPhotos(owner, faA.id, [photoA2.id, photoB1.id, photoA1.id]);
+
+    const aPhotos = await listPhotos(owner, faA.id);
+    expect(aPhotos.map((p) => p.id)).toEqual([photoA2.id, photoA1.id]);
+    const bPhotos = await listPhotos(owner, faB.id);
+    expect(bPhotos.map((p) => p.id)).toEqual([photoB1.id]);
+    expect(bPhotos[0].sortOrder).toBe(photoB1.sortOrder);
   });
 
   test("reorderPhotos rejects an id list longer than MAX_PHOTOS_PER_FIREARM (DoS cap)", async () => {

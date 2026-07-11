@@ -5,7 +5,6 @@ import { getVisibleIds, resolvePermission } from "@/src/auth/visibility";
 import { type DbOrTx, db } from "@/src/db/client";
 import { firearm, firearmPhoto } from "@/src/db/schema";
 import {
-  type DerivativeVariant,
   deletePhotoBlobs,
   deriveKey,
   generateKey,
@@ -18,8 +17,10 @@ import {
   MAX_PHOTOS_PER_FIREARM,
 } from "./constants";
 import { processImage } from "./pipeline";
+import type { PhotoUrlVariant } from "./urls";
 import {
   assertBatchSize,
+  type BatchSizeValidationCode,
   type PhotoUploadValidationCode,
   validatePhotoUpload,
 } from "./validate";
@@ -43,7 +44,6 @@ export type FirearmPhoto = typeof firearmPhoto.$inferSelect;
 export interface CreatePhotoInput {
   bytes: Uint8Array | Buffer;
   mimeType: string;
-  sizeBytes: number;
   filename?: string;
 }
 
@@ -54,6 +54,22 @@ export type CreatePhotoFailureCode =
 export type CreatePhotoResult =
   | { ok: true; photo: FirearmPhoto }
   | { ok: false; codes: CreatePhotoFailureCode[] };
+
+/**
+ * Every code a `createPhotos` call can surface: the per-file
+ * `CreatePhotoFailureCode`s plus the whole-call codes thrown as a
+ * `ValidationError` (the batch-size cap and the per-firearm quota). Exported as
+ * the single source of truth for the upload UI's message map, which would
+ * otherwise re-derive the set by hand and silently fall back to a generic
+ * message when a new code is added here.
+ */
+export type CreatePhotoErrorCode =
+  | CreatePhotoFailureCode
+  | BatchSizeValidationCode
+  | "photoQuotaExceeded";
+
+/** The full photo-service failure vocabulary, adding `reorderPhotos`' cap. */
+export type PhotoServiceErrorCode = CreatePhotoErrorCode | "tooManyPhotos";
 
 /** Look up a photo's parent firearm, or not-found if the photo is absent. */
 async function firearmIdFor(tx: DbOrTx, id: string): Promise<string> {
@@ -124,7 +140,9 @@ export async function createPhotos(
       .where(eq(firearmPhoto.firearmId, firearmId));
 
     if (existing.length + inputs.length > MAX_PHOTOS_PER_FIREARM) {
-      throw new ValidationError(["photoQuotaExceeded"]);
+      throw new ValidationError([
+        "photoQuotaExceeded",
+      ] satisfies PhotoServiceErrorCode[]);
     }
 
     let nextSortOrder =
@@ -133,7 +151,14 @@ export async function createPhotos(
 
     const results: CreatePhotoResult[] = [];
     for (const input of inputs) {
-      const codes = validatePhotoUpload(input);
+      // Size is the actual uploaded-buffer length, not a caller-declared field
+      // (the two can't drift). Used for both the size-cap check and the stored
+      // `size_bytes`.
+      const sizeBytes = input.bytes.byteLength;
+      const codes = validatePhotoUpload({
+        mimeType: input.mimeType,
+        sizeBytes,
+      });
       if (codes.length > 0) {
         results.push({ ok: false, codes });
         continue;
@@ -179,7 +204,7 @@ export async function createPhotos(
           firearmId,
           storageKey: key,
           mimeType: input.mimeType,
-          sizeBytes: input.sizeBytes,
+          sizeBytes,
           width: processed.width,
           height: processed.height,
           caption: "",
@@ -313,7 +338,9 @@ export async function reorderPhotos(
     await authorizeUpdate(tx, actorId, "firearm", firearmId);
 
     if (orderedPhotoIds.length > MAX_PHOTOS_PER_FIREARM) {
-      throw new ValidationError(["tooManyPhotos"]);
+      throw new ValidationError([
+        "tooManyPhotos",
+      ] satisfies PhotoServiceErrorCode[]);
     }
 
     for (const [index, photoId] of orderedPhotoIds.entries()) {
@@ -385,8 +412,10 @@ export async function primaryThumbnailsFor(
   );
 }
 
-/** A servable photo variant: the original or one of its derivatives. */
-export type PhotoVariant = "original" | DerivativeVariant;
+/** A servable photo variant: the original or one of its derivatives. Aliased
+ * from the client-safe `PHOTO_VARIANTS` source of truth (`urls.ts`) so the
+ * server and client agree on the vocabulary without a second declaration. */
+export type PhotoVariant = PhotoUrlVariant;
 
 export interface ServablePhoto {
   bytes: Buffer;

@@ -3,17 +3,14 @@ import {
   getServablePhoto,
   type PhotoVariant,
 } from "@/src/domain/firearm-photos/service";
+import { PHOTO_VARIANTS } from "@/src/domain/firearm-photos/urls";
 import { isUuid } from "@/src/lib/uuid";
 
 interface RouteParams {
   params: Promise<{ id: string; variant: string }>;
 }
 
-const VALID_VARIANTS: ReadonlySet<string> = new Set<PhotoVariant>([
-  "original",
-  "thumb",
-  "preview",
-]);
+const VALID_VARIANTS: ReadonlySet<string> = new Set(PHOTO_VARIANTS);
 
 function isPhotoVariant(value: string): value is PhotoVariant {
   return VALID_VARIANTS.has(value);

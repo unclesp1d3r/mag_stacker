@@ -14,7 +14,7 @@ import {
   PREVIEW_MAX_EDGE,
   THUMB_MAX_EDGE,
 } from "@/src/domain/firearm-photos/constants";
-import type { CreatePhotoFailureCode } from "@/src/domain/firearm-photos/service";
+import type { CreatePhotoErrorCode } from "@/src/domain/firearm-photos/service";
 import { photoVariantUrl } from "@/src/domain/firearm-photos/urls";
 import {
   deletePhotoAction,
@@ -63,10 +63,7 @@ interface UploadFailure {
 /** Per-file/batch failure codes → human-readable reasons (R21). Kept local
  * rather than added to `src/domain/validation-messages.ts` since that file
  * is a domain module this unit doesn't touch. */
-const UPLOAD_FAILURE_MESSAGES: Record<
-  CreatePhotoFailureCode | "tooManyFiles" | "photoQuotaExceeded",
-  string
-> = {
+const UPLOAD_FAILURE_MESSAGES: Record<CreatePhotoErrorCode, string> = {
   disallowedMimeType: "unsupported file type (JPEG, PNG, WEBP, or AVIF only)",
   fileTooLarge: "file exceeds the 15 MB size limit",
   processingFailed: "could not process this image",

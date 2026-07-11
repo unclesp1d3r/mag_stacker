@@ -365,6 +365,23 @@ export const firearmPhoto = pgTable(
     index("firearm_photo_firearm_id_idx").on(t.firearmId),
     // R26-style backstop — domain validation is the primary surface (KTD4).
     check("firearm_photo_sort_order_min", sql`${t.sortOrder} >= 0`),
+    // DB backstop for the upload allow-list (R9): a direct insert bypassing the
+    // app layer (migration, admin tool, import script) can't write a MIME type
+    // outside the controlled set the serving route echoes as Content-Type. The
+    // literal list must stay in sync with `ALLOWED_MIME_TYPES`
+    // (`src/domain/firearm-photos/constants.ts`) — SQL can't import the TS
+    // constant, so this is a deliberate third copy alongside the raster-format
+    // set derived there.
+    check(
+      "firearm_photo_mime_type_valid",
+      sql`${t.mimeType} in ('image/jpeg', 'image/png', 'image/webp', 'image/avif')`,
+    ),
+    // Positivity backstops (KTD4): the pipeline already guarantees decoded
+    // dimensions and a non-empty upload, mirroring the quantity CHECKs on
+    // sibling inventory tables.
+    check("firearm_photo_size_bytes_min", sql`${t.sizeBytes} > 0`),
+    check("firearm_photo_width_min", sql`${t.width} > 0`),
+    check("firearm_photo_height_min", sql`${t.height} > 0`),
     // DB backstop (R7): at most one primary photo per firearm. A partial
     // unique index (only rows where `is_primary` is true) rather than a plain
     // unique constraint on `(firearm_id, is_primary)`, which would also

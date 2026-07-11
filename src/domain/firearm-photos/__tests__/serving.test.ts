@@ -40,7 +40,7 @@ async function jpegInput(): Promise<CreatePhotoInput> {
   })
     .jpeg()
     .toBuffer();
-  return { bytes, mimeType: "image/jpeg", sizeBytes: bytes.length };
+  return { bytes, mimeType: "image/jpeg" };
 }
 
 /** Unwraps an `ok: true` create result, failing the test with the codes otherwise. */
@@ -125,7 +125,7 @@ live("getServablePhoto (#9, U6)", () => {
       .jpeg()
       .toBuffer();
     const [created] = await createPhotos(owner, fa.id, [
-      { bytes, mimeType: "image/jpeg", sizeBytes: bytes.length },
+      { bytes, mimeType: "image/jpeg" },
     ]);
     const photo = expectOk(created);
 

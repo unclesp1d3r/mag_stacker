@@ -64,7 +64,6 @@ export async function uploadPhotosAction(
       files.map(async (file) => ({
         bytes: new Uint8Array(await file.arrayBuffer()),
         mimeType: file.type,
-        sizeBytes: file.size,
         filename: file.name,
       })),
     );

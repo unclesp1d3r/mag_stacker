@@ -90,6 +90,23 @@ export async function processImage(
 }
 
 /**
+ * Applies the output encoder matching each allowed MIME type. A
+ * `Record<AllowedMimeType, ...>` rather than a `switch` with a runtime default,
+ * so the compiler forces an entry for every allow-list member: adding a format
+ * to `ALLOWED_MIME_TYPES` fails to typecheck here until its encoder is wired,
+ * instead of silently throwing at runtime.
+ */
+const ENCODER_BY_MIME_TYPE: Record<
+  AllowedMimeType,
+  (pipeline: Sharp) => Sharp
+> = {
+  "image/jpeg": (pipeline) => pipeline.jpeg(),
+  "image/png": (pipeline) => pipeline.png(),
+  "image/webp": (pipeline) => pipeline.webp(),
+  "image/avif": (pipeline) => pipeline.avif(),
+};
+
+/**
  * Builds a fresh `sharp` pipeline for `bytes`, bounded by the shared pixel
  * cap, and re-encodes it to the format matching `mimeType`. A fresh instance
  * per output (rather than `.clone()`) keeps each derivative's pipeline
@@ -100,18 +117,5 @@ function reencode(
   mimeType: AllowedMimeType,
 ): Sharp {
   const pipeline = sharp(bytes, { limitInputPixels: MAX_INPUT_PIXELS });
-  switch (mimeType) {
-    case "image/jpeg":
-      return pipeline.jpeg();
-    case "image/png":
-      return pipeline.png();
-    case "image/webp":
-      return pipeline.webp();
-    case "image/avif":
-      return pipeline.avif();
-    default:
-      throw new Error(
-        `firearm-photos/pipeline: unsupported mime type "${mimeType}"`,
-      );
-  }
+  return ENCODER_BY_MIME_TYPE[mimeType](pipeline);
 }
