@@ -576,7 +576,9 @@ live("firearms service — photo blob cleanup on delete (U5)", () => {
     await storage.save(orphanKey, new Uint8Array([2]));
     await storage.save(deriveKey(orphanKey, "thumb"), new Uint8Array([3]));
 
-    const result = await orphanSweep();
+    // minAgeMs: 0 reclaims even freshly-written fixtures; the default grace
+    // period (which spares recent blobs) is covered by the next test.
+    const result = await orphanSweep({ minAgeMs: 0 });
 
     expect(result.deletedKeys).toContain(orphanKey);
     expect(result.deletedKeys).toContain(deriveKey(orphanKey, "thumb"));
@@ -585,5 +587,22 @@ live("firearms service — photo blob cleanup on delete (U5)", () => {
     await expect(storage.read(orphanKey)).rejects.toThrow();
 
     await deleteFirearm(userA, fa.id);
+  });
+
+  test("orphanSweep spares a recently-written unreferenced blob (in-flight upload guard)", async () => {
+    // A blob younger than the grace period is left in place, because
+    // createPhotos writes blobs before committing their rows — a just-written
+    // blob is momentarily unreferenced but must not be reclaimed.
+    const freshOrphan = generateKey("jpg");
+    await storage.save(freshOrphan, new Uint8Array([9]));
+
+    const result = await orphanSweep();
+
+    expect(result.deletedKeys).not.toContain(freshOrphan);
+    expect(result.skippedRecentCount).toBeGreaterThanOrEqual(1);
+    await expect(storage.read(freshOrphan)).resolves.toBeDefined();
+
+    // Cleanup: reclaim it explicitly so it doesn't linger for other tests.
+    await storage.delete(freshOrphan);
   });
 });

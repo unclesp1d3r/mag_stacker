@@ -95,130 +95,198 @@ function extFromMimeType(mimeType: AllowedMimeType): string {
   return EXTENSION_BY_MIME_TYPE[mimeType];
 }
 
+/** A file that cleared validation + processing: its original/derivative blobs
+ * are already written to storage, awaiting its DB row. `index` ties the row
+ * back to the right slot of the returned per-file result array. */
+interface PreparedPhoto {
+  index: number;
+  key: string;
+  mimeType: AllowedMimeType;
+  sizeBytes: number;
+  width: number;
+  height: number;
+}
+
 /**
  * Upload one or more photos to a firearm (F1, R5, R9-R11, R14, R20, R21,
- * R26). Edit access on the firearm is authorized ONCE up front, before any
- * per-file work. The per-request file cap (R26) is enforced next, then the
- * per-firearm quota (R20) against the combined existing + incoming count —
- * exceeding either rejects the whole call before any file is processed.
- * From there each file is evaluated independently (R21): a validation or
- * processing failure on one file never blocks the others, so the caller gets
- * a per-file result in input order. The first photo persisted on a firearm
- * with no existing primary becomes primary; every later photo (in this call
- * or a future one) does not.
+ * R26). Edit access is authorized up front (before any per-file work), then
+ * the per-request cap (R26) and an optimistic per-firearm quota check (R20)
+ * reject an over-limit call before anything is processed.
+ *
+ * Each file is then decoded, re-encoded, and written to storage INDEPENDENTLY
+ * and OUTSIDE any transaction (R21): a validation, processing, or storage
+ * failure on one file becomes that file's result without aborting the batch or
+ * holding a DB connection during the CPU/IO work (a partial blob write is
+ * cleaned up in place). Only the successful files' row inserts run in a short
+ * transaction that re-authorizes, locks the firearm row, and re-checks the
+ * quota atomically against concurrent uploads. If that transaction rolls back,
+ * the already-written blobs for the batch are deleted directly rather than
+ * left for the orphan sweep. The caller gets a per-file result in input order;
+ * the first photo persisted on a firearm with no existing primary becomes
+ * primary, every later one does not.
  */
 export async function createPhotos(
   actorId: string,
   firearmId: string,
   inputs: CreatePhotoInput[],
 ): Promise<CreatePhotoResult[]> {
-  return db.transaction(async (tx) => {
-    await authorizeUpdate(tx, actorId, "firearm", firearmId);
+  // Authorize first (existence-hiding), then the per-request cap, then an
+  // optimistic quota check — all before any file is read, decoded, or written.
+  await authorizeUpdate(db, actorId, "firearm", firearmId);
 
-    const batchSizeCodes = assertBatchSize(inputs.length);
-    if (batchSizeCodes.length > 0) throw new ValidationError(batchSizeCodes);
+  const batchSizeCodes = assertBatchSize(inputs.length);
+  if (batchSizeCodes.length > 0) throw new ValidationError(batchSizeCodes);
 
-    // Lock the parent firearm row for the transaction so the per-firearm quota
-    // read below and the inserts are atomic against a concurrent upload to the
-    // same firearm (mirrors `updateMagazine`). Without it two racing uploads
-    // could both read the same sub-quota count and both commit, overshooting
-    // MAX_PHOTOS_PER_FIREARM — the disk-exhaustion guard R20 exists to prevent.
-    const [lockedFirearm] = await tx
-      .select({ id: firearm.id })
-      .from(firearm)
-      .where(eq(firearm.id, firearmId))
-      .for("update")
-      .limit(1);
-    if (!lockedFirearm) throw new NotFoundError();
+  // Optimistic (unlocked) quota check: reject an obviously-over-quota batch
+  // before wasting any sharp work or blob write. The authoritative, race-safe
+  // check runs under a row lock in the transaction below. Reads all photo ids
+  // for the firearm — bounded by MAX_PHOTOS_PER_FIREARM, so trivially small.
+  const existingIds = await db
+    .select({ id: firearmPhoto.id })
+    .from(firearmPhoto)
+    .where(eq(firearmPhoto.firearmId, firearmId));
+  if (existingIds.length + inputs.length > MAX_PHOTOS_PER_FIREARM) {
+    throw new ValidationError([
+      "photoQuotaExceeded",
+    ] satisfies PhotoServiceErrorCode[]);
+  }
 
-    const existing = await tx
-      .select({
-        sortOrder: firearmPhoto.sortOrder,
-        isPrimary: firearmPhoto.isPrimary,
-      })
-      .from(firearmPhoto)
-      .where(eq(firearmPhoto.firearmId, firearmId));
-
-    if (existing.length + inputs.length > MAX_PHOTOS_PER_FIREARM) {
-      throw new ValidationError([
-        "photoQuotaExceeded",
-      ] satisfies PhotoServiceErrorCode[]);
+  // Process every file OUTSIDE any transaction (R21): decode/re-encode with
+  // sharp and write its blobs per file, so a validation, processing, or
+  // storage failure on one file becomes that file's result without aborting
+  // the batch or holding a DB connection during the CPU/IO work. Each success
+  // yields a `PreparedPhoto` whose blobs are already on disk, awaiting its row.
+  const results = new Array<CreatePhotoResult>(inputs.length);
+  const prepared: PreparedPhoto[] = [];
+  for (const [index, input] of inputs.entries()) {
+    // Size is the actual uploaded-buffer length, not a caller-declared field
+    // (the two can't drift). Used for both the size-cap check and the stored
+    // `size_bytes`.
+    const sizeBytes = input.bytes.byteLength;
+    const codes = validatePhotoUpload({ mimeType: input.mimeType, sizeBytes });
+    if (codes.length > 0) {
+      results[index] = { ok: false, codes };
+      continue;
+    }
+    // Re-narrow `input.mimeType` from `string` to `AllowedMimeType` (validation
+    // already guaranteed membership) so the validated-boundary type threads
+    // into the pipeline rather than a bare `string`. Unreachable in practice.
+    if (!isAllowedMimeType(input.mimeType)) {
+      results[index] = { ok: false, codes: ["disallowedMimeType"] };
+      continue;
     }
 
-    let nextSortOrder =
-      existing.reduce((max, p) => Math.max(max, p.sortOrder), -1) + 1;
-    let hasPrimary = existing.some((p) => p.isPrimary);
-
-    const results: CreatePhotoResult[] = [];
-    for (const input of inputs) {
-      // Size is the actual uploaded-buffer length, not a caller-declared field
-      // (the two can't drift). Used for both the size-cap check and the stored
-      // `size_bytes`.
-      const sizeBytes = input.bytes.byteLength;
-      const codes = validatePhotoUpload({
+    let processed: Awaited<ReturnType<typeof processImage>>;
+    try {
+      processed = await processImage(input.bytes, input.mimeType);
+    } catch (error) {
+      // Dynamic values (incl. the user-controlled mimeType) go as structured
+      // args, never in the format-string position (js/tainted-format-string).
+      console.error("firearm-photos: processImage failed", {
+        firearmId,
         mimeType: input.mimeType,
-        sizeBytes,
+        error,
       });
-      if (codes.length > 0) {
-        results.push({ ok: false, codes });
-        continue;
-      }
-      // `validatePhotoUpload` above already confirmed `input.mimeType` is in
-      // the allow-list (that's what "codes.length === 0" means) — this
-      // repeats the same check purely so TypeScript can narrow
-      // `input.mimeType` from `string` to `AllowedMimeType` for the pipeline
-      // calls below, threading the validated-boundary type instead of a bare
-      // `string` (drift protection: a mime type can no longer reach
-      // `processImage`/`extFromMimeType` without going through the guard).
-      // Unreachable in practice, not a new failure path.
-      if (!isAllowedMimeType(input.mimeType)) {
-        results.push({ ok: false, codes: ["disallowedMimeType"] });
-        continue;
-      }
+      results[index] = { ok: false, codes: ["processingFailed"] };
+      continue;
+    }
 
-      let processed: Awaited<ReturnType<typeof processImage>>;
-      try {
-        processed = await processImage(input.bytes, input.mimeType);
-      } catch (error) {
-        // Pass dynamic values (incl. the user-controlled mimeType) as separate
-        // args, never interpolated into the first/format-string position, so a
-        // crafted mimeType can't act as a format string (js/tainted-format-string).
-        console.error("firearm-photos: processImage failed", {
-          firearmId,
-          mimeType: input.mimeType,
-          error,
-        });
-        results.push({ ok: false, codes: ["processingFailed"] });
-        continue;
-      }
-
-      const key = generateKey(extFromMimeType(input.mimeType));
+    const key = generateKey(extFromMimeType(input.mimeType));
+    try {
       await storage.save(key, processed.original);
       await storage.save(deriveKey(key, "thumb"), processed.thumb);
       await storage.save(deriveKey(key, "preview"), processed.preview);
-
-      const isPrimary = !hasPrimary;
-      const [row] = await tx
-        .insert(firearmPhoto)
-        .values({
-          firearmId,
-          storageKey: key,
-          mimeType: input.mimeType,
-          sizeBytes,
-          width: processed.width,
-          height: processed.height,
-          caption: "",
-          sortOrder: nextSortOrder,
-          isPrimary,
-        })
-        .returning();
-
-      if (isPrimary) hasPrimary = true;
-      nextSortOrder += 1;
-      results.push({ ok: true, photo: row });
+    } catch (error) {
+      // A partial write can leave 0-3 blobs behind for this key; delete them
+      // best-effort so a storage failure doesn't leak, and report this file as
+      // failed without touching the others.
+      console.error("firearm-photos: storage.save failed", {
+        firearmId,
+        error,
+      });
+      await deletePhotoBlobs(key);
+      results[index] = { ok: false, codes: ["processingFailed"] };
+      continue;
     }
-    return results;
-  });
+
+    prepared.push({
+      index,
+      key,
+      mimeType: input.mimeType,
+      sizeBytes,
+      width: processed.width,
+      height: processed.height,
+    });
+  }
+
+  if (prepared.length === 0) return results;
+
+  // Short transaction: only DB work runs here (no sharp/IO), so the connection
+  // is held just for the inserts. Re-authorize under the lock in case a grant
+  // was revoked during the (possibly seconds-long) processing above, lock the
+  // firearm row so the quota read + inserts are atomic against a concurrent
+  // upload (mirrors `updateMagazine`), then insert the prepared rows.
+  try {
+    await db.transaction(async (tx) => {
+      await authorizeUpdate(tx, actorId, "firearm", firearmId);
+      const [lockedFirearm] = await tx
+        .select({ id: firearm.id })
+        .from(firearm)
+        .where(eq(firearm.id, firearmId))
+        .for("update")
+        .limit(1);
+      if (!lockedFirearm) throw new NotFoundError();
+
+      const existing = await tx
+        .select({
+          sortOrder: firearmPhoto.sortOrder,
+          isPrimary: firearmPhoto.isPrimary,
+        })
+        .from(firearmPhoto)
+        .where(eq(firearmPhoto.firearmId, firearmId));
+
+      // Authoritative, race-safe quota check — counts the prepared (would-
+      // succeed) files, since failed files never persist.
+      if (existing.length + prepared.length > MAX_PHOTOS_PER_FIREARM) {
+        throw new ValidationError([
+          "photoQuotaExceeded",
+        ] satisfies PhotoServiceErrorCode[]);
+      }
+
+      let nextSortOrder =
+        existing.reduce((max, p) => Math.max(max, p.sortOrder), -1) + 1;
+      let hasPrimary = existing.some((p) => p.isPrimary);
+
+      for (const p of prepared) {
+        const isPrimary = !hasPrimary;
+        const [row] = await tx
+          .insert(firearmPhoto)
+          .values({
+            firearmId,
+            storageKey: p.key,
+            mimeType: p.mimeType,
+            sizeBytes: p.sizeBytes,
+            width: p.width,
+            height: p.height,
+            caption: "",
+            sortOrder: nextSortOrder,
+            isPrimary,
+          })
+          .returning();
+        if (isPrimary) hasPrimary = true;
+        nextSortOrder += 1;
+        results[p.index] = { ok: true, photo: row };
+      }
+    });
+  } catch (error) {
+    // The transaction rolled back, so none of the prepared rows persisted —
+    // every prepared blob is now orphaned. Reclaim them directly (best-effort)
+    // rather than leaning on the sweep, then surface the failure.
+    await Promise.all(prepared.map((p) => deletePhotoBlobs(p.key)));
+    throw error;
+  }
+
+  return results;
 }
 
 /**

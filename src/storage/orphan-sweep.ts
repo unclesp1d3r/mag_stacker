@@ -1,7 +1,18 @@
-import { readdir } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
+import { join } from "node:path";
 import { db } from "@/src/db/client";
 import { firearmPhoto } from "@/src/db/schema";
 import { activeStorageRoot, deriveKey, storage } from "./index";
+
+/**
+ * Minimum age a blob must reach before the sweep will reclaim it. Guards
+ * in-flight uploads: `createPhotos` writes a file's blobs to storage BEFORE
+ * committing its `firearm_photo` row, so a just-written blob is momentarily
+ * unreferenced and would otherwise look orphaned. One hour is far longer than
+ * any upload's blob-write-to-commit window, and a genuinely leaked blob is in
+ * no hurry to be reclaimed — a later sweep gets it.
+ */
+export const ORPHAN_MIN_AGE_MS = 60 * 60 * 1000;
 
 /**
  * Reclaims blobs left orphaned by a partial delete failure (R8, U5): a
@@ -26,14 +37,28 @@ import { activeStorageRoot, deriveKey, storage } from "./index";
  * call it manually, from a maintenance script, or from a future cron/route
  * handler.
  */
+export interface OrphanSweepOptions {
+  /** Minimum age (ms) an unreferenced blob must have before it is reclaimed;
+   * younger ones are left in place (they may be an in-flight upload whose row
+   * hasn't committed yet). Defaults to `ORPHAN_MIN_AGE_MS`; pass `0` in tests
+   * that assert the reclaim path on freshly-written fixtures. */
+  minAgeMs?: number;
+}
+
 export interface OrphanSweepResult {
   /** Keys deleted because no `firearm_photo` row referenced them. */
   deletedKeys: string[];
   /** Total files scanned under `UPLOAD_DIR`. */
   scannedCount: number;
+  /** Unreferenced blobs left in place because they were younger than
+   * `minAgeMs` (possibly an in-flight upload). */
+  skippedRecentCount: number;
 }
 
-export async function orphanSweep(): Promise<OrphanSweepResult> {
+export async function orphanSweep(
+  options: OrphanSweepOptions = {},
+): Promise<OrphanSweepResult> {
+  const minAgeMs = options.minAgeMs ?? ORPHAN_MIN_AGE_MS;
   const uploadDir = activeStorageRoot();
   const entries = await readdir(uploadDir, { withFileTypes: true }).catch(
     (error: NodeJS.ErrnoException) => {
@@ -69,10 +94,24 @@ export async function orphanSweep(): Promise<OrphanSweepResult> {
   // error) is logged and skipped so the rest of the sweep still reclaims —
   // this is a cleanup utility, one bad key must not abort the whole run.
   const orphanKeys = fileNames.filter((key) => !ownedKeys.has(key));
+  const now = Date.now();
   const deletedKeys: string[] = [];
+  let skippedRecentCount = 0;
   await Promise.all(
     orphanKeys.map(async (key) => {
       try {
+        const info = await stat(join(uploadDir, key));
+        // Clamp to >= 0: `mtimeMs` is a sub-ms float while `now` is integer ms,
+        // so a just-written file can read as slightly "in the future" (negative
+        // age). A negative age is a brand-new file — treat it as age 0, never as
+        // "old enough to reclaim". With `minAgeMs: 0` (tests) nothing is skipped.
+        const ageMs = Math.max(0, now - info.mtimeMs);
+        if (ageMs < minAgeMs) {
+          // Too recent to be safely reclaimed — a blob written just before its
+          // row committed (an in-flight upload) is momentarily unreferenced.
+          skippedRecentCount += 1;
+          return;
+        }
         await storage.delete(key);
         deletedKeys.push(key);
       } catch (error) {
@@ -80,5 +119,5 @@ export async function orphanSweep(): Promise<OrphanSweepResult> {
       }
     }),
   );
-  return { deletedKeys, scannedCount: fileNames.length };
+  return { deletedKeys, scannedCount: fileNames.length, skippedRecentCount };
 }
