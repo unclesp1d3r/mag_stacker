@@ -3,7 +3,7 @@ import { authorizeUpdate } from "@/src/auth/authorize";
 import { NotFoundError } from "@/src/auth/errors";
 import { getVisibleIds, resolvePermission } from "@/src/auth/visibility";
 import { type DbOrTx, db } from "@/src/db/client";
-import { firearmPhoto } from "@/src/db/schema";
+import { firearm, firearmPhoto } from "@/src/db/schema";
 import {
   type DerivativeVariant,
   deletePhotoBlobs,
@@ -101,6 +101,19 @@ export async function createPhotos(
 
     const batchSizeCodes = assertBatchSize(inputs.length);
     if (batchSizeCodes.length > 0) throw new ValidationError(batchSizeCodes);
+
+    // Lock the parent firearm row for the transaction so the per-firearm quota
+    // read below and the inserts are atomic against a concurrent upload to the
+    // same firearm (mirrors `updateMagazine`). Without it two racing uploads
+    // could both read the same sub-quota count and both commit, overshooting
+    // MAX_PHOTOS_PER_FIREARM — the disk-exhaustion guard R20 exists to prevent.
+    const [lockedFirearm] = await tx
+      .select({ id: firearm.id })
+      .from(firearm)
+      .where(eq(firearm.id, firearmId))
+      .for("update")
+      .limit(1);
+    if (!lockedFirearm) throw new NotFoundError();
 
     const existing = await tx
       .select({

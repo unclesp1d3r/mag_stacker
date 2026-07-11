@@ -38,6 +38,14 @@ COPY --from=builder /app/auth.ts ./auth.ts
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/scripts ./scripts
 
+# Create the upload root owned by the unprivileged runtime user BEFORE dropping
+# privileges. docker-compose mounts a NAMED volume at /data/uploads (UPLOAD_DIR);
+# Docker seeds an empty named volume from the image directory's contents AND
+# ownership on first use, so creating it bun-owned here makes the mounted volume
+# writable by uid `bun`. Without this the fresh volume mounts root-owned and the
+# first upload fails EACCES.
+RUN mkdir -p /data/uploads && chown bun:bun /data/uploads
+
 # Run as the unprivileged user shipped in the bun image.
 USER bun
 

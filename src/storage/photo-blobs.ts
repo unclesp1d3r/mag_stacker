@@ -7,16 +7,14 @@ import type { StorageKey } from "./service";
  * leaves an orphaned blob for `orphanSweep` (U5) to reclaim later, rather
  * than blocking (or half-completing) the caller's delete flow.
  *
- * Shared by two call sites with different commit timing:
- *   - `deletePhoto` (`src/domain/firearm-photos/service.ts`) calls this
- *     AFTER its `db.transaction` resolves, so the row delete has already
- *     committed by the time this runs — a blob-delete failure can never
- *     leave a live row pointing at a missing blob.
- *   - `cleanupFirearmPhotoBlobs` (`src/domain/firearms/service.ts`) calls
- *     this INSIDE the firearm-delete transaction, before that transaction
- *     commits — a blob-delete failure there still never aborts the firearm
- *     delete (best-effort, per this function's own contract); see that
- *     function's own doc comment for why pre-commit timing is safe there.
+ * Both call sites invoke this AFTER their delete transaction has committed, so
+ * the referencing row is already gone by the time the bytes are removed — a
+ * blob-delete failure can never leave a live row pointing at a missing blob:
+ *   - `deletePhoto` (`src/domain/firearm-photos/service.ts`) calls this after
+ *     its `db.transaction` resolves.
+ *   - `deleteFirearm` (`src/domain/firearms/service.ts`) collects the storage
+ *     keys inside its delete transaction, then calls this after the row
+ *     cascade commits.
  */
 export async function deletePhotoBlobs(storageKey: StorageKey): Promise<void> {
   const keys = [
