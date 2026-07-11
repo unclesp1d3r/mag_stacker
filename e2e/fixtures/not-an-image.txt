@@ -1,0 +1,4 @@
+This is a plain-text file used by firearm-photos.spec.ts to exercise the
+per-file upload-validation failure path (AE7) — it is not a valid image and
+must be rejected by the disallowed-MIME-type check without blocking the rest
+of a mixed-validity batch.

@@ -3,6 +3,7 @@ import { NotFoundError } from "@/src/auth/errors";
 import { getCurrentUser } from "@/src/auth/session";
 import { db } from "@/src/db/client";
 import { listMountedForFirearm } from "@/src/domain/accessories/service";
+import { listPhotos } from "@/src/domain/firearm-photos/service";
 import { getFirearm, listFirearms } from "@/src/domain/firearms/service";
 import { magazineCountForFirearm } from "@/src/domain/magazines/service";
 import {
@@ -34,13 +35,25 @@ export default async function FirearmDetailPage({ params }: PageProps) {
     },
   );
 
-  const [caliberSuggestions, magazineCount, firearms, mountedAccessories] =
-    await Promise.all([
-      calibersForInput(db, user.id),
-      magazineCountForFirearm(user.id, id),
-      listFirearms(user.id),
-      listMountedForFirearm(user.id, id),
-    ]);
+  const [
+    caliberSuggestions,
+    magazineCount,
+    firearms,
+    mountedAccessories,
+    photos,
+  ] = await Promise.all([
+    calibersForInput(db, user.id),
+    magazineCountForFirearm(user.id, id),
+    listFirearms(user.id),
+    listMountedForFirearm(user.id, id),
+    // If access is revoked between the getFirearm check above and here (a
+    // narrow race), listPhotos' NotFoundError becomes the same clean 404 the
+    // page otherwise guarantees, not a generic 500.
+    listPhotos(user.id, id).catch((error: unknown) => {
+      if (error instanceof NotFoundError) notFound();
+      throw error;
+    }),
+  ]);
 
   // Derive the value total from the already-fetched accessories rather than
   // re-querying (the total is a pure read over the same rows).
@@ -75,6 +88,7 @@ export default async function FirearmDetailPage({ params }: PageProps) {
       subtypeSuggestions={subtypeSuggestions}
       mountedAccessories={mountedAccessories}
       accessoryValueCents={accessoryValueCents}
+      photos={photos}
     />
   );
 }

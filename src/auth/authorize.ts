@@ -110,20 +110,36 @@ export async function authorizeDelete(
 }
 
 /**
+ * Optional pre-delete callback (U5, KTD8). Invoked inside the same
+ * transaction as the delete, after authorization and before the row delete,
+ * receiving the transaction and the parent id. Used to clean up
+ * parent-owned side effects (e.g. stored blobs) that the DB's cascading FK
+ * can't reach. Opt-in per call site — magazine/ammo delete pass none and are
+ * unaffected.
+ */
+export type PreDeleteHook = (tx: DbOrTx, id: string) => Promise<void>;
+
+/**
  * Owner-only delete of an owned parent, cascading children and grants in one
  * transaction (KTD-3, R17b). Join rows cascade via FK; grants are removed by the
  * BEFORE DELETE trigger within the same transaction (and would be redundant to
- * delete again here). Returns nothing; throws NotFound/NotAuthorized.
+ * delete again here). `onBeforeDelete`, when supplied, runs after authorization
+ * and before the row delete (KTD8) — currently wired only for firearm delete.
+ * Returns nothing; throws NotFound/NotAuthorized.
  */
 export async function authorizeAndDeleteParent(
   actorId: string,
   parentType: ParentType,
   parentId: string,
   database: DbOrTx = defaultDb,
+  onBeforeDelete?: PreDeleteHook,
 ): Promise<void> {
   const runner = "transaction" in database ? database : null;
   const run = async (tx: DbOrTx) => {
     await authorizeDelete(tx, actorId, parentType, parentId);
+    if (onBeforeDelete) {
+      await onBeforeDelete(tx, parentId);
+    }
     const table = parentTable(parentType);
     const deleted = await tx
       .delete(table)

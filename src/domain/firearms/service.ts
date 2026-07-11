@@ -11,7 +11,8 @@ import {
   resolvePermission,
 } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
-import { firearm } from "@/src/db/schema";
+import { firearm, firearmPhoto } from "@/src/db/schema";
+import { deletePhotoBlobs } from "@/src/storage";
 import { ValidationError } from "../errors";
 import { type FirearmInput, validateFirearm } from "./validate";
 
@@ -97,12 +98,42 @@ export async function updateFirearm(
   });
 }
 
-/** Owner-only delete; removes this firearm's join rows + grants (R23, R35, R17b). */
+/**
+ * Owner-only delete; removes this firearm's join rows + grants (R23, R35,
+ * R17b) and best-effort deletes its photo blobs (R8, KTD8).
+ *
+ * Blob deletion runs AFTER the delete transaction commits, mirroring
+ * `deletePhoto` (`src/domain/firearm-photos/service.ts`). The pre-delete hook
+ * only READS the firearm's storage keys (safe — the rows still exist inside
+ * the transaction); the actual `deletePhotoBlobs` calls happen once the row
+ * cascade has committed. Deleting blobs before commit would be unsafe: if the
+ * row delete rolls back (a DB error, or the `deleted.length === 0`
+ * concurrent-delete race in `authorizeAndDeleteParent`), the `firearm_photo`
+ * rows survive but their bytes would already be gone — a live row pointing at
+ * a missing blob, which `orphanSweep` cannot repair (it only reclaims
+ * UNreferenced blobs). The reverse residue — a committed delete whose
+ * post-commit blob cleanup fails — is the benign case `orphanSweep` handles.
+ */
 export async function deleteFirearm(
   actorId: string,
   id: string,
 ): Promise<void> {
-  await authorizeAndDeleteParent(actorId, "firearm", id);
+  const storageKeys: string[] = [];
+  await authorizeAndDeleteParent(
+    actorId,
+    "firearm",
+    id,
+    db,
+    async (tx, fid) => {
+      const photos = await tx
+        .select({ storageKey: firearmPhoto.storageKey })
+        .from(firearmPhoto)
+        .where(eq(firearmPhoto.firearmId, fid));
+      storageKeys.push(...photos.map((photo) => photo.storageKey));
+    },
+  );
+
+  await Promise.all(storageKeys.map((key) => deletePhotoBlobs(key)));
 }
 
 /** Get a single firearm, or not-found if it is outside the requester's visible set. */

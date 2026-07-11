@@ -11,6 +11,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import {
@@ -325,6 +326,73 @@ export const rangeSessionAccessory = pgTable(
     ),
     index("range_session_accessory_session_id_idx").on(t.rangeSessionId),
     index("range_session_accessory_accessory_id_idx").on(t.accessoryId),
+  ],
+);
+
+/**
+ * Firearm photo (#9) — a firearm child record (R62), mirroring `rangeSession`'s
+ * shape: no `owner_id`, no own grant family — every read/write authorizes
+ * through the parent firearm (R6). The FK ON DELETE CASCADE drops photo rows
+ * with the firearm; blob cleanup for the underlying storage objects is handled
+ * separately in the delete flow (U5), not by this table. `storageKey` is the
+ * server-generated key for the original blob; derivatives (thumbnail/preview)
+ * are addressable via a deterministic convention derived from that key (R5) —
+ * no separate derivative table or manifest column. `caption` is
+ * empty-not-null (R18). `uploadedAt` is a single timestamp column (not
+ * `createdAt`/`updatedAt` — photos aren't mutated in place beyond caption/sort/
+ * primary, and `uploadedAt` is the field the product surfaces).
+ */
+export const firearmPhoto = pgTable(
+  "firearm_photo",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    firearmId: uuid("firearm_id")
+      .notNull()
+      .references(() => firearm.id, { onDelete: "cascade" }),
+    storageKey: text("storage_key").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    // Empty-not-null (R18).
+    caption: text("caption").notNull().default(""),
+    sortOrder: integer("sort_order").notNull(),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  },
+  (t) => [
+    // Per-firearm gallery lookup.
+    index("firearm_photo_firearm_id_idx").on(t.firearmId),
+    // R26-style backstop — domain validation is the primary surface (KTD4).
+    check("firearm_photo_sort_order_min", sql`${t.sortOrder} >= 0`),
+    // DB backstop for the upload allow-list (R9): a direct insert bypassing the
+    // app layer (migration, admin tool, import script) can't write a MIME type
+    // outside the controlled set the serving route echoes as Content-Type. The
+    // literal list must stay in sync with `ALLOWED_MIME_TYPES`
+    // (`src/domain/firearm-photos/constants.ts`) — SQL can't import the TS
+    // constant, so this is a deliberate third copy alongside the raster-format
+    // set derived there.
+    check(
+      "firearm_photo_mime_type_valid",
+      sql`${t.mimeType} in ('image/jpeg', 'image/png', 'image/webp', 'image/avif')`,
+    ),
+    // Positivity backstops (KTD4): the pipeline already guarantees decoded
+    // dimensions and a non-empty upload, mirroring the quantity CHECKs on
+    // sibling inventory tables.
+    check("firearm_photo_size_bytes_min", sql`${t.sizeBytes} > 0`),
+    check("firearm_photo_width_min", sql`${t.width} > 0`),
+    check("firearm_photo_height_min", sql`${t.height} > 0`),
+    // DB backstop (R7): at most one primary photo per firearm. A partial
+    // unique index (only rows where `is_primary` is true) rather than a plain
+    // unique constraint on `(firearm_id, is_primary)`, which would also
+    // forbid more than one NON-primary row per firearm. `setPrimary` clears
+    // the old primary then sets the new one inside one transaction — both the
+    // intermediate all-false state and the final single-true state satisfy
+    // this index — and `createPhotos` sets `is_primary` on at most the first
+    // photo of a batch, so neither normal flow can violate it.
+    uniqueIndex("firearm_photo_one_primary_per_firearm")
+      .on(t.firearmId)
+      .where(sql`${t.isPrimary}`),
   ],
 );
 

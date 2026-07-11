@@ -1,14 +1,37 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+// `storage` (src/storage/index.ts) is a lazily-constructed singleton, but
+// `UPLOAD_DIR` must be set before ANY test body first touches it — set it
+// here, ahead of the rest of this file's imports being evaluated (mirrors
+// src/domain/firearm-photos/__tests__/service.test.ts).
+const uploadDir = mkdtempSync(join(tmpdir(), "firearms-photos-"));
+process.env.UPLOAD_DIR = uploadDir;
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { NotFoundError } from "@/src/auth/errors";
 import { createGrant } from "@/src/auth/grants";
 import { db } from "@/src/db/client";
-import { firearm, magazineFirearm } from "@/src/db/schema";
+import {
+  ammo,
+  firearm,
+  firearmPhoto,
+  magazine,
+  magazineFirearm,
+} from "@/src/db/schema";
+import { deleteAmmo } from "@/src/domain/ammo/service";
 import { ValidationError } from "@/src/domain/errors";
+import { deleteMagazine } from "@/src/domain/magazines/service";
+import { deriveKey, generateKey, storage } from "@/src/storage";
+import { orphanSweep } from "@/src/storage/orphan-sweep";
 import {
   createUser,
   deleteUsers,
   linkMagazineFirearm,
+  makeAmmo,
+  makeFirearmPhoto,
   makeMagazine,
 } from "@/src/test-support/factories";
 import { firearmDisplayName } from "../display";
@@ -420,5 +443,166 @@ live("firearms service — nickname (#18)", () => {
       "Bravo Product",
     ]);
     for (const f of created) await deleteFirearm(userN, f.id);
+  });
+});
+
+// Firearm-delete blob cleanup + orphan sweep (U5, R8, KTD8).
+live("firearms service — photo blob cleanup on delete (U5)", () => {
+  let userA = "";
+
+  beforeAll(async () => {
+    userA = await createUser("PhotoDel");
+  });
+  afterAll(async () => {
+    await deleteUsers(userA);
+    rmSync(uploadDir, { recursive: true, force: true });
+  });
+
+  test("covers AE4: deleting a firearm with photos removes all rows and all blobs (originals + derivatives)", async () => {
+    const fa = await createFirearm(userA, {
+      name: "Photogenic",
+      caliber: "9mm",
+      ...CLASS,
+    });
+
+    const keys = [generateKey("jpg"), generateKey("jpg"), generateKey("jpg")];
+    for (const [index, key] of keys.entries()) {
+      await storage.save(key, new Uint8Array([index, 1, 2]));
+      await storage.save(deriveKey(key, "thumb"), new Uint8Array([index, 9]));
+      await storage.save(deriveKey(key, "preview"), new Uint8Array([index, 8]));
+      await makeFirearmPhoto(fa.id, index, { storageKey: key });
+    }
+
+    await deleteFirearm(userA, fa.id);
+
+    const remainingFirearm = await db
+      .select()
+      .from(firearm)
+      .where(eq(firearm.id, fa.id));
+    expect(remainingFirearm).toHaveLength(0);
+    const remainingPhotos = await db
+      .select()
+      .from(firearmPhoto)
+      .where(eq(firearmPhoto.firearmId, fa.id));
+    expect(remainingPhotos).toHaveLength(0);
+
+    for (const key of keys) {
+      await expect(storage.read(key)).rejects.toThrow();
+      await expect(storage.read(deriveKey(key, "thumb"))).rejects.toThrow();
+      await expect(storage.read(deriveKey(key, "preview"))).rejects.toThrow();
+    }
+  });
+
+  test("a blob-delete failure mid-operation does not abort the firearm delete", async () => {
+    const fa = await createFirearm(userA, {
+      name: "PartialFailure",
+      caliber: "9mm",
+      ...CLASS,
+    });
+
+    const goodKey = generateKey("jpg");
+    await storage.save(goodKey, new Uint8Array([1, 2, 3]));
+    await makeFirearmPhoto(fa.id, 0, { storageKey: goodKey });
+
+    // A storage key crafted to escape the upload root: `storage.delete`
+    // throws `PathTraversalError` for it (and its derivatives), simulating a
+    // mid-operation blob-delete failure. The lazily-constructed `storage`
+    // singleton (src/storage/index.ts) is a Proxy with no `set` trap, so it
+    // can't be monkey-patched/spied on to force a throw — a deliberately bad
+    // key is the reliable way to exercise the best-effort catch path.
+    const badKey = "../../../../escapes-root.jpg";
+    await makeFirearmPhoto(fa.id, 1, { storageKey: badKey });
+
+    await expect(deleteFirearm(userA, fa.id)).resolves.toBeUndefined();
+
+    const remainingFirearm = await db
+      .select()
+      .from(firearm)
+      .where(eq(firearm.id, fa.id));
+    expect(remainingFirearm).toHaveLength(0);
+    const remainingPhotos = await db
+      .select()
+      .from(firearmPhoto)
+      .where(eq(firearmPhoto.firearmId, fa.id));
+    expect(remainingPhotos).toHaveLength(0);
+    await expect(storage.read(goodKey)).rejects.toThrow();
+  });
+
+  test("deleting a firearm with no photos is a storage no-op and still deletes it", async () => {
+    const fa = await createFirearm(userA, {
+      name: "NoPhotos",
+      caliber: "9mm",
+      ...CLASS,
+    });
+
+    await expect(deleteFirearm(userA, fa.id)).resolves.toBeUndefined();
+
+    const remaining = await db
+      .select()
+      .from(firearm)
+      .where(eq(firearm.id, fa.id));
+    expect(remaining).toHaveLength(0);
+  });
+
+  test("CRITICAL regression guard: deleting a magazine or ammo lot (shared authorizeAndDeleteParent, no hook) behaves unchanged", async () => {
+    const mag = await makeMagazine(userA);
+    await deleteMagazine(userA, mag.id);
+    const remainingMag = await db
+      .select()
+      .from(magazine)
+      .where(eq(magazine.id, mag.id));
+    expect(remainingMag).toHaveLength(0);
+
+    const lot = await makeAmmo(userA);
+    await deleteAmmo(userA, lot.id);
+    const remainingAmmo = await db
+      .select()
+      .from(ammo)
+      .where(eq(ammo.id, lot.id));
+    expect(remainingAmmo).toHaveLength(0);
+  });
+
+  test("orphanSweep reclaims a blob with no owning firearm_photo row and leaves referenced blobs alone", async () => {
+    const fa = await createFirearm(userA, {
+      name: "SweepTarget",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    const referencedKey = generateKey("jpg");
+    await storage.save(referencedKey, new Uint8Array([1]));
+    await makeFirearmPhoto(fa.id, 0, { storageKey: referencedKey });
+
+    const orphanKey = generateKey("jpg");
+    await storage.save(orphanKey, new Uint8Array([2]));
+    await storage.save(deriveKey(orphanKey, "thumb"), new Uint8Array([3]));
+
+    // minAgeMs: 0 reclaims even freshly-written fixtures; the default grace
+    // period (which spares recent blobs) is covered by the next test.
+    const result = await orphanSweep({ minAgeMs: 0 });
+
+    expect(result.deletedKeys).toContain(orphanKey);
+    expect(result.deletedKeys).toContain(deriveKey(orphanKey, "thumb"));
+    expect(result.deletedKeys).not.toContain(referencedKey);
+    await expect(storage.read(referencedKey)).resolves.toBeDefined();
+    await expect(storage.read(orphanKey)).rejects.toThrow();
+
+    await deleteFirearm(userA, fa.id);
+  });
+
+  test("orphanSweep spares a recently-written unreferenced blob (in-flight upload guard)", async () => {
+    // A blob younger than the grace period is left in place, because
+    // createPhotos writes blobs before committing their rows — a just-written
+    // blob is momentarily unreferenced but must not be reclaimed.
+    const freshOrphan = generateKey("jpg");
+    await storage.save(freshOrphan, new Uint8Array([9]));
+
+    const result = await orphanSweep();
+
+    expect(result.deletedKeys).not.toContain(freshOrphan);
+    expect(result.skippedRecentCount).toBeGreaterThanOrEqual(1);
+    await expect(storage.read(freshOrphan)).resolves.toBeDefined();
+
+    // Cleanup: reclaim it explicitly so it doesn't linger for other tests.
+    await storage.delete(freshOrphan);
   });
 });
