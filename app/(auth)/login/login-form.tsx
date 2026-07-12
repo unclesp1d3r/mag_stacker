@@ -17,6 +17,11 @@ export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const redirectTo = params.get("redirectTo") || "/magazines";
+  // Set by the backup screen's restore-panel (plan Unit U7, R10) after a
+  // successful restore: the `users` table (including whoever was signed in)
+  // was just replaced, so the prior session was force-invalidated and the
+  // operator is hard-redirected here to sign in fresh.
+  const restored = params.get("restored") === "1";
   const emailId = useId();
   const passwordId = useId();
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +61,9 @@ export function LoginForm() {
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+      {restored ? (
+        <Callout tone="ok">Instance restored — please sign in.</Callout>
+      ) : null}
       {error ? <Callout tone="destructive">{error}</Callout> : null}
       <Field label="Email" controlId={emailId} required>
         <Input

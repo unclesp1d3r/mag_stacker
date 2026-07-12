@@ -41,7 +41,11 @@ export function AppShell({
   const router = useRouter();
   const nav =
     user.role === "admin"
-      ? [...NAV, { href: "/users", label: "Accounts" }]
+      ? [
+          ...NAV,
+          { href: "/users", label: "Accounts" },
+          { href: "/backup", label: "Backup" },
+        ]
       : NAV;
 
   function isActive(href: string): boolean {

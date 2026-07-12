@@ -90,6 +90,17 @@ function exportRequest(password: unknown): Request {
   });
 }
 
+/** Mirrors U7's real `<form method="POST">` export submit — form-encoded,
+ * not JSON (R13: a navigation-triggered download, not client `fetch()`+blob). */
+function exportFormRequest(password: string): Request {
+  const body = new URLSearchParams({ password });
+  return new Request("http://localhost/api/admin/backup/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+}
+
 function restoreRequest(options: {
   password?: string;
   force?: boolean;
@@ -289,6 +300,20 @@ describe("admin backup API routes (U6)", () => {
 
     expect(res.status).toBe(200);
     expect(json.outcome).toBe("ok");
+  });
+
+  test("admin export accepts a form-encoded password (U7's real <form> submit)", async () => {
+    currentUser = ADMIN;
+    const res = await exportPost(exportFormRequest(PASSWORD));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/octet-stream");
+    const bytes = await res.arrayBuffer();
+    expect(bytes.byteLength).toBeGreaterThan(0);
+
+    const rows = await auditRowsFor("export");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.outcome).toBe("success");
   });
 
   test("restore refuses with 400 when no password header is supplied", async () => {

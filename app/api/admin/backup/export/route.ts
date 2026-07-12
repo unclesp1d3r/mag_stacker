@@ -7,13 +7,18 @@ import { db } from "@/src/db/client";
 /**
  * Admin backup export (plan Unit U6, R1/R14/R15).
  *
- * `POST` with a JSON body `{ "password": string }` — the request side is
- * small (just a password), so it's read with `request.json()` rather than
- * streamed; R13's streaming guarantee is about the response, which IS
- * streamed straight through from U4's `createBackup()` (a Node `Readable`,
- * bridged to the Web `ReadableStream` `Response` expects via
- * `Readable.toWeb`) with no buffering and nothing written server-side
- * (KTD8).
+ * `POST` with either a JSON body `{ "password": string }` or a
+ * `application/x-www-form-urlencoded` body (`password=...`) — the latter is
+ * what U7's export UI actually sends: a real `<form method="POST"
+ * action="/api/admin/backup/export">` submit, so the browser performs a
+ * genuine navigation-triggered download instead of a client-side `fetch()` +
+ * blob (which would re-buffer a GB-scale bundle in the browser and undercut
+ * R13). Either way the request side is small (just a password), so it's read
+ * fully (`request.json()` / `request.formData()`) rather than streamed;
+ * R13's streaming guarantee is about the response, which IS streamed
+ * straight through from U4's `createBackup()` (a Node `Readable`, bridged to
+ * the Web `ReadableStream` `Response` expects via `Readable.toWeb`) with no
+ * buffering and nothing written server-side (KTD8).
  *
  * Gating mirrors `app/(admin)/users/actions.ts`'s inline `requireAdmin()`
  * convention (KTD6): an unauthenticated caller gets 401, an authenticated
@@ -79,12 +84,24 @@ export async function POST(request: Request): Promise<Response> {
   });
 }
 
+/**
+ * Reads the password from either an `application/x-www-form-urlencoded` body
+ * (the real `<form>` submit U7's export UI sends) or a JSON body (the
+ * original contract, still supported so existing callers/tests keep
+ * working). `Request.formData()` parses both `multipart/form-data` and
+ * `application/x-www-form-urlencoded` per the Fetch spec, so form-encoded
+ * bodies are routed there; anything else falls back to `request.json()`.
+ */
 async function readPassword(request: Request): Promise<string> {
-  const body = (await request.json()) as { password?: unknown };
-  if (typeof body.password !== "string" || body.password.length === 0) {
+  const contentType = request.headers.get("content-type") ?? "";
+  const password = contentType.includes("application/x-www-form-urlencoded")
+    ? (await request.formData()).get("password")
+    : ((await request.json()) as { password?: unknown }).password;
+
+  if (typeof password !== "string" || password.length === 0) {
     throw new Error("password is required");
   }
-  return body.password;
+  return password;
 }
 
 function errorMessage(error: unknown): string {
