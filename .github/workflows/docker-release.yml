@@ -98,12 +98,32 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $TAG already exists — nothing to do."
+          # The job-level `if:` and the `v*.*.*` push trigger are both broader
+          # than the vX.Y.Z policy — they also match tags like v1.2.3.4 or
+          # v1.2.3-beta. GitHub Actions expressions have no regex, so enforce
+          # the strict gate here instead of relying on the trigger/`if:`.
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag $TAG doesn't match the vX.Y.Z release policy — skipping release creation."
             exit 0
           fi
-          gh release create "$TAG" \
+
+          # Create-first, not check-then-create: a `gh release view` precheck
+          # only proves the release was missing at that instant, so a race (or
+          # an Option A release made via the UI) could still land between the
+          # check and the create. Attempt the create directly, and only if it
+          # fails, ask whether the release exists now — that makes "a release
+          # exists for this tag" the success condition instead of parsing
+          # stderr for a 404. The `if` wraps the create so its failure doesn't
+          # end the script before the fallback check runs.
+          if gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$TAG" \
             --generate-notes \
-            --verify-tag
+            --verify-tag; then
+            echo "Created release $TAG."
+          elif gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — nothing to do."
+          else
+            echo "Failed to create release $TAG and no existing release was found — failing."
+            exit 1
+          fi
