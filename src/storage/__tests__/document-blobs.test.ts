@@ -102,6 +102,27 @@ live("document blob cleanup (U3)", () => {
     expect(existsSync(blobPath(key))).toBe(false);
   });
 
+  test("deleting a firearm with several documents removes every document blob, not just the first", async () => {
+    const [f] = await db
+      .insert(firearm)
+      .values({ ownerId, name: "Multi Doc Blob FA", caliber: "9mm" })
+      .returning();
+    const keys: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      keys.push(await writeDoc(f.id));
+    }
+    for (const key of keys) expect(existsSync(blobPath(key))).toBe(true);
+
+    await deleteFirearm(ownerId, f.id);
+
+    const rows = await db
+      .select()
+      .from(firearmDocument)
+      .where(eq(firearmDocument.firearmId, f.id));
+    expect(rows).toHaveLength(0);
+    for (const key of keys) expect(existsSync(blobPath(key))).toBe(false);
+  });
+
   test("orphan sweep does not delete a blob referenced by a firearm_document row", async () => {
     const referenced = await writeDoc(firearmId);
     // An unreferenced stray blob written straight to storage.

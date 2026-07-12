@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
+import {
+  ALLOWED_MIME_TYPES,
+  DOC_TYPES,
+} from "@/src/domain/firearm-documents/constants";
 import { expectRejects } from "@/src/test-support/assertions";
 import { db } from "../client";
 import { firearm, firearmDocument, user } from "../schema";
@@ -96,5 +100,32 @@ live("firearm_document schema (U1)", () => {
       .from(firearmDocument)
       .where(eq(firearmDocument.firearmId, f.id));
     expect(rows).toHaveLength(0);
+  });
+
+  // Drift guard: the CHECK constraints above hard-code their allow-lists as SQL
+  // literals (SQL can't import the TS constants), so nothing stops the two from
+  // silently diverging. Looping every value of `DOC_TYPES` / `ALLOWED_MIME_TYPES`
+  // against the live constraint fails loudly the moment a TS-side addition
+  // (or removal) isn't mirrored in the migration.
+  describe("DOC_TYPES / ALLOWED_MIME_TYPES stay in sync with the CHECK constraints", () => {
+    for (const docType of DOC_TYPES) {
+      test(`docType "${docType}" is accepted`, async () => {
+        const [row] = await db
+          .insert(firearmDocument)
+          .values({ ...validRow(), docType })
+          .returning();
+        expect(row.docType).toBe(docType);
+      });
+    }
+
+    for (const mimeType of ALLOWED_MIME_TYPES) {
+      test(`mimeType "${mimeType}" is accepted`, async () => {
+        const [row] = await db
+          .insert(firearmDocument)
+          .values({ ...validRow(), mimeType })
+          .returning();
+        expect(row.mimeType).toBe(mimeType);
+      });
+    }
   });
 });

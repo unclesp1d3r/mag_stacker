@@ -64,3 +64,10 @@ export type DocType = (typeof DOC_TYPES)[number];
 
 /** Default docType when none is supplied (R2). */
 export const DEFAULT_DOC_TYPE: DocType = "other";
+
+/**
+ * Max stored length for a document's free-text `notes`. Generous — notes are a
+ * short annotation, not a document — but bounds an owner from filling their own
+ * row with an unbounded text blob. Enforced by truncation in the service.
+ */
+export const MAX_NOTES_LENGTH = 2000;

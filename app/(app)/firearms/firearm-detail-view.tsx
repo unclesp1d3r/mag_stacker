@@ -11,16 +11,14 @@ import { Badge } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/surface";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import type { Permission } from "@/src/auth/visibility";
+import type { FirearmDocumentRow } from "@/src/domain/firearm-documents/row";
 import {
   firearmActionLabel,
   firearmTypeLabel,
 } from "@/src/domain/firearms/constants";
 import { firearmDisplayName, hasNickname } from "@/src/domain/firearms/display";
 import { InventoryLogHistory } from "../inventory-log/inventory-log-history";
-import {
-  type FirearmDocumentRow,
-  FirearmDocuments,
-} from "./[id]/firearm-documents";
+import { FirearmDocuments } from "./[id]/firearm-documents";
 import { type FirearmPhotoRow, FirearmPhotos } from "./[id]/firearm-photos";
 import { deleteFirearmAction } from "./actions";
 import { FirearmForm, type FirearmFormValues } from "./firearm-form";

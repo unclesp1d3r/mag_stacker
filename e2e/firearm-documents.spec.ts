@@ -23,6 +23,7 @@ test.describe.configure({ retries: 0 });
 const FIXTURES_DIR = path.join(__dirname, "fixtures");
 const SAMPLE_PDF = path.join(FIXTURES_DIR, "sample-document.pdf");
 const SAMPLE_IMAGE = path.join(FIXTURES_DIR, "sample-photo-1.jpg");
+const INVALID_FILE = path.join(FIXTURES_DIR, "not-an-image.txt");
 
 test("empty state, upload, view, download, delete, and grantee lockout", async ({
   page,
@@ -185,5 +186,68 @@ test("empty state, upload, view, download, delete, and grantee lockout", async (
     } finally {
       await granteeContext.close();
     }
+  });
+});
+
+// A separate, documentless firearm keeps these two upload-batch cases free of
+// the filename collisions the sequential test above would create (it already
+// uploads SAMPLE_PDF and SAMPLE_IMAGE once each) and lets each assertion
+// target a clean, known document count.
+test("invalid-type upload feedback and multi-file batch upload", async ({
+  page,
+}) => {
+  await test.step("create a documentless firearm for isolated upload-batch coverage", async () => {
+    await page.goto("/firearms");
+    await page.getByRole("button", { name: "Add firearm" }).click();
+    const form = page.locator("form");
+    await form.getByLabel(/^Name/).fill("Batch Rifle");
+    await form.getByLabel("Caliber").fill("5.56");
+    await form.getByLabel(/^Type/).selectOption("rifle");
+    await form.getByLabel("Action").selectOption("semi-auto");
+    await page.getByRole("button", { name: "Add firearm" }).click();
+    await expect(page.getByText("Firearm logged").last()).toBeVisible();
+
+    await page.getByRole("link", { name: "Batch Rifle" }).click();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Batch Rifle" }),
+    ).toBeVisible();
+    await expect(page.getByText("No documents yet")).toBeVisible();
+    await expect(page.getByText("0 documents")).toBeVisible();
+  });
+
+  await test.step("uploading a disallowed file type surfaces a per-file failure reason and adds nothing to the list", async () => {
+    await page.getByLabel("Upload documents").setInputFiles(INVALID_FILE);
+
+    await expect(page.getByText("1 file could not be uploaded")).toBeVisible();
+    await expect(page.getByText("1 file not uploaded:")).toBeVisible();
+    await expect(
+      page.getByText(
+        "not-an-image.txt: unsupported file type (PDF, JPEG, PNG, WEBP, or AVIF only)",
+      ),
+    ).toBeVisible();
+
+    // The rejected file never becomes a document.
+    await expect(page.getByText("No documents yet")).toBeVisible();
+    await expect(page.getByText("0 documents")).toBeVisible();
+    await expect(page.getByRole("list", { name: "Document list" })).toHaveCount(
+      0,
+    );
+  });
+
+  await test.step("uploading two valid files in one batch adds both to the list", async () => {
+    await page
+      .getByLabel("Upload documents")
+      .setInputFiles([SAMPLE_PDF, SAMPLE_IMAGE]);
+    await expect(page.getByText("2 documents uploaded")).toBeVisible();
+
+    const list = page.getByRole("list", { name: "Document list" });
+    await expect(list.getByRole("listitem")).toHaveCount(2);
+    await expect(page.getByText("2 documents", { exact: true })).toBeVisible();
+    await expect(
+      list.getByRole("listitem").filter({ hasText: "sample-document.pdf" }),
+    ).toBeVisible();
+    await expect(
+      list.getByRole("listitem").filter({ hasText: "sample-photo-1.jpg" }),
+    ).toBeVisible();
   });
 });

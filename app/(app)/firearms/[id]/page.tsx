@@ -3,6 +3,7 @@ import { NotFoundError } from "@/src/auth/errors";
 import { getCurrentUser } from "@/src/auth/session";
 import { db } from "@/src/db/client";
 import { listMountedForFirearm } from "@/src/domain/accessories/service";
+import { toFirearmDocumentRow } from "@/src/domain/firearm-documents/row";
 import { listDocuments } from "@/src/domain/firearm-documents/service";
 import { listPhotos } from "@/src/domain/firearm-photos/service";
 import { getFirearm, listFirearms } from "@/src/domain/firearms/service";
@@ -103,17 +104,12 @@ export default async function FirearmDetailPage({ params }: PageProps) {
       mountedAccessories={mountedAccessories}
       accessoryValueCents={accessoryValueCents}
       photos={photos}
-      // Explicitly narrowed (not the raw `FirearmDocument[]` row) so
-      // `storageKey` — the internal blob-storage path — never reaches the
-      // client bundle (R10: no public or guessable URLs); only the fields
-      // the documents section actually renders are sent down.
-      documents={documents.map((d) => ({
-        id: d.id,
-        filename: d.filename,
-        mimeType: d.mimeType,
-        docType: d.docType,
-        notes: d.notes,
-      }))}
+      // Narrowed via `toFirearmDocumentRow` (not the raw `FirearmDocument[]`)
+      // so `storageKey` — the internal blob-storage path — never reaches the
+      // client bundle (R10). Centralizing the narrowing is the enforcement
+      // point: a bare `documents={documents}` would compile via structural
+      // typing and leak the key.
+      documents={documents.map(toFirearmDocumentRow)}
     />
   );
 }

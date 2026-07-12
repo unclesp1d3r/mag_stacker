@@ -16,6 +16,7 @@ import {
   type DocType,
   isAllowedMimeType,
   MAX_DOCUMENTS_PER_FIREARM,
+  MAX_NOTES_LENGTH,
 } from "./constants";
 import { sanitizeFilename } from "./sanitize-filename";
 import {
@@ -115,6 +116,44 @@ interface PreparedDocument {
   notes: string;
 }
 
+/** A file that cleared validation + the content sniff (no blob written yet),
+ * with its resolved allow-listed MIME. */
+interface ValidatedFile {
+  index: number;
+  buffer: Buffer;
+  mime: AllowedMimeType;
+  sizeBytes: number;
+  filename: string;
+  docType: DocType;
+  notes: string;
+}
+
+/**
+ * Magic-byte content sniff (KTD3, R5): returns the file's real allow-listed
+ * MIME, or null when the bytes aren't a known allowed type. `fileTypeFromBuffer`
+ * can THROW on a corrupt/adversarial buffer (its detectors rethrow non-EOF
+ * errors), so the throw is guarded and treated as "not a known type" — never an
+ * exception that aborts the whole batch and orphans earlier files' blobs.
+ */
+async function sniffAllowedMime(
+  buffer: Buffer,
+  firearmId: string,
+): Promise<AllowedMimeType | null> {
+  let sniffed: Awaited<ReturnType<typeof fileTypeFromBuffer>>;
+  try {
+    sniffed = await fileTypeFromBuffer(buffer);
+  } catch (error) {
+    console.error("firearm-documents: fileTypeFromBuffer threw", {
+      firearmId,
+      error,
+    });
+    return null;
+  }
+  return sniffed !== undefined && isAllowedMimeType(sniffed.mime)
+    ? sniffed.mime
+    : null;
+}
+
 /**
  * Upload one or more documents to a firearm (F1, R4-R8). OWNER access is
  * authorized up front (before any per-file work, existence-hiding), then the
@@ -138,28 +177,19 @@ export async function createDocuments(
   firearmId: string,
   inputs: CreateDocumentInput[],
 ): Promise<CreateDocumentResult[]> {
-  // Authorize first (owner-only, existence-hiding), then the per-request cap,
-  // then an optimistic quota check — all before any file is read or written.
+  // Authorize first (owner-only, existence-hiding), then the per-request cap.
   await authorizeOwnerOnlyUpdate(db, actorId, "firearm", firearmId);
 
   const batchSizeCodes = assertBatchSize(inputs.length);
   if (batchSizeCodes.length > 0) throw new ValidationError(batchSizeCodes);
 
-  // Optimistic (unlocked) quota check: reject an obviously-over-quota batch
-  // before wasting any blob write. The authoritative, race-safe check runs
-  // under a row lock in the transaction below.
-  const existingCount = await db
-    .select({ id: firearmDocument.id })
-    .from(firearmDocument)
-    .where(eq(firearmDocument.firearmId, firearmId));
-  if (existingCount.length + inputs.length > MAX_DOCUMENTS_PER_FIREARM) {
-    throw new ValidationError([
-      "documentQuotaExceeded",
-    ] satisfies CreateDocumentErrorCode[]);
-  }
-
+  // Phase 1 — validate + content-sniff every file (no blob I/O yet). Splitting
+  // validation from the blob writes lets the quota check count only the files
+  // that would actually persist, so a mixed valid/invalid batch is never
+  // rejected wholesale when the valid subset fits, and no bytes are written for
+  // a batch that will be rejected.
   const results = new Array<CreateDocumentResult>(inputs.length);
-  const prepared: PreparedDocument[] = [];
+  const validated: ValidatedFile[] = [];
   for (const [index, input] of inputs.entries()) {
     // Actual uploaded-buffer length, not a caller-declared field.
     const sizeBytes = input.bytes.byteLength;
@@ -167,68 +197,74 @@ export async function createDocuments(
       mimeType: input.mimeType,
       sizeBytes,
     });
-
-    // Magic-byte content sniff (KTD3, R5): the stored MIME reflects the real
-    // bytes. A file whose sniffed type is undefined or outside the allow-list is
-    // rejected as content-mismatch — this catches an HTML/script payload
-    // mislabeled as an image, independent of the declared Content-Type.
     const buffer = Buffer.isBuffer(input.bytes)
       ? input.bytes
       : Buffer.from(input.bytes);
-    // `fileTypeFromBuffer` can THROW on a corrupt/adversarial buffer (its
-    // detectors rethrow non-EOF errors), so guard it: a sniff failure is just
-    // another content-mismatch for this file, never an exception that aborts the
-    // whole batch and orphans blobs already written for earlier files.
-    let sniffed: Awaited<ReturnType<typeof fileTypeFromBuffer>>;
-    try {
-      sniffed = await fileTypeFromBuffer(buffer);
-    } catch (error) {
-      console.error("firearm-documents: fileTypeFromBuffer threw", {
-        firearmId,
-        error,
-      });
-      sniffed = undefined;
+    // The stored MIME reflects the real bytes (KTD3), not the declared type;
+    // null means the bytes aren't a known allowed type (catches an HTML/script
+    // payload mislabeled as an image).
+    const mime = await sniffAllowedMime(buffer, firearmId);
+    if (mime === null && !codes.includes("contentMismatch")) {
+      codes.push("contentMismatch");
     }
-    if (sniffed === undefined || !isAllowedMimeType(sniffed.mime)) {
-      if (!codes.includes("contentMismatch")) codes.push("contentMismatch");
-    }
-
-    if (codes.length > 0) {
-      results[index] = { ok: false, codes };
+    if (codes.length > 0 || mime === null) {
+      results[index] = {
+        ok: false,
+        codes: codes.length > 0 ? codes : ["contentMismatch"],
+      };
       continue;
     }
+    validated.push({
+      index,
+      buffer,
+      mime,
+      sizeBytes,
+      filename: sanitizeFilename(input.filename),
+      docType: resolveDocType(input.docType),
+      notes: (input.notes ?? "").slice(0, MAX_NOTES_LENGTH),
+    });
+  }
 
-    // Re-narrow the sniffed mime for the compiler. Unreachable at runtime — the
-    // sniff check above already pushed `contentMismatch` and `continue`d for a
-    // bad type — but the `codes` gate doesn't carry that narrowing, and this
-    // type guard keeps the key derivation type-safe without an `as` cast.
-    const sniffedMime = sniffed?.mime;
-    if (sniffedMime === undefined || !isAllowedMimeType(sniffedMime)) {
-      results[index] = { ok: false, codes: ["contentMismatch"] };
-      continue;
-    }
+  if (validated.length === 0) return results;
 
-    const key = generateKey(EXTENSION_BY_MIME_TYPE[sniffedMime]);
+  // Optimistic (unlocked) quota check — counts only files that passed
+  // validation (would persist). The authoritative, race-safe check runs under a
+  // row lock in the transaction below.
+  const existing = await db
+    .select({ id: firearmDocument.id })
+    .from(firearmDocument)
+    .where(eq(firearmDocument.firearmId, firearmId));
+  if (existing.length + validated.length > MAX_DOCUMENTS_PER_FIREARM) {
+    throw new ValidationError([
+      "documentQuotaExceeded",
+    ] satisfies CreateDocumentErrorCode[]);
+  }
+
+  // Phase 2 — write each validated file's single blob to storage, OUTSIDE any
+  // transaction. A storage failure becomes that file's result without aborting
+  // the batch; the blobs await their DB rows.
+  const prepared: PreparedDocument[] = [];
+  for (const file of validated) {
+    const key = generateKey(EXTENSION_BY_MIME_TYPE[file.mime]);
     try {
-      await storage.save(key, buffer);
+      await storage.save(key, file.buffer);
     } catch (error) {
       console.error("firearm-documents: storage.save failed", {
         firearmId,
         error,
       });
       await deleteDocumentBlob(key);
-      results[index] = { ok: false, codes: ["uploadFailed"] };
+      results[file.index] = { ok: false, codes: ["uploadFailed"] };
       continue;
     }
-
     prepared.push({
-      index,
+      index: file.index,
       key,
-      filename: sanitizeFilename(input.filename),
-      mimeType: sniffedMime,
-      sizeBytes,
-      docType: resolveDocType(input.docType),
-      notes: input.notes ?? "",
+      filename: file.filename,
+      mimeType: file.mime,
+      sizeBytes: file.sizeBytes,
+      docType: file.docType,
+      notes: file.notes,
     });
   }
 
@@ -364,6 +400,18 @@ export async function getServableDocument(
 
   await authorizeOwnerOnlyRead(db, actorId, "firearm", row.firearmId);
 
-  const bytes = await storage.read(row.storageKey);
+  // A read failure here is the "row survives, blob is gone" case orphanSweep
+  // cannot repair — log the identifying context (never the filename/notes PII)
+  // before rethrowing so the broken document is findable, then let the route
+  // surface it (a 500, distinct from the owner-only 404 collapse).
+  const bytes = await storage.read(row.storageKey).catch((error: unknown) => {
+    console.error("firearm-documents: storage.read failed", {
+      documentId,
+      firearmId: row.firearmId,
+      storageKey: row.storageKey,
+      error,
+    });
+    throw error;
+  });
   return { bytes, mimeType: row.mimeType, filename: row.filename };
 }

@@ -26,6 +26,7 @@ import {
   DOC_TYPES,
   type DocType,
 } from "@/src/domain/firearm-documents/constants";
+import type { FirearmDocumentRow } from "@/src/domain/firearm-documents/row";
 import type { CreateDocumentErrorCode } from "@/src/domain/firearm-documents/service";
 import {
   documentDownloadUrl,
@@ -44,18 +45,10 @@ import {
  * itself owner-only authorized in the domain service (R8), so there is no
  * separate `canEdit` gate here the way `firearm-photos.tsx` has one.
  *
- * The narrow row shape this section needs (mirrors `FirearmPhotoRow`) rather
- * than importing the full `FirearmDocument` DB row type — `listDocuments`'s
- * return structurally satisfies this shape.
+ * The client-safe row shape (`FirearmDocumentRow`, without `storageKey`) and its
+ * narrowing constructor live in `row.ts`; the page narrows via that constructor
+ * before passing rows down (R10).
  */
-export interface FirearmDocumentRow {
-  id: string;
-  filename: string;
-  mimeType: string;
-  docType: string;
-  notes: string;
-}
-
 interface FirearmDocumentsProps {
   firearmId: string;
   /** Server-loaded via `listDocuments`, most-recently-uploaded first (R25) —
@@ -67,6 +60,22 @@ interface UploadFailure {
   filename: string;
   message: string;
 }
+
+/**
+ * State machine for the View modal's content area (R21). The modal fetches
+ * the document itself (rather than pointing `<img>`/`<iframe>` `src` directly
+ * at `documentViewUrl`) because an `<iframe>` does not fire the DOM `error`
+ * event for HTTP-level failures (4xx/5xx) — only for network-level failures —
+ * so an R500 (deleted document, revoked grant, missing blob) would otherwise
+ * render as a silent blank iframe instead of the error + Download fallback.
+ * Fetching lets `!response.ok` reliably drive the `error` state for both the
+ * image and PDF branches, and gives an explicit `loading` state to fill the
+ * gap between "modal opens" and "content ready" for multi-MB files.
+ */
+type ViewState =
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ready"; objectUrl: string };
 
 const DOC_TYPE_LABEL: Record<DocType, string> = {
   receipt: "Receipt",
@@ -148,7 +157,7 @@ const PDF_SANDBOX = "allow-scripts";
  * component itself.
  */
 const DOWNLOAD_LINK_CLASS =
-  "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-input bg-card px-3 text-sm font-medium text-foreground transition-[filter,background-color,color,transform] duration-150 hover:bg-muted active:translate-y-px";
+  "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-input bg-card px-3 text-sm font-medium text-foreground transition-[filter,background-color,color,transform] duration-150 hover:bg-muted active:bg-muted active:translate-y-px";
 const DOWNLOAD_PRIMARY_LINK_CLASS =
   "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-transparent bg-primary px-3 text-sm font-medium text-primary-foreground shadow-[var(--glow-primary)] transition-[filter,background-color,color,transform] duration-150 hover:brightness-105 active:translate-y-px active:brightness-95";
 
@@ -175,7 +184,7 @@ export function FirearmDocuments({
     null,
   );
   const [viewTarget, setViewTarget] = useState<FirearmDocumentRow | null>(null);
-  const [viewLoadFailed, setViewLoadFailed] = useState(false);
+  const [viewState, setViewState] = useState<ViewState>({ status: "loading" });
 
   const viewPanelRef = useRef<HTMLDivElement>(null);
   const viewCloseRef = useRef<HTMLButtonElement>(null);
@@ -204,14 +213,47 @@ export function FirearmDocuments({
     return () => window.removeEventListener("keydown", onKey);
   }, [viewTarget]);
 
+  // Fetches the document into an object URL rather than pointing `src`
+  // directly at `documentViewUrl` — see the `ViewState` doc comment for why.
+  // `cancelled` guards against a stale response landing after the modal is
+  // closed or switched to a different document (fast close→reopen); the
+  // object URL is revoked on cleanup so a superseded blob doesn't leak.
+  useEffect(() => {
+    if (!viewTarget) return;
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    setViewState({ status: "loading" });
+
+    (async () => {
+      try {
+        const response = await fetch(documentViewUrl(viewTarget.id));
+        if (!response.ok) {
+          if (!cancelled) setViewState({ status: "error" });
+          return;
+        }
+        const blob = await response.blob();
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setViewState({ status: "ready", objectUrl });
+      } catch {
+        if (!cancelled) setViewState({ status: "error" });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [viewTarget]);
+
   function openView(doc: FirearmDocumentRow) {
-    setViewLoadFailed(false);
+    setViewState({ status: "loading" });
     setViewTarget(doc);
   }
 
   function closeView() {
     setViewTarget(null);
-    setViewLoadFailed(false);
   }
 
   function handleFilesSelected(event: ChangeEvent<HTMLInputElement>) {
@@ -475,7 +517,14 @@ export function FirearmDocuments({
             </div>
 
             <div className="mt-4 min-h-0 flex-1 overflow-auto">
-              {viewLoadFailed ? (
+              {viewState.status === "loading" ? (
+                <div
+                  role="status"
+                  className="flex flex-col items-center gap-3 rounded-md border border-dashed border-input bg-muted/50 p-10 text-center"
+                >
+                  <p className="text-sm text-ink-soft">Loading…</p>
+                </div>
+              ) : viewState.status === "error" ? (
                 <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-input bg-muted/50 p-10 text-center">
                   <p className="text-sm text-ink-soft">
                     This document could not be displayed.
@@ -490,20 +539,19 @@ export function FirearmDocuments({
                 </div>
               ) : viewTarget.mimeType.startsWith("image/") ? (
                 <img
-                  src={documentViewUrl(viewTarget.id)}
+                  src={viewState.objectUrl}
                   alt={`${docTypeLabel(viewTarget.docType)} — ${viewTarget.filename}`}
                   style={{ maxHeight: VIEW_MEDIA_MAX_HEIGHT }}
                   className="mx-auto max-w-full rounded-md object-contain"
-                  onError={() => setViewLoadFailed(true)}
+                  onError={() => setViewState({ status: "error" })}
                 />
               ) : (
                 <iframe
                   title={`${docTypeLabel(viewTarget.docType)} — ${viewTarget.filename}`}
-                  src={documentViewUrl(viewTarget.id)}
+                  src={viewState.objectUrl}
                   sandbox={PDF_SANDBOX}
                   style={{ height: VIEW_MEDIA_MAX_HEIGHT }}
                   className="w-full rounded-md border border-border"
-                  onError={() => setViewLoadFailed(true)}
                 />
               )}
             </div>

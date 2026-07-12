@@ -5,8 +5,11 @@ import { createMutationLimiter } from "@/src/auth/rate-limit";
 import { getCurrentUser } from "@/src/auth/session";
 import { type ActionResult, toActionError } from "@/src/domain/action-result";
 import {
+  type CreateDocumentClientResult,
+  toFirearmDocumentRow,
+} from "@/src/domain/firearm-documents/row";
+import {
   type CreateDocumentInput,
-  type CreateDocumentResult,
   createDocuments,
   deleteDocument,
 } from "@/src/domain/firearm-documents/service";
@@ -43,7 +46,7 @@ function revalidateFirearmPaths(): void {
 export async function uploadDocumentsAction(
   firearmId: string,
   formData: FormData,
-): Promise<ActionResult<{ results: CreateDocumentResult[] }>> {
+): Promise<ActionResult<{ results: CreateDocumentClientResult[] }>> {
   try {
     const userId = await requireUserId();
     const files = formData
@@ -69,8 +72,15 @@ export async function uploadDocumentsAction(
     );
 
     const results = await createDocuments(userId, firearmId, inputs);
+    // Narrow each success to the client-safe row so `storageKey` never ships to
+    // the client in the action response (R10) — the client only reads ok/codes.
+    const clientResults: CreateDocumentClientResult[] = results.map((result) =>
+      result.ok
+        ? { ok: true, document: toFirearmDocumentRow(result.document) }
+        : result,
+    );
     revalidateFirearmPaths();
-    return { ok: true, data: { results } };
+    return { ok: true, data: { results: clientResults } };
   } catch (error) {
     return toActionError(error);
   }

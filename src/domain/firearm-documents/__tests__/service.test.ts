@@ -1,19 +1,29 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 // `storage` is a lazily-constructed singleton; `UPLOAD_DIR` must be set before
 // any test body first touches it.
 const uploadDir = mkdtempSync(join(tmpdir(), "documents-service-"));
 process.env.UPLOAD_DIR = uploadDir;
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+import { fileTypeFromBuffer as realFileTypeFromBuffer } from "file-type";
 import sharp from "sharp";
 import { NotAuthorizedError, NotFoundError } from "@/src/auth/errors";
 import { createGrant } from "@/src/auth/grants";
 import { db } from "@/src/db/client";
 import { ValidationError } from "@/src/domain/errors";
-import { activeStorageRoot } from "@/src/storage";
+import { activeStorageRoot, LocalFilesystemAdapter } from "@/src/storage";
 import {
   createUser,
   deleteUsers,
@@ -45,10 +55,39 @@ async function pngBytes(): Promise<Buffer> {
     .png()
     .toBuffer();
 }
+async function jpegBytes(): Promise<Buffer> {
+  return sharp({
+    create: {
+      width: 2,
+      height: 2,
+      channels: 3,
+      background: { r: 40, g: 50, b: 60 },
+    },
+  })
+    .jpeg()
+    .toBuffer();
+}
 
 function blobExists(key: string): boolean {
   return existsSync(join(activeStorageRoot(), key));
 }
+
+// Captured BEFORE the `file-type` mock below replaces the module's live
+// export, so the mock can call through to the real sniffer for every buffer
+// except the one deliberately engineered to force a throw. Mocking the whole
+// module (rather than patching a function on an object) is required because
+// `sniffAllowedMime` imports `fileTypeFromBuffer` as a named binding.
+const capturedFileTypeFromBuffer = realFileTypeFromBuffer;
+const FILE_TYPE_THROW_MARKER = Buffer.from("FORCE-FILE-TYPE-THROW-TEST");
+mock.module("file-type", () => ({
+  fileTypeFromBuffer: async (input: Uint8Array | ArrayBuffer) => {
+    const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+    if (Buffer.from(bytes).includes(FILE_TYPE_THROW_MARKER)) {
+      throw new Error("forced file-type throw (test)");
+    }
+    return capturedFileTypeFromBuffer(input);
+  },
+}));
 
 live("firearm-documents service (U5)", () => {
   let owner = "";
@@ -278,5 +317,191 @@ live("firearm-documents service (U5)", () => {
     expect(
       await getServableDocument(owner, "00000000-0000-0000-0000-000000000000"),
     ).toBeNull();
+  });
+
+  test("a fileTypeFromBuffer throw is caught as contentMismatch, not aborted (KTD3 guard)", async () => {
+    const fa = await makeFirearm(owner);
+    const poisoned = Buffer.concat([
+      FILE_TYPE_THROW_MARKER,
+      Buffer.from("junk-bytes"),
+    ]);
+    const results = await createDocuments(owner, fa.id, [
+      { bytes: poisoned, mimeType: "application/pdf", filename: "poison.pdf" },
+      {
+        bytes: PDF_BYTES,
+        mimeType: "application/pdf",
+        filename: "sibling.pdf",
+      },
+    ]);
+    expect(results[0].ok).toBe(false);
+    if (!results[0].ok) expect(results[0].codes).toContain("contentMismatch");
+    expect(results[1].ok).toBe(true);
+  });
+
+  test("a storage.save failure yields uploadFailed, cleans up the partial blob, and lets siblings succeed", async () => {
+    const fa = await makeFirearm(owner);
+    let failedKey = "";
+    const saveSpy = spyOn(LocalFilesystemAdapter.prototype, "save");
+    saveSpy.mockImplementationOnce(async (key: string, bytes: Uint8Array) => {
+      failedKey = key;
+      // Simulate a partial write hitting disk before the failure, so the
+      // cleanup assertion below is meaningful rather than trivially true.
+      const path = join(activeStorageRoot(), key);
+      await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+      await writeFile(path, bytes, { mode: 0o600 });
+      throw new Error("simulated disk failure");
+    });
+
+    let results: Awaited<ReturnType<typeof createDocuments>>;
+    try {
+      results = await createDocuments(owner, fa.id, [
+        {
+          bytes: PDF_BYTES,
+          mimeType: "application/pdf",
+          filename: "fails.pdf",
+        },
+        {
+          bytes: PDF_BYTES,
+          mimeType: "application/pdf",
+          filename: "succeeds.pdf",
+        },
+      ]);
+    } finally {
+      saveSpy.mockRestore();
+    }
+
+    expect(results[0].ok).toBe(false);
+    if (!results[0].ok) expect(results[0].codes).toContain("uploadFailed");
+    expect(failedKey).not.toBe("");
+    expect(blobExists(failedKey)).toBe(false);
+    expect(results[1].ok).toBe(true);
+    if (results[1].ok)
+      expect(blobExists(results[1].document.storageKey)).toBe(true);
+  });
+
+  test("a transaction rollback after blob writes cleans up every prepared blob (no orphans)", async () => {
+    const fa = await makeFirearm(owner);
+    // One below the cap: the optimistic (unlocked) quota check passes, so the
+    // blob write proceeds. A concurrent insert — injected from inside the
+    // storage mock, timed to land after this blob is on disk but before the
+    // transaction's locked recheck — then pushes the firearm over the cap,
+    // forcing the transaction (and this rollback-cleanup path) to run.
+    for (let i = 0; i < MAX_DOCUMENTS_PER_FIREARM - 1; i++) {
+      await makeFirearmDocument(fa.id);
+    }
+
+    let writtenKey = "";
+    const saveSpy = spyOn(LocalFilesystemAdapter.prototype, "save");
+    saveSpy.mockImplementationOnce(async (key: string, bytes: Uint8Array) => {
+      writtenKey = key;
+      const path = join(activeStorageRoot(), key);
+      await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+      await writeFile(path, bytes, { mode: 0o600 });
+      await makeFirearmDocument(fa.id);
+    });
+
+    try {
+      await expect(
+        createDocuments(owner, fa.id, [
+          {
+            bytes: PDF_BYTES,
+            mimeType: "application/pdf",
+            filename: "rollback.pdf",
+          },
+        ]),
+      ).rejects.toBeInstanceOf(ValidationError);
+    } finally {
+      saveSpy.mockRestore();
+    }
+
+    expect(writtenKey).not.toBe("");
+    expect(blobExists(writtenKey)).toBe(false);
+  });
+
+  test("declared MIME is ignored in favor of the sniffed type when both are allowed (KTD3)", async () => {
+    const fa = await makeFirearm(owner);
+    const jpeg = await jpegBytes();
+    const [result] = await createDocuments(owner, fa.id, [
+      {
+        bytes: jpeg,
+        mimeType: "application/pdf",
+        filename: "mislabeled.pdf",
+      },
+    ]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.document.mimeType).toBe("image/jpeg");
+      expect(result.document.storageKey.endsWith(".jpg")).toBe(true);
+    }
+  });
+
+  test("deleteDocument on an unknown id is not-found (firearmIdFor branch)", async () => {
+    await expect(
+      deleteDocument(owner, "00000000-0000-0000-0000-000000000000"),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  test("a near-cap mixed batch counts only the valid subset against the quota (regression)", async () => {
+    const fa = await makeFirearm(owner);
+    for (let i = 0; i < MAX_DOCUMENTS_PER_FIREARM - 1; i++) {
+      await makeFirearmDocument(fa.id);
+    }
+    const zip = Buffer.from("PK\x03\x04zip");
+    const results = await createDocuments(owner, fa.id, [
+      { bytes: PDF_BYTES, mimeType: "application/pdf", filename: "valid.pdf" },
+      { bytes: zip, mimeType: "application/zip", filename: "bad1.zip" },
+      { bytes: zip, mimeType: "application/zip", filename: "bad2.zip" },
+    ]);
+    expect(results[0].ok).toBe(true);
+    expect(results[1].ok).toBe(false);
+    if (!results[1].ok)
+      expect(results[1].codes).toContain("disallowedMimeType");
+    expect(results[2].ok).toBe(false);
+    if (!results[2].ok)
+      expect(results[2].codes).toContain("disallowedMimeType");
+  });
+
+  test("concurrent uploads racing near the cap never push the firearm over it (FOR UPDATE lock)", async () => {
+    const fa = await makeFirearm(owner);
+    for (let i = 0; i < MAX_DOCUMENTS_PER_FIREARM - 2; i++) {
+      await makeFirearmDocument(fa.id);
+    }
+    const upload = () =>
+      createDocuments(owner, fa.id, [
+        {
+          bytes: PDF_BYTES,
+          mimeType: "application/pdf",
+          filename: "race-a.pdf",
+        },
+        {
+          bytes: PDF_BYTES,
+          mimeType: "application/pdf",
+          filename: "race-b.pdf",
+        },
+      ]);
+
+    const outcomes = await Promise.allSettled([upload(), upload()]);
+
+    const rows = await listDocuments(owner, fa.id);
+    expect(rows.length).toBeLessThanOrEqual(MAX_DOCUMENTS_PER_FIREARM);
+
+    const rejectedCount = outcomes.filter(
+      (o) => o.status === "rejected",
+    ).length;
+    const fulfilledCount = outcomes.filter(
+      (o) => o.status === "fulfilled",
+    ).length;
+    // Exactly one 2-file batch fits under the cap; the FOR UPDATE lock must
+    // serialize the two transactions so the other is rejected rather than
+    // both committing and overshooting the cap.
+    expect(rejectedCount).toBe(1);
+    expect(fulfilledCount).toBe(1);
+    for (const outcome of outcomes) {
+      if (outcome.status === "rejected") {
+        expect(outcome.reason).toBeInstanceOf(ValidationError);
+      } else {
+        expect(outcome.value.every((r) => r.ok)).toBe(true);
+      }
+    }
   });
 });

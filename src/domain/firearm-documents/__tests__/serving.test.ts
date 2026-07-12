@@ -140,6 +140,14 @@ live("document serving route (U6)", () => {
     expect(res.status).toBe(404);
   });
 
+  test("a complete stranger with no grant at all also gets 404, not 401/403 (KTD2 collapse)", async () => {
+    const stranger = await createUser("serve-stranger");
+    currentUserId = stranger;
+    const res = await callRoute(pdfDocId, "inline");
+    expect(res.status).toBe(404);
+    await deleteUsers(stranger);
+  });
+
   test("an unauthenticated request → 401", async () => {
     currentUserId = null;
     const res = await callRoute(pdfDocId);
