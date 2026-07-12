@@ -127,6 +127,13 @@
       "when": 1783858219596,
       "tag": "0017_certain_mentallo",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783890417560,
+      "tag": "0018_spotty_blonde_phantom",
+      "breakpoints": true
     }
   ]
 }
