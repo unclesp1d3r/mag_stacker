@@ -6,6 +6,7 @@ import {
   createUser,
   deleteUsers,
   makeFirearm,
+  makeFirearmDocument,
 } from "@/src/test-support/factories";
 import { buildInventoryCsv } from "../build";
 
@@ -25,6 +26,35 @@ live("buildInventoryCsv (U8, viewer-relative)", () => {
   test("an empty inventory yields header only", async () => {
     const csv = await buildInventoryCsv(userB);
     expect(csv.split("\n").filter((l) => l.length > 0)).toHaveLength(1);
+  });
+
+  test("documents are never included in CSV export (R11, AE4)", async () => {
+    const docUser = await createUser("csv-doc");
+    const fa = await makeFirearm(docUser, { name: "Documented FA" });
+    const before = await buildInventoryCsv(docUser);
+
+    // Attach a document with distinctive, easily-grep-able field values.
+    await makeFirearmDocument(fa.id, {
+      filename: "SECRET-form4.pdf",
+      notes: "CONFIDENTIAL trust paperwork",
+      docType: "atf-form-4",
+      storageKey: "SECRETKEY-abcdef.pdf",
+    });
+    const after = await buildInventoryCsv(docUser);
+
+    // Export is byte-identical with vs without documents, and no document field
+    // (filename, notes, docType, storageKey) leaks into the output.
+    expect(after).toBe(before);
+    for (const needle of [
+      "SECRET-form4.pdf",
+      "CONFIDENTIAL trust paperwork",
+      "atf-form-4",
+      "SECRETKEY-abcdef.pdf",
+    ]) {
+      expect(after).not.toContain(needle);
+    }
+
+    await deleteUsers(docUser);
   });
 
   test("resolves visible compatible firearm names; magazine appears with its data", async () => {

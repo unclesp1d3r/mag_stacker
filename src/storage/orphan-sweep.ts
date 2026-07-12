@@ -1,7 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { db } from "@/src/db/client";
-import { firearmPhoto } from "@/src/db/schema";
+import { firearmDocument, firearmPhoto } from "@/src/db/schema";
 import { activeStorageRoot, deriveKey, storage } from "./index";
 
 /**
@@ -85,6 +85,16 @@ export async function orphanSweep(
     ownedKeys.add(row.storageKey);
     ownedKeys.add(deriveKey(row.storageKey, "thumb"));
     ownedKeys.add(deriveKey(row.storageKey, "preview"));
+  }
+
+  // Firearm documents are single-blob (no thumb/preview derivatives, KTD4), so
+  // union their storage keys directly. Without this, a document blob would look
+  // unreferenced and be reclaimed while its row is still live.
+  const docRows = await db
+    .select({ storageKey: firearmDocument.storageKey })
+    .from(firearmDocument);
+  for (const row of docRows) {
+    ownedKeys.add(row.storageKey);
   }
 
   // `storage.delete` is idempotent (no-op on a missing key), so the orphan

@@ -2,6 +2,7 @@ import { requireUploadDir } from "./env";
 import { LocalFilesystemAdapter } from "./local-fs-adapter";
 import type { StorageService } from "./service";
 
+export { deleteDocumentBlob } from "./document-blobs";
 export { requireUploadDir } from "./env";
 export type { DerivativeVariant } from "./keys";
 export { DERIVATIVE_SUFFIXES, deriveKey, generateKey } from "./keys";
