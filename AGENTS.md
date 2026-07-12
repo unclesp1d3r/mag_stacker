@@ -21,6 +21,15 @@ This repo runs a **trimmed ECC surface**, not the full bundle. Full map + ration
 - **MUST-PASS PRE-COMMIT GATE:** You **MUST** run `just ci-check` and ensure it passes **before every commit**. Do not commit — for any reason — while `just ci-check` is failing. No `--no-verify`, no skipping, no "I'll fix it in a follow-up." A red `just ci-check` blocks the commit.
 - **Tests:** integration tests gate on `DATABASE_URL` (`const live = process.env.DATABASE_URL ? describe : describe.skip`); reuse `src/test-support/factories.ts`. **Integration & E2E must use Testcontainers** (idiomatic module + Ryuk cleanup). **No `data-testid` in the app** — target UI via ARIA roles / accessible names / visible text. The Playwright suite lives in `e2e/` (`bun run test:e2e`, Docker required); see `e2e/README.md` for the harness.
 
+## Workflow & boundaries
+
+- **Git workflow:** feature branches + PRs only — never commit directly to `main`. Conventional Commits, semver. For agent tasks, prefer an isolated worktree: `git worktree add -b ai/<task> .worktrees/<task>` (check `git worktree list` first; merge and clean up when done).
+- **Releases/deploy:** container image `ghcr.io/unclesp1d3r/mag_stacker` via GitHub Actions; project docs at <https://unclesp1d3r.github.io/mag_stacker/>. Style/structure reference repo: <https://github.com/EvilBit-Labs/hash_hive>.
+- **Do without asking:** create/delete/rename files, rewrite sections, change dependencies, modify DB schema or Docker config, update docs.
+- **Ask first:** anything touching secrets/credentials, auth logic changes, deleting failing tests.
+- **Never:** skip or disable tests "temporarily".
+- **Testing preference:** favor E2E and integration tests over mocks when possible.
+
 <!-- BEGIN:nextjs-agent-rules -->
 ## This is NOT the Next.js you know
 
