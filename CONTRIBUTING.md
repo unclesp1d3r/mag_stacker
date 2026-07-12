@@ -33,7 +33,15 @@ just env-setup          # create .env.local from .env.example
 just install-hooks      # install the pre-commit hooks (once)
 ```
 
-Then set `DATABASE_URL` in `.env.local` so `mise` loads it into your shell — for the local Postgres below that's `postgres://magstacker:<password>@localhost:5544/magstacker`. Also fill in `BETTER_AUTH_SECRET` and, if you want a seeded admin, `ADMIN_EMAIL` / `ADMIN_PASSWORD`. Now bring up the database and start the app:
+The database password and Better Auth signing secret are Docker secrets (R16), not `.env` values — create them once (see [`secrets/README.md`](secrets/README.md)):
+
+```bash
+mkdir -p secrets
+openssl rand -hex 24 > secrets/postgres_password.txt
+openssl rand -hex 32 > secrets/better_auth_secret.txt
+```
+
+Then set `DATABASE_URL` and `BETTER_AUTH_SECRET` in `.env.local` so `mise` loads them into your shell — for the local Postgres below that's `postgres://magstacker:$(cat secrets/postgres_password.txt)@localhost:5544/magstacker`. If you want a seeded admin, also fill in `ADMIN_EMAIL` / `ADMIN_PASSWORD`. Now bring up the database and start the app:
 
 ```bash
 docker compose up -d db   # local Postgres on host port 5544

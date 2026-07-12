@@ -46,10 +46,18 @@ COPY --from=builder /app/scripts ./scripts
 # first upload fails EACCES.
 RUN mkdir -p /data/uploads && chown bun:bun /data/uploads
 
+# Resolves Docker-secrets `*_FILE` env vars into the plain env vars the app
+# expects (POSTGRES_PASSWORD, BETTER_AUTH_SECRET, DATABASE_URL) before exec'ing
+# the real command — see docker-entrypoint.sh (R16). Shared by the `app` and
+# `migrate` services in docker-compose.yml.
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Run as the unprivileged user shipped in the bun image.
 USER bun
 
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["bun", "run", "start"]

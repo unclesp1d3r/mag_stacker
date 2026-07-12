@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+secrets/*
+!secrets/README.md
 
 node_modules
 .next

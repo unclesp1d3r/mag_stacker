@@ -41,6 +41,11 @@ yarn-error.log*
 .env*
 !.env.example
 
+# Docker secrets (R16) — plaintext secret files read by docker-compose.yml.
+# Never commit real secret values; see secrets/README.md.
+/secrets/*
+!/secrets/README.md
+
 # vercel
 .vercel
 

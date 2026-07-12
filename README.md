@@ -49,11 +49,16 @@ You don't need to clone the repo for this. Grab the two files the stack needs an
 curl -O https://raw.githubusercontent.com/unclesp1d3r/mag_stacker/main/docker-compose.yml
 curl -o .env https://raw.githubusercontent.com/unclesp1d3r/mag_stacker/main/.env.example
 
-# 2. Fill in .env: a database password, a long random BETTER_AUTH_SECRET
-#    (try `openssl rand -base64 32`), your first admin email and password, and
-#    BETTER_AUTH_URL set to the address you'll actually open it at.
+# 2. Fill in .env: your first admin email and password, and BETTER_AUTH_URL
+#    set to the address you'll actually open it at.
 
-# 3. Pull the published image and start the stack
+# 3. Create the two Docker secret files (R16) — the database password and the
+#    Better Auth signing secret are NOT set in .env:
+mkdir -p secrets
+openssl rand -hex 24 > secrets/postgres_password.txt
+openssl rand -hex 32 > secrets/better_auth_secret.txt
+
+# 4. Pull the published image and start the stack
 docker compose pull
 docker compose up -d          # migrates, seeds your first admin, starts the app
 ```
@@ -68,9 +73,14 @@ To build the image yourself instead of pulling the published one, clone the repo
 
 ```bash
 cp .env.example .env
-# Fill in .env: a database password, a long random BETTER_AUTH_SECRET
-# (try `openssl rand -base64 32`), your first admin email and password, and
-# BETTER_AUTH_URL set to the address you'll actually open it at.
+# Fill in .env: your first admin email and password, and BETTER_AUTH_URL set
+# to the address you'll actually open it at.
+
+# Create the two Docker secret files (R16) — the database password and the
+# Better Auth signing secret are NOT set in .env:
+mkdir -p secrets
+openssl rand -hex 24 > secrets/postgres_password.txt
+openssl rand -hex 32 > secrets/better_auth_secret.txt
 
 docker compose up --build -d                  # migrates, seeds your first admin, starts the app
 ```
@@ -115,8 +125,10 @@ MagStacker is the original Go/Wails (later Avalonia) desktop app rebuilt as a mu
 Stack: Next.js 16 (App Router), React 19, Bun, Drizzle ORM, Postgres, Better Auth, Tailwind v4, Biome. Use Bun and Biome, not ESLint/Prettier/pnpm (see `AGENTS.md`).
 
 ```bash
+mkdir -p secrets                                          # once, if not already created
+openssl rand -hex 24 > secrets/postgres_password.txt      # (see secrets/README.md)
 docker compose up -d db        # local Postgres on host port 5544
-export DATABASE_URL=postgres://magstacker:<password>@localhost:5544/magstacker
+export DATABASE_URL="postgres://magstacker:$(cat secrets/postgres_password.txt)@localhost:5544/magstacker"
 bun install
 bun run db:migrate
 bun run dev                    # http://localhost:3000
@@ -128,6 +140,8 @@ bun test                       # unit + integration
 ```
 
 > `mise` (`mise.toml`) pins the toolchain and loads `.env` into your shell, then caches it. After you edit `.env`, run `mise cache clear`, or a stale value can shadow both your tooling and `docker compose`.
+>
+> The db service reads its password from `secrets/postgres_password.txt` (a Docker secret, R16), not from `.env` — see [`secrets/README.md`](secrets/README.md).
 
 The README's demo images and walkthrough gif are generated from the live UI. Regenerate them all before a release with `just demo-images` (needs Docker + ffmpeg). The generators are `e2e/demo-*.spec.ts`, gated behind `DEMO=1` so they stay out of the normal test run, and they share one sample dataset from `e2e/fixtures/demo-seed.ts`.
 

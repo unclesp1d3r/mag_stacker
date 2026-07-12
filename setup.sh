@@ -16,10 +16,9 @@
 set -euo pipefail
 
 # Placeholder values shipped in .env.example — refuse to start with these so a
-# deployment never comes up with a default database password, auth secret, or
-# admin login.
-PLACEHOLDER_POSTGRES_PASSWORD="change-me-in-production"
-PLACEHOLDER_AUTH_SECRET="change-me-generate-a-strong-random-secret"
+# deployment never comes up with a default admin login. The database password
+# and auth secret aren't in .env at all — they're Docker secrets (R16),
+# checked separately below.
 PLACEHOLDER_ADMIN_EMAIL="admin@example.com"
 PLACEHOLDER_ADMIN_PASSWORD="change-me-strong-admin-password"
 
@@ -69,39 +68,49 @@ if [[ ! -f .env ]]; then
   echo "Created .env from .env.example."
   echo ""
   echo "Edit .env and fill in real values before continuing:"
-  echo "  - POSTGRES_PASSWORD   (a real database password)"
-  echo "  - BETTER_AUTH_SECRET  (generate with: openssl rand -base64 32)"
   echo "  - ADMIN_EMAIL / ADMIN_PASSWORD (your first admin login)"
   echo "  - BETTER_AUTH_URL     (must match the origin you'll open the app at)"
   echo ""
-  echo "Postgres only applies POSTGRES_PASSWORD the first time its data volume"
-  echo "is created, so set a real password *before* the database starts."
+  echo "Then create the two Docker secret files (R16) — the database password"
+  echo "and the Better Auth signing secret are NOT set in .env:"
+  echo "  mkdir -p secrets"
+  echo "  openssl rand -hex 24 > secrets/postgres_password.txt"
+  echo "  openssl rand -hex 32 > secrets/better_auth_secret.txt"
+  echo "(hex, not base64 — the password lands unescaped in a connection URL.)"
   echo ""
-  echo "Re-run ./setup.sh once .env is filled in."
+  echo "Postgres only applies the password the first time its data volume is"
+  echo "created, so create secrets/postgres_password.txt *before* first boot."
+  echo ""
+  echo "Re-run ./setup.sh once .env and secrets/ are filled in."
   exit 0
 fi
 
 echo ".env found — leaving it untouched."
 echo ""
 
-# --- Read .env for presence/placeholder checks (values are never printed) --
+# --- Docker secrets (R16) — files under secrets/, never printed -----------
 
-postgres_password="$(env_value POSTGRES_PASSWORD)"
-auth_secret="$(env_value BETTER_AUTH_SECRET)"
-admin_email="$(env_value ADMIN_EMAIL)"
-admin_password="$(env_value ADMIN_PASSWORD)"
+postgres_password_file="secrets/postgres_password.txt"
+auth_secret_file="secrets/better_auth_secret.txt"
 
 fail=0
 
-if [[ -z "${postgres_password}" || "${postgres_password}" == "${PLACEHOLDER_POSTGRES_PASSWORD}" ]]; then
-  echo "Error: set a real POSTGRES_PASSWORD in .env (still the placeholder)." >&2
+if [[ ! -s "${postgres_password_file}" ]]; then
+  echo "Error: ${postgres_password_file} is missing or empty." >&2
+  echo "       Create it: openssl rand -hex 24 > ${postgres_password_file}" >&2
   fail=1
 fi
 
-if [[ -z "${auth_secret}" || "${auth_secret}" == "${PLACEHOLDER_AUTH_SECRET}" ]]; then
-  echo "Error: set a real BETTER_AUTH_SECRET in .env (openssl rand -base64 32)." >&2
+if [[ ! -s "${auth_secret_file}" ]]; then
+  echo "Error: ${auth_secret_file} is missing or empty." >&2
+  echo "       Create it: openssl rand -hex 32 > ${auth_secret_file}" >&2
   fail=1
 fi
+
+# --- Read .env for presence/placeholder checks (values are never printed) --
+
+admin_email="$(env_value ADMIN_EMAIL)"
+admin_password="$(env_value ADMIN_PASSWORD)"
 
 # The admin seed is optional — leave both unset to skip it. But if both are set
 # (so compose will seed) and either is still the shipped placeholder, refuse:
@@ -116,7 +125,7 @@ fi
 
 if [[ "${fail}" -ne 0 ]]; then
   echo "" >&2
-  echo "Fix the values above in .env, then re-run ./setup.sh" >&2
+  echo "Fix the issues above (in .env and/or secrets/), then re-run ./setup.sh" >&2
   exit 1
 fi
 
