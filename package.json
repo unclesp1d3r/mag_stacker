@@ -33,6 +33,7 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "sharp": "^0.35.3",
+    "sodium-native": "^5.1.0",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
@@ -58,6 +59,7 @@
   ],
   "trustedDependencies": [
     "sharp",
+    "sodium-native",
     "unrs-resolver"
   ]
 }
