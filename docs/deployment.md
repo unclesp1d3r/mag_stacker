@@ -50,6 +50,14 @@ control — a homelab server, a NAS, a small VPS behind your own network.
   docker compose exec db pg_dump -U "$POSTGRES_USER" -Fc -d "$POSTGRES_DB" > magstacker.dump
   ```
 
+- The `magstacker-pgdata` and `magstacker-uploads` volumes above hold
+  everything sensitive this stack stores — putting them on an encrypted host
+  disk is on you, the operator; see
+  [`docs/operations/encryption-at-rest.md`](operations/encryption-at-rest.md)
+  for the LUKS and encrypted-cloud-volume how-to and a threat-coverage matrix
+  covering what disk encryption defends against versus an encrypted in-app
+  backup.
+
 ## TLS / network exposure (important)
 
 Better Auth uses session **cookies**, and sign-in sends credentials. Do **not**

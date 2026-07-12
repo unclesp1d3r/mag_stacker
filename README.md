@@ -89,6 +89,11 @@ Everything lives in Postgres, so a normal `pg_dump` is your backup. Restoring it
 docker compose exec db pg_dump -U "$POSTGRES_USER" -Fc -d "$POSTGRES_DB" > magstacker.dump
 ```
 
+For running the Postgres and upload volumes on an encrypted host disk — and
+a rundown of which threats disk encryption covers versus which an encrypted
+in-app backup covers — see
+[`docs/operations/encryption-at-rest.md`](docs/operations/encryption-at-rest.md).
+
 ## Behind a reverse proxy
 
 Sign-in rides on cookies, so on any real network you run MagStacker behind a reverse proxy that terminates TLS rather than exposing port 3000 directly. Point the proxy at the app's published port and set `BETTER_AUTH_URL` in `.env` to the public `https://` address. It **must** match the origin you actually open, or Better Auth rejects the request.
