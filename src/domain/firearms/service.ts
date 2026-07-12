@@ -115,8 +115,15 @@ export async function updateFirearm(
  * post-commit blob cleanup fails — is the benign case `orphanSweep` handles.
  *
  * Document blobs (R19) share this cleanup so ATF forms/receipts are never left
- * to the bare FK cascade. The owning-user-account clause of R19 rides this same
- * path: a user delete cascades to firearm delete, which runs this hook.
+ * to the bare FK cascade when a firearm is deleted through THIS function.
+ *
+ * Caveat — the owning-user-account clause of R19 is NOT covered here: user
+ * deletion is a raw DB delete whose `owner_id` FK cascade drops firearm (and
+ * firearm_document) rows directly, without ever calling this function, so this
+ * hook never runs for that path. Those blobs are reclaimed only by `orphanSweep`
+ * (the backstop), which has no scheduler wired up. Fully closing the user-delete
+ * clause needs a dedicated pre-delete cleanup on the account-deletion path
+ * (follow-up); this gap is pre-existing for photos too.
  */
 export async function deleteFirearm(
   actorId: string,

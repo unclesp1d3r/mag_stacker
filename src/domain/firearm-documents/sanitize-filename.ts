@@ -30,10 +30,12 @@ const MAX_EXTENSION_LENGTH = 10;
 const CONTROL_CHAR_MAX = 0x1f; // C0 controls incl. TAB (0x09), LF (0x0a), CR (0x0d)
 const DEL_CHAR = 0x7f;
 
-/** True for path separators and control characters (C0 range + DEL) — removing
- * these neutralizes traversal and header-injection in one pass. */
+/** True for path separators, the `Content-Disposition` quoted-string delimiter
+ * (`"`), and control characters (C0 range + DEL) — removing these neutralizes
+ * traversal and header-injection in one pass, so the stored name is safe to
+ * place in a header even before the serving route's RFC 6266 encoding. */
 function isUnsafeChar(char: string): boolean {
-  if (char === "/" || char === "\\") return true;
+  if (char === "/" || char === "\\" || char === '"') return true;
   const code = char.codePointAt(0) ?? 0;
   return code <= CONTROL_CHAR_MAX || code === DEL_CHAR;
 }
