@@ -11,12 +11,14 @@ import { Badge } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/surface";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import type { Permission } from "@/src/auth/visibility";
+import type { FirearmDocumentRow } from "@/src/domain/firearm-documents/row";
 import {
   firearmActionLabel,
   firearmTypeLabel,
 } from "@/src/domain/firearms/constants";
 import { firearmDisplayName, hasNickname } from "@/src/domain/firearms/display";
 import { InventoryLogHistory } from "../inventory-log/inventory-log-history";
+import { FirearmDocuments } from "./[id]/firearm-documents";
 import { type FirearmPhotoRow, FirearmPhotos } from "./[id]/firearm-photos";
 import { deleteFirearmAction } from "./actions";
 import { FirearmForm, type FirearmFormValues } from "./firearm-form";
@@ -42,6 +44,9 @@ interface FirearmDetailViewProps {
   accessoryValueCents: number;
   /** Server-loaded via `listPhotos`, ordered by `sortOrder` ascending (U7). */
   photos: FirearmPhotoRow[];
+  /** Server-loaded via `listDocuments` for the OWNER only (empty for a
+   * non-owner, who never sees the section this feeds — U7, R16). */
+  documents: FirearmDocumentRow[];
 }
 
 /** One read-only label/value row. */
@@ -76,6 +81,7 @@ export function FirearmDetailView({
   mountedAccessories,
   accessoryValueCents,
   photos,
+  documents,
 }: FirearmDetailViewProps) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -225,6 +231,21 @@ export function FirearmDetailView({
         photos={photos}
         canEdit={canEdit}
       />
+
+      {isOwner ? (
+        <FirearmDocuments firearmId={firearm.id} documents={documents} />
+      ) : (
+        // Static locked panel (R16, R17): renders identically regardless of
+        // whether the owner has any documents — no count, no contents, no
+        // existence signal — and never receives or references document data
+        // (the `documents` prop above is empty for a non-owner anyway).
+        <Card>
+          <h2 className="text-sm font-semibold text-foreground">Documents</h2>
+          <p className="mt-2 text-sm text-ink-soft">
+            Documents are private to the owner.
+          </p>
+        </Card>
+      )}
 
       <MountedAccessories
         firearmId={firearm.id}

@@ -3,6 +3,8 @@ import { NotFoundError } from "@/src/auth/errors";
 import { getCurrentUser } from "@/src/auth/session";
 import { db } from "@/src/db/client";
 import { listMountedForFirearm } from "@/src/domain/accessories/service";
+import { toFirearmDocumentRow } from "@/src/domain/firearm-documents/row";
+import { listDocuments } from "@/src/domain/firearm-documents/service";
 import { listPhotos } from "@/src/domain/firearm-photos/service";
 import { getFirearm, listFirearms } from "@/src/domain/firearms/service";
 import { magazineCountForFirearm } from "@/src/domain/magazines/service";
@@ -35,12 +37,19 @@ export default async function FirearmDetailPage({ params }: PageProps) {
     },
   );
 
+  // Documents are owner-only on every operation (R8) — `listDocuments` throws
+  // for a non-owner, so it's only ever called for the owner. A non-owner gets
+  // an empty array here; `firearm-detail-view.tsx` never even mounts the
+  // documents section for them (KTD7), so this value is unused in that case.
+  const isOwner = permission === "owner";
+
   const [
     caliberSuggestions,
     magazineCount,
     firearms,
     mountedAccessories,
     photos,
+    documents,
   ] = await Promise.all([
     calibersForInput(db, user.id),
     magazineCountForFirearm(user.id, id),
@@ -53,6 +62,12 @@ export default async function FirearmDetailPage({ params }: PageProps) {
       if (error instanceof NotFoundError) notFound();
       throw error;
     }),
+    isOwner
+      ? listDocuments(user.id, id).catch((error: unknown) => {
+          if (error instanceof NotFoundError) notFound();
+          throw error;
+        })
+      : Promise.resolve([]),
   ]);
 
   // Derive the value total from the already-fetched accessories rather than
@@ -89,6 +104,12 @@ export default async function FirearmDetailPage({ params }: PageProps) {
       mountedAccessories={mountedAccessories}
       accessoryValueCents={accessoryValueCents}
       photos={photos}
+      // Narrowed via `toFirearmDocumentRow` (not the raw `FirearmDocument[]`)
+      // so `storageKey` — the internal blob-storage path — never reaches the
+      // client bundle (R10). Centralizing the narrowing is the enforcement
+      // point: a bare `documents={documents}` would compile via structural
+      // typing and leak the key.
+      documents={documents.map(toFirearmDocumentRow)}
     />
   );
 }

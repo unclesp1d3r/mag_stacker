@@ -12,6 +12,7 @@ import {
 import {
   authorizeAndDeleteParent,
   authorizeDelete,
+  authorizeOwnerOnlyRead,
   authorizeUpdate,
   resolveCreateOwner,
 } from "../authorize";
@@ -108,6 +109,45 @@ live("authorize write-decision gate (U4)", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
     const rows = await db.select().from(firearm).where(eq(firearm.id, fa.id));
     expect(rows).toHaveLength(1); // untouched
+  });
+
+  // --- owner-only read authorization (U4, KTD1) ---
+  test("owner-only read: owner passes; edit- and view-grantees forbidden; outsider not-found (R8/R9)", async () => {
+    const fa = await makeFirearm(userA);
+    await expect(
+      authorizeOwnerOnlyRead(db, userA, "firearm", fa.id),
+    ).resolves.toBeUndefined();
+
+    // Edit-grantee: forbidden (documents are owner-only, unlike photos).
+    await createGrant(db, {
+      actorId: userA,
+      granteeId: userB,
+      parentType: "firearm",
+      parentId: fa.id,
+      permission: "edit",
+    });
+    await expect(
+      authorizeOwnerOnlyRead(db, userB, "firearm", fa.id),
+    ).rejects.toBeInstanceOf(NotAuthorizedError);
+
+    // View-grantee: forbidden.
+    await createGrant(db, {
+      actorId: userA,
+      granteeId: userC,
+      parentType: "firearm",
+      parentId: fa.id,
+      permission: "view",
+    });
+    await expect(
+      authorizeOwnerOnlyRead(db, userC, "firearm", fa.id),
+    ).rejects.toBeInstanceOf(NotAuthorizedError);
+
+    // Stranger / unseen firearm: not-found (existence never revealed).
+    const outsider = await createUser("read-out");
+    await expect(
+      authorizeOwnerOnlyRead(db, outsider, "firearm", fa.id),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await deleteUsers(outsider);
   });
 
   // --- create-on-behalf (KTD-5) ---

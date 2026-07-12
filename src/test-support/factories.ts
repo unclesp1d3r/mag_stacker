@@ -6,6 +6,7 @@ import {
   accessory,
   ammo,
   firearm,
+  firearmDocument,
   firearmPhoto,
   inventoryLog,
   magazine,
@@ -123,6 +124,34 @@ export async function makeRangeSession(
   const [row] = await db
     .insert(rangeSession)
     .values({ firearmId, date: "2026-01-01", roundsFired: 50, ...overrides })
+    .returning();
+  return row;
+}
+
+/**
+ * Insert a firearm-document row directly (#12). No `owner_id`/grants — the row
+ * is a firearm child, authorized owner-only through `firearmId` (KTD1). Single
+ * blob, no derivatives; the default row is a small PDF receipt.
+ */
+export async function makeFirearmDocument(
+  firearmId: string,
+  overrides: Partial<
+    Omit<typeof firearmDocument.$inferInsert, "firearmId">
+  > = {},
+): Promise<typeof firearmDocument.$inferSelect> {
+  const [row] = await db
+    .insert(firearmDocument)
+    .values({
+      // Flat, separator-free, extension-bearing key matching production shape
+      // (`generateKey(ext)`); single blob, no derivatives.
+      storageKey: `${randomUUID()}.pdf`,
+      filename: "receipt.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 2048,
+      docType: "receipt",
+      ...overrides,
+      firearmId,
+    })
     .returning();
   return row;
 }

@@ -110,6 +110,24 @@ export async function authorizeDelete(
 }
 
 /**
+ * Authorize an owner-only READ (U4, KTD1, R8/R9). Firearm documents are
+ * owner-only on every operation — unlike photos, a view- or edit-grantee may
+ * NOT list, view, or download them — so reads need the same owner-only gate the
+ * mutations already use. Owner passes; a visible non-owner is forbidden; an
+ * unseen item is not-found so existence is never revealed (R9). No read-only
+ * owner gate existed before documents; this is the read wrapper alongside
+ * `authorizeOwnerOnlyUpdate` and `authorizeDelete`.
+ */
+export async function authorizeOwnerOnlyRead(
+  tx: DbOrTx,
+  actorId: string,
+  parentType: ParentType,
+  parentId: string,
+): Promise<void> {
+  return authorizeOwnerOnly(tx, actorId, parentType, parentId, "view");
+}
+
+/**
  * Optional pre-delete callback (U5, KTD8). Invoked inside the same
  * transaction as the delete, after authorization and before the row delete,
  * receiving the transaction and the parent id. Used to clean up

@@ -396,6 +396,60 @@ export const firearmPhoto = pgTable(
   ],
 );
 
+/**
+ * Firearm document (#12) — a firearm child record, mirroring `firearmPhoto`'s
+ * child-record shape (no `owner_id`, no own grant family) but authorizing
+ * OWNER-ONLY on every operation (KTD1) rather than inheriting the firearm's
+ * grants like photos do. Documents are receipts/warranties/ATF forms/manuals/
+ * insurance — highly sensitive PII kept verbatim off the image pipeline (a
+ * single blob, no derivatives/width/height/primary/sort/caption). The FK ON
+ * DELETE CASCADE drops rows with the firearm; blob cleanup is handled eagerly
+ * in `deleteFirearm`'s pre-delete hook (R19), never left to the bare cascade.
+ * `filename` is the sanitized original name (R3); `docType` is a controlled set
+ * defaulting to 'other' (R2); `notes` is empty-not-null. Both `filename` and
+ * `notes` are PII-bearing (inputs to #67's encryption-at-rest evaluation, KTD8).
+ */
+export const firearmDocument = pgTable(
+  "firearm_document",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    firearmId: uuid("firearm_id")
+      .notNull()
+      .references(() => firearm.id, { onDelete: "cascade" }),
+    storageKey: text("storage_key").notNull(),
+    // Sanitized original filename (R3) — also the download filename.
+    filename: text("filename").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    // Controlled docType set (R2); defaults to 'other'.
+    docType: text("doc_type").notNull().default("other"),
+    // Empty-not-null free-text notes.
+    notes: text("notes").notNull().default(""),
+    uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  },
+  (t) => [
+    // Per-firearm document-list lookup (ordered most-recent-first in the domain).
+    index("firearm_document_firearm_id_idx").on(t.firearmId),
+    // DB backstop for the upload allow-list (R5): a direct insert bypassing the
+    // app layer can't write a MIME type outside the controlled set. Documents
+    // add application/pdf to the photo raster set. The literal list must stay in
+    // sync with `ALLOWED_MIME_TYPES` (`src/domain/firearm-documents/
+    // constants.ts`) — SQL can't import the TS constant.
+    check(
+      "firearm_document_mime_type_valid",
+      sql`${t.mimeType} in ('application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/avif')`,
+    ),
+    // DB backstop for the controlled docType set (R2) — must stay in sync with
+    // `DOC_TYPES` (`src/domain/firearm-documents/constants.ts`).
+    check(
+      "firearm_document_doc_type_valid",
+      sql`${t.docType} in ('receipt', 'warranty', 'atf-form-1', 'atf-form-4', 'manual', 'insurance', 'other')`,
+    ),
+    // Positivity backstop (mirrors the sibling inventory quantity CHECKs).
+    check("firearm_document_size_bytes_min", sql`${t.sizeBytes} > 0`),
+  ],
+);
+
 export const grant = pgTable(
   "grant",
   {

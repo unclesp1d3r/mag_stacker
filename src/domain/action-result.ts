@@ -24,5 +24,10 @@ export function toActionError(error: unknown): ActionResult<never> {
   }
   if (error instanceof DatabaseUnavailableError)
     return { ok: false, error: error.message };
+  // Anything that reaches here is unmapped — a bug, a DB deadlock, an unexpected
+  // storage failure. The user gets a generic message; log the real error so
+  // there is a server-side trail (every mapped case above is expected and
+  // intentionally silent).
+  console.error("action: unhandled error", error);
   return { ok: false, error: "Something went wrong. Please try again." };
 }

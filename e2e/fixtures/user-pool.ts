@@ -33,6 +33,8 @@ export const SPEC_USER_KEYS = [
   "accessories",
   "accessories-viewer",
   "firearm-photos",
+  "firearm-documents",
+  "firearm-documents-viewer",
   "demo-accessories",
   "demo-magazines",
   "demo-summary",

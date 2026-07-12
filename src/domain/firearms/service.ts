@@ -11,8 +11,8 @@ import {
   resolvePermission,
 } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
-import { firearm, firearmPhoto } from "@/src/db/schema";
-import { deletePhotoBlobs } from "@/src/storage";
+import { firearm, firearmDocument, firearmPhoto } from "@/src/db/schema";
+import { deleteDocumentBlob, deletePhotoBlobs } from "@/src/storage";
 import { ValidationError } from "../errors";
 import { type FirearmInput, validateFirearm } from "./validate";
 
@@ -100,25 +100,37 @@ export async function updateFirearm(
 
 /**
  * Owner-only delete; removes this firearm's join rows + grants (R23, R35,
- * R17b) and best-effort deletes its photo blobs (R8, KTD8).
+ * R17b) and best-effort deletes its photo AND document blobs (R8, R19, KTD8).
  *
  * Blob deletion runs AFTER the delete transaction commits, mirroring
  * `deletePhoto` (`src/domain/firearm-photos/service.ts`). The pre-delete hook
  * only READS the firearm's storage keys (safe — the rows still exist inside
- * the transaction); the actual `deletePhotoBlobs` calls happen once the row
- * cascade has committed. Deleting blobs before commit would be unsafe: if the
- * row delete rolls back (a DB error, or the `deleted.length === 0`
- * concurrent-delete race in `authorizeAndDeleteParent`), the `firearm_photo`
- * rows survive but their bytes would already be gone — a live row pointing at
- * a missing blob, which `orphanSweep` cannot repair (it only reclaims
- * UNreferenced blobs). The reverse residue — a committed delete whose
+ * the transaction); the actual `deletePhotoBlobs`/`deleteDocumentBlob` calls
+ * happen once the row cascade has committed. Deleting blobs before commit would
+ * be unsafe: if the row delete rolls back (a DB error, or the
+ * `deleted.length === 0` concurrent-delete race in `authorizeAndDeleteParent`),
+ * the child rows survive but their bytes would already be gone — a live row
+ * pointing at a missing blob, which `orphanSweep` cannot repair (it only
+ * reclaims UNreferenced blobs). The reverse residue — a committed delete whose
  * post-commit blob cleanup fails — is the benign case `orphanSweep` handles.
+ *
+ * Document blobs (R19) share this cleanup so ATF forms/receipts are never left
+ * to the bare FK cascade when a firearm is deleted through THIS function.
+ *
+ * Caveat — the owning-user-account clause of R19 is NOT covered here: user
+ * deletion is a raw DB delete whose `owner_id` FK cascade drops firearm (and
+ * firearm_document) rows directly, without ever calling this function, so this
+ * hook never runs for that path. Those blobs are reclaimed only by `orphanSweep`
+ * (the backstop), which has no scheduler wired up. Fully closing the user-delete
+ * clause needs a dedicated pre-delete cleanup on the account-deletion path
+ * (follow-up); this gap is pre-existing for photos too.
  */
 export async function deleteFirearm(
   actorId: string,
   id: string,
 ): Promise<void> {
-  const storageKeys: string[] = [];
+  const photoKeys: string[] = [];
+  const documentKeys: string[] = [];
   await authorizeAndDeleteParent(
     actorId,
     "firearm",
@@ -129,11 +141,20 @@ export async function deleteFirearm(
         .select({ storageKey: firearmPhoto.storageKey })
         .from(firearmPhoto)
         .where(eq(firearmPhoto.firearmId, fid));
-      storageKeys.push(...photos.map((photo) => photo.storageKey));
+      photoKeys.push(...photos.map((photo) => photo.storageKey));
+
+      const documents = await tx
+        .select({ storageKey: firearmDocument.storageKey })
+        .from(firearmDocument)
+        .where(eq(firearmDocument.firearmId, fid));
+      documentKeys.push(...documents.map((doc) => doc.storageKey));
     },
   );
 
-  await Promise.all(storageKeys.map((key) => deletePhotoBlobs(key)));
+  await Promise.all([
+    ...photoKeys.map((key) => deletePhotoBlobs(key)),
+    ...documentKeys.map((key) => deleteDocumentBlob(key)),
+  ]);
 }
 
 /** Get a single firearm, or not-found if it is outside the requester's visible set. */
