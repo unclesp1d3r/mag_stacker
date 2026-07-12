@@ -1,0 +1,19 @@
+{
+  "scannedAt": "2026-07-12T02:49:52.851Z",
+  "rootPath": "/Users/kmelton/Projects/mag_stacker",
+  "totalFiles": 2,
+  "hierarchy": [
+    {
+      "rootPath": "/Users/kmelton/Projects/mag_stacker",
+      "rootFile": "AGENTS.md",
+      "rootName": "Active ECC surface (trimmed)",
+      "children": []
+    },
+    {
+      "rootPath": "/Users/kmelton/Projects/mag_stacker",
+      "rootFile": "CLAUDE.md",
+      "rootName": "mag_stacker",
+      "children": []
+    }
+  ]
+}
