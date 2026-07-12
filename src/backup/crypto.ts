@@ -386,6 +386,93 @@ export function createEncryptStream(
  * authenticated final chunk — in every failure case, no unauthenticated
  * plaintext is ever pushed downstream.
  */
+/**
+ * Builds a `Transform` that decrypts a MagStacker backup bundle stream from a
+ * `password` alone (U5's restore entry point). {@link createDecryptStream}
+ * needs the derived key up front, but the key can only be derived from the
+ * salt and KDF params that live inside the bundle's own unencrypted
+ * {@link CryptoHeader} preamble — a chicken-and-egg problem solved here by
+ * peeking the first {@link HEADER_BYTE_LENGTH} bytes off the stream first.
+ *
+ * Once enough bytes have arrived, this parses the header, derives the key via
+ * {@link deriveKey}, builds the real {@link createDecryptStream}, and
+ * re-prepends the buffered header bytes to it — so nothing is lost. From the
+ * caller's side this behaves exactly like {@link createDecryptStream}: pipe
+ * the raw encrypted stream in, read decrypted plaintext out.
+ *
+ * Throws {@link InvalidHeaderError} if the stream ends before a complete
+ * header is read, and {@link DecryptionAuthError} for a wrong password or a
+ * tampered/truncated bundle — including, for a tamper in the final chunk,
+ * only once the whole stream has been consumed (see
+ * {@link createDecryptStream}'s doc comment; this is what lets a
+ * stage-then-promote restore catch a late tamper before anything live is
+ * touched).
+ */
+export function createDecryptStreamFromPassword(password: string): Transform {
+  const headerAcc = new ByteAccumulator();
+  let inner: Transform | undefined;
+
+  const outer: Transform = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      try {
+        if (inner) {
+          inner.write(chunk, (err) => callback(err ? toError(err) : undefined));
+          return;
+        }
+
+        headerAcc.push(chunk);
+        if (headerAcc.size < HEADER_BYTE_LENGTH) {
+          callback();
+          return;
+        }
+
+        // May include ciphertext bytes beyond the header if this write
+        // delivered more than HEADER_BYTE_LENGTH bytes at once — that's fine,
+        // `readHeader` only reads its fixed-length prefix, and the whole
+        // buffer (header + any trailing ciphertext) is exactly what a raw
+        // stream into `createDecryptStream` looks like, so it's forwarded
+        // whole below.
+        const combined = headerAcc.takeAll();
+        const header = readHeader(combined);
+        const key = deriveKey(password, header.salt, header.kdfParams);
+        inner = createDecryptStream(key);
+        inner.on("data", (data: Buffer) => outer.push(data));
+        // Errors already surface through the write/flush callback chain
+        // below (which destroys `outer` the normal way); this listener only
+        // exists so an unhandled 'error' event on `inner` doesn't crash the
+        // process.
+        inner.on("error", () => {});
+
+        inner.write(combined, (err) =>
+          callback(err ? toError(err) : undefined),
+        );
+      } catch (err) {
+        callback(toError(err));
+      }
+    },
+    flush(callback) {
+      try {
+        if (!inner) {
+          // Never reached a full header. This always throws
+          // InvalidHeaderError (buffer too short) — the explicit throw below
+          // is an unreachable safety net in case that ever changes.
+          readHeader(headerAcc.takeAll());
+          throw new InvalidHeaderError(
+            "bundle stream ended before a complete crypto header was read",
+          );
+        }
+        inner.end((err?: Error | null) =>
+          callback(err ? toError(err) : undefined),
+        );
+      } catch (err) {
+        callback(toError(err));
+      }
+    },
+  });
+
+  return outer;
+}
+
 export function createDecryptStream(key: Buffer): Transform {
   if (key.byteLength !== SECRETSTREAM_KEY_BYTES) {
     throw new RangeError(`key must be ${SECRETSTREAM_KEY_BYTES} bytes`);
