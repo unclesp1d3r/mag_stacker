@@ -1,0 +1,26 @@
+version: "1"
+blueprints:
+  - id: bp_cmrh5ytjl000i01mr0g29v87w
+    source: private
+    file: CLAUDE.md
+    name: mag_stacker
+    pulledAt: 2026-07-12T02:28:29.159Z
+    checksum: 336cc4fbf19beaad
+    editable: true
+    canPull: true
+  - id: bp_cmrh5ytjl000i01mr0g29v87w
+    source: private
+    file: .github/copilot-instructions.md
+    name: mag_stacker
+    pulledAt: 2026-07-12T02:28:51.576Z
+    checksum: 062230aa5f74018f
+    editable: true
+    canPull: true
+  - id: bp_cmrh5ytjl000i01mr0g29v87w
+    source: private
+    file: AGENTS.md
+    name: mag_stacker
+    pulledAt: 2026-07-12T02:43:44.547Z
+    checksum: 5b1b26e705607f01
+    editable: true
+    canPull: true
