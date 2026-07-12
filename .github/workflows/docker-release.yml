@@ -6,6 +6,8 @@ name: Docker Release
 #
 #   - Push a semver tag (e.g. `v1.2.3`) — or publish a GitHub Release, which
 #     creates the tag — to cut a release: pushes `1.2.3`, `1.2`, `1`, `latest`.
+#     After the image publishes, the `github-release` job creates the GitHub
+#     Release with generated notes if one doesn't already exist for the tag.
 #   - Pushes to `main` publish a rolling `edge` image.
 #   - `workflow_dispatch` lets you trigger a build manually.
 #
@@ -80,3 +82,28 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: true # SLSA build provenance attestation
           sbom: true # SBOM attestation (pairs with the repo's syft usage)
+
+  # On semver tags only: publish a GitHub Release once the image is out, so a
+  # CLI-pushed tag (RELEASE.md "Option B") still gets a Release with notes.
+  # Idempotent — a Release created via the GitHub UI (Option A) is left alone.
+  github-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release
+    steps:
+      - name: Create GitHub Release if missing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — nothing to do."
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" \
+            --generate-notes \
+            --verify-tag

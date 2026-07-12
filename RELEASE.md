@@ -53,13 +53,14 @@ Review the auto-generated notes, add the migration/breaking-change callouts, and
 
 ### Option B — Signed git tag
 
-If you'd rather tag from the CLI (GPG-signed, matching the repo's commit-signing policy), then optionally attach a Release afterward:
+If you'd rather tag from the CLI (GPG-signed, matching the repo's commit-signing policy):
 
 ```bash
 git tag -s vX.Y.Z -m "vX.Y.Z"
 git push origin vX.Y.Z
-# optional: gh release create vX.Y.Z --generate-notes --verify-tag
 ```
+
+Once the image publishes, the workflow's `github-release` job creates the GitHub Release for the tag automatically (with `--generate-notes`), so both options end with a published Release. It only fills the gap — if a Release for the tag already exists (Option A), it does nothing. Review the auto-generated notes afterward and add the migration/breaking-change callouts.
 
 ## What the workflow publishes
 
