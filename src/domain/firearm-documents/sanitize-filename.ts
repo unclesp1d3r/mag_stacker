@@ -47,14 +47,26 @@ export function sanitizeFilename(raw: string): string {
   }
   stripped = stripped.trim();
   if (stripped === "") return FALLBACK_FILENAME;
-  if (stripped.length <= MAX_FILENAME_LENGTH) return stripped;
+
+  // Code-point (not UTF-16 code-unit) counting/slicing throughout: `.length`
+  // and `.slice()` operate on UTF-16 code units, so a truncation boundary that
+  // falls inside an astral character (e.g. an emoji) would split its surrogate
+  // pair and leave a lone surrogate in the stored/served filename.
+  const codePoints = Array.from(stripped);
+  if (codePoints.length <= MAX_FILENAME_LENGTH) return stripped;
 
   // Preserve a trailing extension when truncating so the download label keeps
-  // a sensible suffix (e.g. `.pdf`).
+  // a sensible suffix (e.g. `.pdf`). `dot` is a UTF-16 index into `stripped`,
+  // but a literal "." is always a single code unit and never part of a
+  // surrogate pair, so `stripped.slice(dot)` is always a code-point-aligned
+  // suffix — safe to re-split into code points below.
   const dot = stripped.lastIndexOf(".");
-  if (dot > 0 && stripped.length - dot <= MAX_EXTENSION_LENGTH) {
-    const ext = stripped.slice(dot);
-    return stripped.slice(0, MAX_FILENAME_LENGTH - ext.length) + ext;
+  const extCodePoints = dot > 0 ? Array.from(stripped.slice(dot)) : [];
+  if (dot > 0 && extCodePoints.length <= MAX_EXTENSION_LENGTH) {
+    return (
+      codePoints.slice(0, MAX_FILENAME_LENGTH - extCodePoints.length).join("") +
+      extCodePoints.join("")
+    );
   }
-  return stripped.slice(0, MAX_FILENAME_LENGTH);
+  return codePoints.slice(0, MAX_FILENAME_LENGTH).join("");
 }

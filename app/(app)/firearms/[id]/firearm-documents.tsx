@@ -25,6 +25,7 @@ import {
   DEFAULT_DOC_TYPE,
   DOC_TYPES,
   type DocType,
+  MAX_NOTES_LENGTH,
 } from "@/src/domain/firearm-documents/constants";
 import type { FirearmDocumentRow } from "@/src/domain/firearm-documents/row";
 import type { CreateDocumentErrorCode } from "@/src/domain/firearm-documents/service";
@@ -148,6 +149,11 @@ const VIEW_MEDIA_MAX_HEIGHT = "70vh";
  */
 const PDF_SANDBOX = "allow-scripts";
 
+/** Mirrors `ConfirmDialog`'s (`components/ui/confirm-dialog.tsx`) Tab-trap
+ * focusable-element query, scoped to the View modal's panel. */
+const FOCUSABLE =
+  'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 /**
  * `Button` (`components/ui/button.tsx`) renders a plain `<button>` with no
  * `asChild`/Slot support, so the Download control — which must be a real
@@ -191,9 +197,7 @@ export function FirearmDocuments({
   const viewRestoreFocusRef = useRef<HTMLElement | null>(null);
 
   // Initial focus on the close control; restore focus to the trigger on close;
-  // Escape dismisses (handler below). This is lighter than `ConfirmDialog` — it
-  // does not Tab-trap focus within the modal — which is acceptable here because
-  // the modal's only interactive controls are Close and (on error) Download.
+  // Escape dismisses (handler below).
   useEffect(() => {
     if (!viewTarget) return;
     viewRestoreFocusRef.current = document.activeElement as HTMLElement | null;
@@ -201,12 +205,28 @@ export function FirearmDocuments({
     return () => viewRestoreFocusRef.current?.focus?.();
   }, [viewTarget]);
 
+  // Escape cancels; Tab is trapped within the panel (mirrors `ConfirmDialog`).
   useEffect(() => {
     if (!viewTarget) return;
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
         setViewTarget(null);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const panel = viewPanelRef.current;
+      if (!panel) return;
+      const focusable = panel.querySelectorAll<HTMLElement>(FOCUSABLE);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     }
     window.addEventListener("keydown", onKey);
@@ -387,6 +407,7 @@ export function FirearmDocuments({
               disabled={uploading}
               onChange={(event) => setNotes(event.target.value)}
               rows={1}
+              maxLength={MAX_NOTES_LENGTH}
               className="text-sm"
             />
           </Field>

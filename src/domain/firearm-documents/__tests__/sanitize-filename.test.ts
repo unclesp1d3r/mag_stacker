@@ -70,4 +70,25 @@ describe("sanitizeFilename (U5, KTD6, R3)", () => {
     const exact = "c".repeat(200);
     expect(sanitizeFilename(exact)).toBe(exact);
   });
+
+  test("truncates by code point, never splitting a surrogate pair (astral chars)", () => {
+    // Each emoji below is an astral character (2 UTF-16 code units), so a
+    // naive `.slice(0, 200)` truncation would land mid-boundary and produce a
+    // lone surrogate. 300 emoji comfortably straddles the 200 code-point cap.
+    const emoji = "😀".repeat(300);
+    const out = sanitizeFilename(emoji);
+    expect(out).toBe([...out].join(""));
+    expect(out).not.toContain("�");
+    expect([...out].length).toBeLessThanOrEqual(200);
+    expect([...out].length).toBeGreaterThan(0);
+  });
+
+  test("truncates by code point with an extension, keeping both halves intact", () => {
+    const long = `${"😀".repeat(300)}.pdf`;
+    const out = sanitizeFilename(long);
+    expect(out).toBe([...out].join(""));
+    expect(out).not.toContain("�");
+    expect([...out].length).toBeLessThanOrEqual(200);
+    expect(out.endsWith(".pdf")).toBe(true);
+  });
 });

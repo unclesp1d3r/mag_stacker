@@ -22,7 +22,9 @@ live("firearm_document schema (U1)", () => {
 
   const validRow = () => ({
     firearmId,
-    storageKey: `docs/${randomUUID()}.pdf`,
+    // Flat, separator-free key matching production shape (`generateKey`);
+    // `orphanSweep` relies on this invariant.
+    storageKey: `${randomUUID()}.pdf`,
     filename: "receipt.pdf",
     mimeType: "application/pdf",
     sizeBytes: 1024,

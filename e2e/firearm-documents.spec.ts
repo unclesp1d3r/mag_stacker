@@ -101,6 +101,30 @@ test("empty state, upload, view, download, delete, and grantee lockout", async (
     await expect(dialog).toHaveCount(0);
   });
 
+  await test.step("view the PDF in the modal → renders the sandboxed inline iframe, not an img (AE1)", async () => {
+    const list = page.getByRole("list", { name: "Document list" });
+    const pdfRow = list.getByRole("listitem").filter({
+      hasText: "sample-document.pdf",
+    });
+    await pdfRow
+      .getByRole("button", { name: "View Receipt — sample-document.pdf" })
+      .click();
+
+    const dialog = page.getByRole("dialog", {
+      name: "Receipt — sample-document.pdf",
+    });
+    await expect(dialog).toBeVisible();
+
+    // The modal fetches the document before rendering (loading → ready), so
+    // wait for the iframe itself rather than asserting immediately.
+    const iframe = dialog.locator("iframe");
+    await expect(iframe).toBeVisible();
+    await expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
+
+    await dialog.getByRole("button", { name: "Close document view" }).click();
+    await expect(dialog).toHaveCount(0);
+  });
+
   await test.step("download the PDF via its Download control (F4)", async () => {
     const list = page.getByRole("list", { name: "Document list" });
     const pdfRow = list.getByRole("listitem").filter({
