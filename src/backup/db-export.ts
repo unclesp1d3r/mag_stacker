@@ -16,11 +16,19 @@ export interface ExportedRow {
  * (`EXPORT_TABLE_ORDER`). Ephemeral tables (session, rate-limit, idempotency)
  * are never touched — they simply aren't in that list.
  *
- * Returned as a Node `Readable` so a caller can pipe it straight into an
- * encryption/archive stage without buffering the whole export in memory: each
- * table's rows are fetched and yielded table-by-table (not held alongside
- * every other table's rows at once), and the generator only pulls the next
- * table once the consumer has drained the current one.
+ * Returned as a Node `Readable` so a caller can pipe it into a downstream
+ * stage table-by-table rather than assembling the whole NDJSON payload up
+ * front itself: each table is fetched with a single `SELECT` — so that
+ * table's full row set is buffered in memory before any of its rows are
+ * yielded; this is whole-table buffering, NOT row-by-row/paginated streaming
+ * from Postgres — one table at a time, and the generator only issues the
+ * next table's `SELECT` once the consumer has drained the rows already
+ * yielded for the current one. So at most one table's rows are resident at
+ * once, never every table's at once. A caller can still choose to buffer the
+ * full concatenated output itself for its own reasons (e.g.
+ * `export-service.ts`'s `bufferDbExport`, which needs an exact byte length up
+ * front for a tar header) — that is a property of the caller, not of this
+ * generator.
  */
 export function exportDatabase(db: DbOrTx): Readable {
   async function* generate(): AsyncGenerator<string> {

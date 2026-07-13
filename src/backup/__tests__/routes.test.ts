@@ -223,7 +223,11 @@ describe("admin backup API routes (U6)", () => {
     // on its own first access) to the original target instead of this file's
     // now-stopped container.
     if (ORIGINAL_DATABASE_URL === undefined) {
-      process.env.DATABASE_URL = undefined;
+      // Assigning `undefined` would coerce to the string `"undefined"`
+      // (`process.env` values are always strings), leaving DATABASE_URL set
+      // to a bogus URL for whichever file runs next. Delete the key instead
+      // so its absence is genuine.
+      delete process.env.DATABASE_URL;
     } else {
       process.env.DATABASE_URL = ORIGINAL_DATABASE_URL;
     }
