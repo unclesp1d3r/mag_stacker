@@ -16,7 +16,13 @@ import { sameOriginError } from "@/src/backup/same-origin";
  *
  * Request contract (documented, deliberately simple — not multipart, so no
  * streaming multipart parser is needed to keep the body unbuffered):
- * - `X-Backup-Password` header — required, the bundle's password.
+ * - `X-Backup-Password` header — required, the bundle's password,
+ *   percent-encoded with `encodeURIComponent` by the client (`restore-panel.tsx`)
+ *   so a password containing non-Latin-1 characters (e.g. a currency symbol,
+ *   curly quotes, CJK, or emoji) still fits the `ByteString` range `fetch()`
+ *   requires for header values. Decoded back with `decodeURIComponent` below
+ *   before being handed to `restore()`, recovering the exact raw password
+ *   `export` encrypted with.
  * - `X-Backup-Force` header — optional, `"true"` to force-replace a
  *   non-empty instance (R7); anything else (including absent) means the
  *   safe refuse-unless-empty default (R6).
@@ -53,10 +59,21 @@ export async function POST(request: Request): Promise<Response> {
   const originError = sameOriginError(request);
   if (originError) return originError;
 
-  const password = request.headers.get("x-backup-password");
-  if (!password) {
+  const rawPasswordHeader = request.headers.get("x-backup-password");
+  if (!rawPasswordHeader) {
     return Response.json(
       { outcome: "bad_request", message: "a password is required" },
+      { status: 400 },
+    );
+  }
+  let password: string;
+  try {
+    password = decodeURIComponent(rawPasswordHeader);
+  } catch {
+    // decodeURIComponent throws a URIError on malformed percent-encoding
+    // (e.g. a lone "%"); a crafted header must not crash the route.
+    return Response.json(
+      { outcome: "bad_request", message: "the password header is malformed" },
       { status: 400 },
     );
   }
