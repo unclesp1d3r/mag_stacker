@@ -102,6 +102,37 @@ function logRecoveryFailure(step: string, err: unknown): void {
   console.error(`backup/maintenance: recovery step "${step}" failed`, err);
 }
 
+/** Postgres SQLSTATE for "undefined_table" (a relation referenced in a query doesn't exist). */
+const POSTGRES_UNDEFINED_TABLE = "42P01";
+
+function hasUndefinedTableCode(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === POSTGRES_UNDEFINED_TABLE
+  );
+}
+
+/**
+ * True when `err` is a Postgres error whose SQLSTATE is `undefined_table`
+ * (`42P01`) — i.e. a query referenced a relation that doesn't exist. Used by
+ * {@link assertWritesAllowed} to distinguish "the maintenance infra was never
+ * created" (fail open) from any other, genuine failure (propagate).
+ *
+ * Drizzle's node-postgres driver wraps the raw `pg` error (which carries
+ * `.code`) in its own `DrizzleQueryError`, with the original error on
+ * `.cause` — the SQLSTATE isn't on the outer error, so both layers must be
+ * checked.
+ */
+function isUndefinedTableError(err: unknown): boolean {
+  if (hasUndefinedTableCode(err)) return true;
+  if (err instanceof Error && err.cause) {
+    return hasUndefinedTableCode(err.cause);
+  }
+  return false;
+}
+
 /**
  * Creates the maintenance schema/table/singleton-row if they don't already
  * exist. Idempotent and cheap (`IF NOT EXISTS` / `ON CONFLICT DO NOTHING`) —
@@ -258,9 +289,49 @@ export class MaintenanceModeError extends Error {
  * active, otherwise resolves normally. Callers should call this immediately
  * before performing a write, not cache the result — the window can open or
  * close at any time.
+ *
+ * Deliberately NOT built on {@link isMaintenanceActive}: this runs on every
+ * ordinary write across the app (every create/update/delete/grant/settings-
+ * change/admin-user-op), not just the restore path, so it must stay a single
+ * cheap `SELECT` rather than also paying for `ensureMaintenanceInfrastructure`'s
+ * `CREATE SCHEMA/TABLE IF NOT EXISTS` + `ALTER TABLE ADD COLUMN IF NOT EXISTS`
+ * + `INSERT ... ON CONFLICT` on every call. If the maintenance schema/table
+ * don't exist yet — no force-restore has ever run against this instance, so
+ * nothing ever created them — Postgres raises `42P01` (undefined_table) for
+ * the `SELECT`; that is treated as "maintenance was never entered" and writes
+ * are allowed (fail open), not surfaced as an error. Any other error
+ * propagates.
+ *
+ * The `SELECT` runs inside `db.transaction(...)` rather than as a bare
+ * `db.execute(...)` — NOT for atomicity, but because most callers pass an
+ * already-open transaction (`tx`) they're about to keep using for the write
+ * itself. A statement that errors inside a Postgres transaction aborts that
+ * whole transaction at the protocol level (`25P02`, "current transaction is
+ * aborted") — catching the JS exception does not undo that, so a bare
+ * `db.execute` here would poison the caller's transaction on the very 42P01
+ * this function means to swallow, breaking every subsequent statement in it.
+ * `DbOrTx.transaction()` avoids that politely: called on the top-level
+ * `Database` it's a real `BEGIN`/`COMMIT`/`ROLLBACK`; called on an
+ * already-open `Transaction` (drizzle's nested-transaction support) it's a
+ * `SAVEPOINT`/`RELEASE SAVEPOINT`/`ROLLBACK TO SAVEPOINT` instead — either
+ * way, a caught error here leaves the caller's connection in a clean, usable
+ * state.
  */
 export async function assertWritesAllowed(db: DbOrTx): Promise<void> {
-  if (await isMaintenanceActive(db)) {
+  let active: boolean;
+  try {
+    active = await db.transaction(async (tx) => {
+      const result = await tx.execute<{ active: boolean }>(sql`
+        SELECT active FROM ${qualified(MAINTENANCE_SCHEMA, MAINTENANCE_TABLE)}
+        WHERE id = true
+      `);
+      return result.rows[0]?.active ?? false;
+    });
+  } catch (err) {
+    if (isUndefinedTableError(err)) return;
+    throw err;
+  }
+  if (active) {
     throw new MaintenanceModeError();
   }
 }

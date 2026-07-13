@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { assertWritesAllowed } from "@/src/backup/maintenance";
 import type { DbOrTx } from "@/src/db/client";
 import { grant } from "@/src/db/schema";
 import { NotAuthorizedError } from "./errors";
@@ -40,6 +41,8 @@ export async function createGrant(
   db: DbOrTx,
   input: CreateGrantInput,
 ): Promise<void> {
+  await assertWritesAllowed(db);
+
   const { actorId, granteeId, parentType, parentId, permission } = input;
   if (granteeId === actorId) {
     throw new NotAuthorizedError("cannot grant an item to its owner");
@@ -81,6 +84,8 @@ export async function revokeGrant(
   db: DbOrTx,
   input: RevokeGrantInput,
 ): Promise<void> {
+  await assertWritesAllowed(db);
+
   const { actorId, granteeId, parentType, parentId } = input;
   const perm = await resolvePermission(db, actorId, parentType, parentId);
   if (perm !== "owner") {

@@ -205,6 +205,21 @@ describe("maintenance envelope (KTD5 hardening)", () => {
       await exitMaintenance(db);
       await expect(assertWritesAllowed(db)).resolves.toBeUndefined();
     });
+
+    test("fails open (resolves without throwing) when the maintenance infra has never been created — no restore has ever run", async () => {
+      // `beforeEach` calls `exitMaintenance`, which (like every other
+      // maintenance.ts function except `assertWritesAllowed`) ensures the
+      // infra exists — drop it here to simulate a fresh instance that has
+      // never entered maintenance, so `assertWritesAllowed`'s single SELECT
+      // hits Postgres's 42P01 (undefined_table) and must fail open rather
+      // than surface that as an error.
+      await db.execute(
+        sql`DROP SCHEMA IF EXISTS ${sql.identifier("restore_ops")} CASCADE`,
+      );
+      expect(await schemaExists(db, "restore_ops")).toBe(false);
+
+      await expect(assertWritesAllowed(db)).resolves.toBeUndefined();
+    });
   });
 
   describe("recoverInterruptedRestore", () => {

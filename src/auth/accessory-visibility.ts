@@ -1,4 +1,5 @@
 import { eq, inArray } from "drizzle-orm";
+import { assertWritesAllowed } from "@/src/backup/maintenance";
 import type { DbOrTx } from "@/src/db/client";
 import { accessory, firearm } from "@/src/db/schema";
 import { authorizeUpdate } from "./authorize";
@@ -90,6 +91,8 @@ export async function authorizeMount(
   accessoryId: string,
   targetFirearmId: string | null,
 ): Promise<void> {
+  await assertWritesAllowed(tx);
+
   const perm = await resolveAccessoryPermission(tx, actorId, accessoryId);
   if (perm !== "owner" && perm !== "edit") {
     if (perm === "view") {
