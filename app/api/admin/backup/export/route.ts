@@ -2,6 +2,8 @@ import { Readable } from "node:stream";
 import { getCurrentUser } from "@/src/auth/session";
 import { recordOperatorEvent } from "@/src/backup/audit";
 import { createBackup } from "@/src/backup/export-service";
+import { MIN_BACKUP_PASSWORD_LENGTH } from "@/src/backup/password-policy";
+import { sameOriginError } from "@/src/backup/same-origin";
 import { db } from "@/src/db/client";
 
 /**
@@ -26,6 +28,19 @@ import { db } from "@/src/db/client";
  * existence to hide here (unlike `app/api/documents/[id]/route.ts`'s 404
  * collapse), only a whole admin feature to gate.
  *
+ * Right after the admin gate, `sameOriginError` (`src/backup/same-origin.ts`)
+ * refuses a cross-origin POST with a bodyless 403 (hardening pass): this
+ * route is a plain Route Handler, never routed through Better Auth's own
+ * handler, so Better Auth's origin checks never apply to it — the session
+ * cookie's `sameSite` attribute alone isn't a substitute for an explicit
+ * check on the highest-blast-radius endpoint in the app.
+ *
+ * The export password must be at least `MIN_BACKUP_PASSWORD_LENGTH`
+ * characters (`src/backup/password-policy.ts`, hardening pass) — enforced
+ * here AND client-side in the export panel; restore deliberately has no such
+ * minimum (a restore's password must match whatever encrypted that specific
+ * bundle, including older, shorter passwords).
+ *
  * Every attempt that reaches the admin gate is recorded to `operator_audit`
  * (R15), success or failure. "Success" is recorded once the encrypted
  * stream has been composed and handed to the platform for delivery — the
@@ -38,6 +53,9 @@ export async function POST(request: Request): Promise<Response> {
   if (!user) return new Response(null, { status: 401 });
   if (user.role !== "admin") return new Response(null, { status: 403 });
 
+  const originError = sameOriginError(request);
+  if (originError) return originError;
+
   let password: string;
   try {
     password = await readPassword(request);
@@ -47,10 +65,7 @@ export async function POST(request: Request): Promise<Response> {
       action: "export",
       outcome: `failure: ${errorMessage(error)}`,
     }).catch(() => {});
-    return Response.json(
-      { error: "a non-empty password is required" },
-      { status: 400 },
-    );
+    return Response.json({ error: errorMessage(error) }, { status: 400 });
   }
 
   let bundle: Readable;
@@ -91,6 +106,11 @@ export async function POST(request: Request): Promise<Response> {
  * working). `Request.formData()` parses both `multipart/form-data` and
  * `application/x-www-form-urlencoded` per the Fetch spec, so form-encoded
  * bodies are routed there; anything else falls back to `request.json()`.
+ *
+ * Also enforces `MIN_BACKUP_PASSWORD_LENGTH` (hardening pass): a short
+ * export password is easy to brute-force offline against the encrypted
+ * bundle, so it's rejected here with a distinct, actionable message rather
+ * than silently accepted.
  */
 async function readPassword(request: Request): Promise<string> {
   const contentType = request.headers.get("content-type") ?? "";
@@ -99,7 +119,12 @@ async function readPassword(request: Request): Promise<string> {
     : ((await request.json()) as { password?: unknown }).password;
 
   if (typeof password !== "string" || password.length === 0) {
-    throw new Error("password is required");
+    throw new Error("a non-empty password is required");
+  }
+  if (password.length < MIN_BACKUP_PASSWORD_LENGTH) {
+    throw new Error(
+      `a password of at least ${MIN_BACKUP_PASSWORD_LENGTH} characters is required`,
+    );
   }
   return password;
 }

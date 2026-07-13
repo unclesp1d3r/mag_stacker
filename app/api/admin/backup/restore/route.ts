@@ -3,6 +3,7 @@ import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 import { getCurrentUser } from "@/src/auth/session";
 import { recordOperatorEvent } from "@/src/backup/audit";
 import { type RestoreOutcome, restore } from "@/src/backup/restore-service";
+import { sameOriginError } from "@/src/backup/same-origin";
 
 /**
  * Admin backup restore (plan Unit U6, R5/R14/R15).
@@ -26,7 +27,11 @@ import { type RestoreOutcome, restore } from "@/src/backup/restore-service";
  * never lands in a URL (server access logs, browser history, proxies).
  *
  * Gating mirrors the export route: 401 unauthenticated, 403 non-admin, both
- * with no body (KTD6). The response is a discriminated JSON outcome the UI
+ * with no body (KTD6), followed immediately by `sameOriginError`
+ * (`src/backup/same-origin.ts`, hardening pass) refusing a cross-origin POST
+ * with a bodyless 403 — this route is a plain Route Handler, never routed
+ * through Better Auth's own handler, so Better Auth's origin checks never
+ * apply to it. The response is a discriminated JSON outcome the UI
  * can branch on (R6/R7/R8/R9/AE1-AE4): `{ outcome, message }`, `outcome`
  * mirroring U5's `RestoreOutcome["kind"]` one-for-one, mapped to the HTTP
  * status below. Every attempt that reaches the admin gate is recorded to
@@ -44,6 +49,9 @@ export async function POST(request: Request): Promise<Response> {
   const user = await getCurrentUser();
   if (!user) return new Response(null, { status: 401 });
   if (user.role !== "admin") return new Response(null, { status: 403 });
+
+  const originError = sameOriginError(request);
+  if (originError) return originError;
 
   const password = request.headers.get("x-backup-password");
   if (!password) {

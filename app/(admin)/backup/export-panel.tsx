@@ -6,6 +6,7 @@ import { Callout, Spinner } from "@/components/ui/feedback";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/surface";
+import { MIN_BACKUP_PASSWORD_LENGTH } from "@/src/backup/password-policy";
 
 /**
  * Export panel (plan Unit U7, R1/R3/R4/R12/R13).
@@ -35,6 +36,31 @@ const NO_RECOVERY_WARNING =
  * immediately server-side), so "started" is an honest claim at this delay. */
 const ASSUME_STARTED_MS = 1200;
 
+export interface ExportGateState {
+  readonly password: string;
+  readonly confirmPassword: string;
+  readonly acknowledged: boolean;
+  readonly pending: boolean;
+}
+
+/**
+ * Whether the export trigger should be enabled (hardening pass, mirrors
+ * `MIN_BACKUP_PASSWORD_LENGTH`/`readPassword` in the export route): the
+ * password meets the minimum length, both password fields match, the
+ * no-recovery warning is acknowledged, and no export is already in flight.
+ * Exported as a pure function so the exact gating logic backing the
+ * rendered button's `disabled` state is unit-testable without a DOM.
+ */
+export function canExportBackup(state: ExportGateState): boolean {
+  const passwordLongEnough =
+    state.password.length >= MIN_BACKUP_PASSWORD_LENGTH;
+  const passwordsMatch =
+    state.password.length > 0 && state.password === state.confirmPassword;
+  return (
+    passwordLongEnough && passwordsMatch && state.acknowledged && !state.pending
+  );
+}
+
 export function ExportPanel() {
   const passwordId = useId();
   const confirmId = useId();
@@ -45,8 +71,14 @@ export function ExportPanel() {
   const [acknowledged, setAcknowledged] = useState(false);
   const [status, setStatus] = useState<"idle" | "pending" | "started">("idle");
 
+  const passwordLongEnough = password.length >= MIN_BACKUP_PASSWORD_LENGTH;
   const passwordsMatch = password.length > 0 && password === confirmPassword;
-  const canExport = passwordsMatch && acknowledged && status !== "pending";
+  const canExport = canExportBackup({
+    password,
+    confirmPassword,
+    acknowledged,
+    pending: status === "pending",
+  });
 
   function onSubmit() {
     if (!canExport) return;
@@ -73,13 +105,24 @@ export function ExportPanel() {
         className="mt-4 flex flex-col gap-3"
         noValidate
       >
-        <Field label="Export password" controlId={passwordId} required>
+        <Field
+          label="Export password"
+          controlId={passwordId}
+          required
+          hint={`At least ${MIN_BACKUP_PASSWORD_LENGTH} characters.`}
+          error={
+            password.length > 0 && !passwordLongEnough
+              ? `Password must be at least ${MIN_BACKUP_PASSWORD_LENGTH} characters.`
+              : undefined
+          }
+        >
           <Input
             id={passwordId}
             name="password"
             type="password"
             autoComplete="new-password"
             required
+            aria-invalid={password.length > 0 && !passwordLongEnough}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
