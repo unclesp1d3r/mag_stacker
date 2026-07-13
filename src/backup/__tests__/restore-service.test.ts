@@ -31,6 +31,7 @@ import * as tar from "tar-stream";
 import { NotAuthorizedError } from "../../auth/errors";
 import * as schema from "../../db/schema";
 import { firearm, firearmDocument, user } from "../../db/schema";
+import { PathTraversalError } from "../../storage";
 import { type BundleBlobEntry, writeBundle } from "../bundle";
 import { createEncryptStream, deriveKey, generateSalt } from "../crypto";
 import { exportDatabase } from "../db-export";
@@ -40,7 +41,7 @@ import {
   type BackupManifest,
   buildManifest,
 } from "../manifest";
-import { restore } from "../restore-service";
+import { type RestoreOutcome, restore } from "../restore-service";
 import { EXPORT_TABLE_ORDER } from "../table-order";
 
 /**
@@ -596,7 +597,14 @@ describe("restore service (U5)", () => {
     ).toBe(true);
   });
 
-  test("a path-traversal blob entry is refused; nothing is written outside staging (KTD11)", async () => {
+  test("a path-traversal blob entry is refused; nothing is written outside staging (KTD11) — and surfaces as a generic thrown error, not wrong_password_or_tampered", async () => {
+    // Reclassification fix: a path-traversal entry is a bundle-content
+    // safety violation, not a cryptographic authentication failure — it
+    // must NOT be reported to the operator as "wrong password or tampered
+    // bundle" (that would send them chasing the wrong problem). `restore()`
+    // re-throws it instead, so the route's own catch-all surfaces its
+    // generic "restore failed unexpectedly" outcome (see
+    // `app/api/admin/backup/restore/route.ts`).
     const beforeSnapshot = await snapshotTables(db);
     const manifest = buildManifest({
       counts: { rows: 0, blobs: 1, totalBlobBytes: 10 },
@@ -610,15 +618,43 @@ describe("restore service (U5)", () => {
       PASSWORD,
     );
 
-    const outcome = await restore(
-      Readable.from([bundle]),
-      PASSWORD,
-      restoreOptions(),
-    );
+    let thrown: unknown;
+    try {
+      await restore(Readable.from([bundle]), PASSWORD, restoreOptions());
+    } catch (err) {
+      thrown = err;
+    }
 
-    expect(outcome.kind).toBe("wrong_password_or_tampered");
+    expect(thrown).toBeInstanceOf(PathTraversalError);
     expect(await snapshotTables(db)).toEqual(beforeSnapshot);
     expect(await readUploadDirKeys(uploadDir)).toEqual([]);
+  });
+
+  test("a genuine wrong password still maps to wrong_password_or_tampered, not a generic thrown error", async () => {
+    await seedInventory(db, uploadDir);
+    const beforeSnapshot = await snapshotTables(db);
+    const beforeFiles = await readUploadDirKeys(uploadDir);
+
+    const bundle = await buildEncryptedBundle(db, {
+      password: "the-real-password",
+    });
+
+    let thrown: unknown;
+    let outcome: RestoreOutcome | undefined;
+    try {
+      outcome = await restore(
+        Readable.from([bundle]),
+        "definitely-wrong-password",
+        restoreOptions(),
+      );
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(thrown).toBeUndefined();
+    expect(outcome?.kind).toBe("wrong_password_or_tampered");
+    expect(await snapshotTables(db)).toEqual(beforeSnapshot);
+    expect(await readUploadDirKeys(uploadDir)).toEqual(beforeFiles);
   });
 
   test("a non-admin caller is refused inside the service, independent of any route gate (R14)", async () => {
@@ -638,5 +674,89 @@ describe("restore service (U5)", () => {
 
     expect(thrown).toBeInstanceOf(NotAuthorizedError);
     expect(await snapshotTables(db)).toEqual(beforeSnapshot);
+  });
+
+  test("two concurrent restore() calls against the same instance serialize via the per-run advisory lock; the final state is exactly one bundle's, not a mix (KTD5 hardening)", async () => {
+    /** Seeds a distinct one-owner/one-firearm/one-blob dataset, builds an encrypted bundle from it, snapshots the expected post-restore DB state, then wipes back to empty — leaving `db` empty again for the next call/the actual concurrent test below. */
+    async function buildBundleWithExpectedSnapshot(
+      ownerLabel: string,
+      blobKey: string,
+      blobContent: Buffer,
+    ) {
+      const ownerId = `owner-${randomUUID()}`;
+      await db.insert(user).values({
+        id: ownerId,
+        name: ownerLabel,
+        email: `${ownerId}@example.test`,
+      });
+      const [firearmRow] = await db
+        .insert(firearm)
+        .values({ ownerId, name: `${ownerLabel} FA`, caliber: "9mm" })
+        .returning();
+      if (!firearmRow) throw new Error("seed failed");
+      await db.insert(firearmDocument).values({
+        firearmId: firearmRow.id,
+        storageKey: blobKey,
+        filename: "doc.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: blobContent.byteLength,
+        docType: "receipt",
+      });
+
+      const bundle = await buildEncryptedBundle(db, {
+        blobs: [{ key: blobKey, content: blobContent }],
+      });
+      const expectedSnapshot = await snapshotTables(db);
+      await wipeDatabase(db);
+
+      return { bundle, expectedSnapshot, blobKey };
+    }
+
+    const a = await buildBundleWithExpectedSnapshot(
+      "Owner A",
+      "a-doc.pdf",
+      Buffer.from("bundle A"),
+    );
+    const b = await buildBundleWithExpectedSnapshot(
+      "Owner B",
+      "b-doc.pdf",
+      Buffer.from("bundle B"),
+    );
+    // Sanity: the two bundles really are different datasets — otherwise a
+    // "which one won" assertion below would be meaningless.
+    expect(a.expectedSnapshot).not.toEqual(b.expectedSnapshot);
+
+    // Both calls target the same empty instance with `force: false`: without
+    // the fix, unsynchronized concurrent staging+promote could interleave
+    // and leave `public` a mix of both bundles. With the fix, the advisory
+    // lock (held for `restore()`'s ENTIRE body, not just the promote step)
+    // fully serializes them — whichever call acquires the lock first runs
+    // to completion before the second one's own emptiness check even runs,
+    // so the second is refused as `NotEmptySignal` sees a non-empty instance.
+    const [outcomeA, outcomeB] = await Promise.all([
+      restore(Readable.from([a.bundle]), PASSWORD, restoreOptions()),
+      restore(Readable.from([b.bundle]), PASSWORD, restoreOptions()),
+    ]);
+    const outcomes = [outcomeA, outcomeB];
+
+    expect(outcomes.filter((o) => o.kind === "ok")).toHaveLength(1);
+    expect(outcomes.filter((o) => o.kind === "refused_not_empty")).toHaveLength(
+      1,
+    );
+
+    const finalSnapshot = await snapshotTables(db);
+    const matchesA =
+      JSON.stringify(finalSnapshot) === JSON.stringify(a.expectedSnapshot);
+    const matchesB =
+      JSON.stringify(finalSnapshot) === JSON.stringify(b.expectedSnapshot);
+    // Exactly one bundle's data won — never neither (a broken restore) and
+    // never both/a mix (the corruption race this fix closes).
+    expect(matchesA !== matchesB).toBe(true);
+
+    const winningBlobKey = matchesA ? a.blobKey : b.blobKey;
+    const losingBlobKey = matchesA ? b.blobKey : a.blobKey;
+    const files = await readUploadDirKeys(uploadDir);
+    expect(files).toEqual([winningBlobKey]);
+    expect(files).not.toContain(losingBlobKey);
   });
 });

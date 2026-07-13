@@ -7,15 +7,15 @@
  *
  * 1. Re-assert admin (defense-in-depth — the route also gates this).
  * 2. Decrypt the upload with `createDecryptStreamFromPassword` and drive
- *    `readBundle` over an isolated staging area: DB rows land in a Postgres
- *    `restore_staging` schema (via U3's `importDatabase`, redirected there
- *    with a `search_path` trick rather than a modified copy — U3 is
- *    consumed as-is); blobs land in a staging directory that `readBundle`
- *    itself path-validates (KTD11). A wrong password, a tampered byte
- *    ANYWHERE (including the last secretstream chunk), or a truncated
- *    stream throws before staging completes, or is only discovered once
- *    staging finishes (secretstream authenticates the final chunk at
- *    stream-end) — either way, nothing live has been touched yet.
+ *    `readBundle` over an isolated staging area: DB rows land in a per-run
+ *    Postgres `restore_staging_<runId>` schema (via U3's `importDatabase`,
+ *    redirected there with a `search_path` trick rather than a modified copy
+ *    — U3 is consumed as-is); blobs land in a staging directory that
+ *    `readBundle` itself path-validates (KTD11). A wrong password, a
+ *    tampered byte ANYWHERE (including the last secretstream chunk), or a
+ *    truncated stream throws before staging completes, or is only
+ *    discovered once staging finishes (secretstream authenticates the final
+ *    chunk at stream-end) — either way, nothing live has been touched yet.
  * 3. The manifest's `backupFormatVersion` is checked the moment it's read
  *    (the manifest is always the bundle's first entry), before any DB rows
  *    or blobs are staged (R8/AE4).
@@ -23,12 +23,24 @@
  *    instance emptiness (R6/AE1) and, if empty (or `force`), promote staging
  *    to live.
  * 5. A `force` restore additionally runs the KTD5 envelope (`maintenance.ts`):
- *    durable maintenance flag, pool-safe advisory lock, a committed
- *    `restore_snapshot` schema of the pre-restore DB, and the pre-restore
- *    blob directory moved aside — so a failure at ANY point in the
- *    wipe+promote step (including after the DB side has already committed,
- *    but before the blob directory has been swapped in) rolls both stores
- *    back together.
+ *    durable maintenance flag, a committed `restore_snapshot_<runId>` schema
+ *    of the pre-restore DB, and the pre-restore blob directory moved aside —
+ *    so a failure at ANY point in the wipe+promote step (including after the
+ *    DB side has already committed, but before the blob directory has been
+ *    swapped in) rolls both stores back together.
+ *
+ * **Concurrency (KTD5 hardening).** Every per-run schema (`restore_staging_*`
+ * and, for `force`, `restore_snapshot_*`) is named with a fresh random suffix
+ * per call, so two overlapping restores never collide on schema names. That
+ * alone isn't enough to prevent corruption, though: both restores still
+ * write to the shared `public` schema during promote, and interleaved
+ * wipe+promote transactions from two different restores could each commit
+ * different tables' worth of data, leaving `public` a genuine mix of both
+ * bundles. `restore()` therefore holds `withRestoreAdvisoryLock` for its
+ * ENTIRE body — staging through promote, both the empty-instance and force
+ * paths — so only one restore attempt is ever inside the risky section at a
+ * time; a second concurrent call blocks until the first fully finishes
+ * (commit or rollback) before it even begins staging.
  */
 
 import { randomUUID } from "node:crypto";
@@ -50,23 +62,24 @@ import * as schema from "@/src/db/schema";
 import { accessory, ammo, firearm, magazine } from "@/src/db/schema";
 import { activeStorageRoot } from "@/src/storage";
 import { readBundle } from "./bundle";
-import { createDecryptStreamFromPassword } from "./crypto";
+import {
+  createDecryptStreamFromPassword,
+  DecryptionAuthError,
+  InvalidHeaderError,
+} from "./crypto";
 import { importDatabase } from "./db-import";
 import {
   enterMaintenance,
   exitMaintenance,
+  recordMaintenanceSnapshotSchema,
+  SNAPSHOT_SCHEMA_PREFIX,
+  STAGING_SCHEMA_PREFIX,
   withRestoreAdvisoryLock,
 } from "./maintenance";
 import { BACKUP_FORMAT_VERSION, type BackupManifest } from "./manifest";
 import { EXPORT_TABLE_ORDER, WIPE_TABLE_ORDER } from "./table-order";
 
-/** Postgres schema DB rows are staged into before the whole bundle authenticates (KTD10). Recreated fresh on every restore attempt. */
-const STAGING_SCHEMA = "restore_staging";
-
-/** Postgres schema a force-restore's pre-restore live data is copied into before the wipe (KTD5) — the DB-side rollback source if promote fails after committing. */
-const SNAPSHOT_SCHEMA = "restore_snapshot";
-
-/** Discriminated outcome of a restore attempt. Every branch carries an operator-facing `message`; none of them throw for expected restore-flow refusals — only a genuine programming/authorization error (see `restore`'s admin check) throws. */
+/** Discriminated outcome of a restore attempt. Every branch carries an operator-facing `message`; none of them throw for expected restore-flow refusals — only a genuine programming/authorization error (see `restore`'s admin check) or an unclassified staging failure (see the module doc comment on error classification) throws. */
 export type RestoreOutcome =
   | { readonly kind: "ok"; readonly message: string }
   | { readonly kind: "refused_not_empty"; readonly message: string }
@@ -85,7 +98,7 @@ class RestoreRolledBackError extends Error {
 export interface RestoreOptions {
   /** Force-replace an already-populated instance (R7/F3). Defaults to false (refuse-unless-empty, R6/F2). */
   readonly force?: boolean;
-  /** DI seam for tests — defaults to the shared singleton (`src/db/client.ts`). */
+  /** DI seam for tests — defaults to the shared singleton (`src/db/client.ts`). Used for reads (the emptiness check) that don't need to run on the locked connection; every schema-level write runs on a connection bound to `withRestoreAdvisoryLock`'s checked-out client instead (see the module doc comment). */
   readonly db?: Database;
   /** DI seam for tests — defaults to the shared singleton pool (`src/db/client.ts`). Must be the same pool `db` is bound to. */
   readonly pool?: Pool;
@@ -124,9 +137,16 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
+/** Generates a fresh per-run hex id so two overlapping restore attempts never share a staging/snapshot schema name. */
+function generateRunId(): string {
+  return randomUUID().replace(/-/g, "");
+}
+
 /**
  * Restore the whole instance from an encrypted backup bundle (F2/F3).
- * See the module doc comment for the full stage-then-promote sequence.
+ * See the module doc comment for the full stage-then-promote sequence and
+ * the concurrency contract (the whole body runs under the restore advisory
+ * lock, keyed by a fresh per-run schema suffix).
  */
 export async function restore(
   stream: Readable,
@@ -146,84 +166,127 @@ export async function restore(
   const uploadDir = options.uploadDir ?? activeStorageRoot();
   const force = options.force ?? false;
 
-  await recreateStagingSchema(db);
-  const stagingBlobDir = await mkdtemp(
-    join(dirname(uploadDir), "restore-staging-"),
-  );
+  const runId = generateRunId();
+  const stagingSchema = `${STAGING_SCHEMA_PREFIX}${runId}`;
+  const snapshotSchema = `${SNAPSHOT_SCHEMA_PREFIX}${runId}`;
 
-  try {
-    const decryptStream = createDecryptStreamFromPassword(password);
-    stream.on("error", (err) => decryptStream.destroy(err));
-    stream.pipe(decryptStream);
+  // The ENTIRE staging+promote body runs under one advisory lock, held on a
+  // single dedicated connection (`opsDb`) for the whole call — see the
+  // module doc comment. `forcePromote`/`emptyInstancePromote` therefore MUST
+  // NOT acquire this lock themselves (it isn't reentrant across connections;
+  // doing so would deadlock this very call).
+  return await withRestoreAdvisoryLock(pool, async (client) => {
+    const opsDb = drizzle(client, { schema });
 
-    try {
-      // Version and emptiness are both checked inside stageBundle, the
-      // moment the manifest (always the bundle's first entry) is read —
-      // before any row/blob is staged (R8/R6, AE4/AE1). Only once both pass
-      // does stageBundle continue on to actually stage the bundle's rows and
-      // blobs, so a full authentication check of the whole stream (including
-      // a tamper in the final chunk, KTD10) only happens for restores that
-      // could otherwise proceed.
-      await stageBundle(decryptStream, stagingBlobDir, pool, {
-        checkEmptiness: !force,
-        instanceHasInventoryData: () => instanceHasInventoryData(db),
-      });
-    } catch (err) {
-      if (err instanceof VersionMismatchSignal) {
-        return { kind: "version_mismatch", message: err.message };
-      }
-      if (err instanceof NotEmptySignal) {
-        return { kind: "refused_not_empty", message: err.message };
-      }
-      return {
-        kind: "wrong_password_or_tampered",
-        message: `bundle failed to authenticate: ${toError(err).message}`,
-      };
-    }
+    await recreateStagingSchema(opsDb, stagingSchema);
+    const stagingBlobDir = await mkdtemp(
+      join(dirname(uploadDir), "restore-staging-"),
+    );
 
     try {
-      if (force) {
-        await forcePromote({
-          db,
-          pool,
-          uploadDir,
+      const decryptStream = createDecryptStreamFromPassword(password);
+      stream.on("error", (err) => decryptStream.destroy(err));
+      stream.pipe(decryptStream);
+
+      try {
+        // Version and emptiness are both checked inside stageBundle, the
+        // moment the manifest (always the bundle's first entry) is read —
+        // before any row/blob is staged (R8/R6, AE4/AE1). Only once both
+        // pass does stageBundle continue on to actually stage the bundle's
+        // rows and blobs, so a full authentication check of the whole
+        // stream (including a tamper in the final chunk, KTD10) only
+        // happens for restores that could otherwise proceed.
+        await stageBundle(
+          decryptStream,
           stagingBlobDir,
-          testFaultInjection: options._testFaultInjection,
-        });
-      } else {
-        await emptyInstancePromote({ db, uploadDir, stagingBlobDir });
+          pool,
+          {
+            checkEmptiness: !force,
+            instanceHasInventoryData: () => instanceHasInventoryData(db),
+          },
+          stagingSchema,
+        );
+      } catch (err) {
+        if (err instanceof VersionMismatchSignal) {
+          return { kind: "version_mismatch", message: err.message };
+        }
+        if (err instanceof NotEmptySignal) {
+          return { kind: "refused_not_empty", message: err.message };
+        }
+        // Only a genuine cryptographic authentication failure means "wrong
+        // password or a tampered bundle" — every other staging failure
+        // (ENOSPC, a malformed tar, an unknown table in the NDJSON export,
+        // a path-traversal blob entry, ...) is a distinct, unrelated
+        // problem and must not be misreported as a password/tamper issue.
+        // Re-throwing here lets the route's own catch-all surface its
+        // generic "restore failed unexpectedly" outcome instead.
+        if (
+          err instanceof DecryptionAuthError ||
+          err instanceof InvalidHeaderError
+        ) {
+          return {
+            kind: "wrong_password_or_tampered",
+            message: `bundle failed to authenticate: ${toError(err).message}`,
+          };
+        }
+        throw err;
       }
-    } catch (err) {
-      if (err instanceof RestoreRolledBackError) {
-        return { kind: "rolled_back", message: err.message };
-      }
-      throw err;
-    }
 
-    return { kind: "ok", message: "restore completed successfully" };
-  } finally {
-    await db
-      .execute(
-        sql`DROP SCHEMA IF EXISTS ${sql.identifier(STAGING_SCHEMA)} CASCADE`,
-      )
-      .catch(() => {});
-    await rm(stagingBlobDir, { recursive: true, force: true }).catch(() => {});
-  }
+      try {
+        if (force) {
+          await forcePromote({
+            db: opsDb,
+            uploadDir,
+            stagingBlobDir,
+            stagingSchema,
+            snapshotSchema,
+            testFaultInjection: options._testFaultInjection,
+          });
+        } else {
+          await emptyInstancePromote({
+            db: opsDb,
+            uploadDir,
+            stagingBlobDir,
+            stagingSchema,
+          });
+        }
+      } catch (err) {
+        if (err instanceof RestoreRolledBackError) {
+          return { kind: "rolled_back", message: err.message };
+        }
+        throw err;
+      }
+
+      return { kind: "ok", message: "restore completed successfully" };
+    } finally {
+      await opsDb
+        .execute(
+          sql`DROP SCHEMA IF EXISTS ${sql.identifier(stagingSchema)} CASCADE`,
+        )
+        .catch(() => {});
+      await rm(stagingBlobDir, { recursive: true, force: true }).catch(
+        () => {},
+      );
+    }
+  });
 }
 
 class VersionMismatchSignal extends Error {}
 class NotEmptySignal extends Error {}
 
-/** (Re)creates an empty `restore_staging` schema with one table per `EXPORT_TABLE_ORDER` entry, structurally mirroring `public` (KTD10 staging area). */
-async function recreateStagingSchema(db: Database): Promise<void> {
+/** (Re)creates an empty per-run staging schema with one table per `EXPORT_TABLE_ORDER` entry, structurally mirroring `public` (KTD10 staging area). */
+async function recreateStagingSchema(
+  db: Database,
+  stagingSchema: string,
+): Promise<void> {
   await db.execute(
-    sql`DROP SCHEMA IF EXISTS ${sql.identifier(STAGING_SCHEMA)} CASCADE`,
+    sql`DROP SCHEMA IF EXISTS ${sql.identifier(stagingSchema)} CASCADE`,
   );
-  await db.execute(sql`CREATE SCHEMA ${sql.identifier(STAGING_SCHEMA)}`);
+  await db.execute(sql`CREATE SCHEMA ${sql.identifier(stagingSchema)}`);
   for (const table of EXPORT_TABLE_ORDER) {
     const name = getTableName(table);
     await db.execute(sql`
-      CREATE TABLE ${qualified(STAGING_SCHEMA, name)}
+      CREATE TABLE ${qualified(stagingSchema, name)}
       (LIKE ${qualified("public", name)} INCLUDING ALL)
     `);
   }
@@ -252,6 +315,7 @@ async function stageBundle(
   stagingBlobDir: string,
   pool: Pool,
   options: StageBundleOptions,
+  stagingSchema: string,
 ): Promise<{ manifest: BackupManifest }> {
   const generator = readBundle(decryptStream, { stagingDir: stagingBlobDir });
 
@@ -273,7 +337,7 @@ async function stageBundle(
         );
       }
     } else if (event.kind === "db") {
-      await importIntoStaging(pool, event.stream);
+      await importIntoStaging(pool, event.stream, stagingSchema);
     }
     // "blob" events: readBundle has already written + path-validated the
     // file under stagingBlobDir (KTD11) — nothing further to do here.
@@ -288,16 +352,22 @@ async function stageBundle(
 /**
  * Imports `dbStream` into the staging schema by reusing U3's
  * `importDatabase` UNMODIFIED: a dedicated connection has its `search_path`
- * redirected to `restore_staging` first, so `importDatabase`'s unqualified
- * `INSERT INTO "tablename"` statements land there instead of `public`.
+ * redirected to `stagingSchema` first, so `importDatabase`'s unqualified
+ * `INSERT INTO "tablename"` statements land there instead of `public`. This
+ * deliberately uses its own `pool.connect()`-checked-out connection rather
+ * than the outer restore's locked connection — the two don't need to share a
+ * connection (the advisory lock already serializes concurrent restore
+ * attempts at the JS level), and isolating the `search_path` change here
+ * keeps it from leaking onto any other connection.
  */
 async function importIntoStaging(
   pool: Pool,
   dbStream: Readable,
+  stagingSchema: string,
 ): Promise<void> {
   const client = await pool.connect();
   try {
-    await client.query(`SET search_path TO "${STAGING_SCHEMA}", public`);
+    await client.query(`SET search_path TO "${stagingSchema}", public`);
     const stagingDb = drizzle(client, { schema });
     await importDatabase(stagingDb, dbStream);
   } finally {
@@ -399,11 +469,16 @@ async function wipeLive(tx: Transaction): Promise<void> {
  * relies on the single wrapping transaction for atomic DB rollback (no
  * separate snapshot schema is needed: a failed transaction reverts the wipe
  * too, and the blob swap happened first and is undone on failure).
+ *
+ * `ctx.db` is bound to the SAME locked connection `restore()` holds for its
+ * entire body (see the module doc comment) — this doesn't need its own
+ * advisory lock.
  */
 async function emptyInstancePromote(ctx: {
   db: Database;
   uploadDir: string;
   stagingBlobDir: string;
+  stagingSchema: string;
 }): Promise<void> {
   const swap = await beginBlobSwap(ctx.uploadDir);
   try {
@@ -419,7 +494,7 @@ async function emptyInstancePromote(ctx: {
   try {
     await ctx.db.transaction(async (tx) => {
       await wipeLive(tx);
-      await copySchemaToLive(tx, STAGING_SCHEMA);
+      await copySchemaToLive(tx, ctx.stagingSchema);
     });
   } catch (err) {
     await undoBlobSwap(swap, ctx.uploadDir);
@@ -433,79 +508,86 @@ async function emptyInstancePromote(ctx: {
 }
 
 /**
- * F3 (force-replace) promote — the KTD5 envelope: maintenance flag, pool-safe
- * advisory lock, a committed pre-restore snapshot schema, wipe+promote in one
- * transaction, and a blob-directory swap. A failure anywhere after the
- * snapshot is committed rolls BOTH the DB (restored from the snapshot, if the
+ * F3 (force-replace) promote — the KTD5 envelope: durable maintenance flag,
+ * a committed pre-restore snapshot schema, wipe+promote in one transaction,
+ * and a blob-directory swap. A failure anywhere after the snapshot is
+ * committed rolls BOTH the DB (restored from the snapshot, if the
  * wipe+promote transaction had already committed) and the blobs (restored
  * from the moved-aside directory) back together, then always exits
  * maintenance.
+ *
+ * `ctx.db` is bound to the SAME locked connection `restore()` holds for its
+ * entire body (see the module doc comment) — this function does NOT acquire
+ * its own advisory lock (doing so would deadlock: a second
+ * `pg_advisory_lock` call for the same key on a different connection blocks
+ * until the first is released, and the first is this very call).
  */
 async function forcePromote(ctx: {
   db: Database;
-  pool: Pool;
   uploadDir: string;
   stagingBlobDir: string;
+  stagingSchema: string;
+  snapshotSchema: string;
   testFaultInjection?: RestoreOptions["_testFaultInjection"];
 }): Promise<void> {
   await enterMaintenance(ctx.db, "force-restore");
   try {
-    await withRestoreAdvisoryLock(ctx.pool, async (client) => {
-      const opsDb = drizzle(client, { schema });
+    await ctx.db.execute(
+      sql`DROP SCHEMA IF EXISTS ${sql.identifier(ctx.snapshotSchema)} CASCADE`,
+    );
+    await ctx.db.execute(
+      sql`CREATE SCHEMA ${sql.identifier(ctx.snapshotSchema)}`,
+    );
+    for (const table of EXPORT_TABLE_ORDER) {
+      const name = getTableName(table);
+      await ctx.db.execute(sql`
+        CREATE TABLE ${qualified(ctx.snapshotSchema, name)}
+        AS TABLE ${qualified("public", name)}
+      `);
+    }
+    // Only recorded once the snapshot schema is fully built and committed —
+    // this is the durable signal `recoverInterruptedRestore` uses to decide
+    // a crash happened during (or after) the risky section, not before it.
+    await recordMaintenanceSnapshotSchema(ctx.db, ctx.snapshotSchema);
 
-      await opsDb.execute(
-        sql`DROP SCHEMA IF EXISTS ${sql.identifier(SNAPSHOT_SCHEMA)} CASCADE`,
-      );
-      await opsDb.execute(
-        sql`CREATE SCHEMA ${sql.identifier(SNAPSHOT_SCHEMA)}`,
-      );
-      for (const table of EXPORT_TABLE_ORDER) {
-        const name = getTableName(table);
-        await opsDb.execute(sql`
-          CREATE TABLE ${qualified(SNAPSHOT_SCHEMA, name)}
-          AS TABLE ${qualified("public", name)}
-        `);
-      }
+    const swap = await beginBlobSwap(ctx.uploadDir);
 
-      const swap = await beginBlobSwap(ctx.uploadDir);
+    let dbCommitted = false;
+    try {
+      await ctx.db.transaction(async (tx) => {
+        await wipeLive(tx);
+        await copySchemaToLive(tx, ctx.stagingSchema);
+        await ctx.testFaultInjection?.("pre-commit");
+      });
+      dbCommitted = true;
 
-      let dbCommitted = false;
-      try {
-        await opsDb.transaction(async (tx) => {
+      await ctx.testFaultInjection?.("post-commit-pre-blob-swap");
+      await finishBlobSwap(ctx.stagingBlobDir, ctx.uploadDir);
+    } catch (err) {
+      if (dbCommitted) {
+        // The wipe+promote transaction already committed new data — the
+        // only way back is to explicitly restore from the snapshot.
+        await ctx.db.transaction(async (tx) => {
           await wipeLive(tx);
-          await copySchemaToLive(tx, STAGING_SCHEMA);
-          await ctx.testFaultInjection?.("pre-commit");
+          await copySchemaToLive(tx, ctx.snapshotSchema);
         });
-        dbCommitted = true;
-
-        await ctx.testFaultInjection?.("post-commit-pre-blob-swap");
-        await finishBlobSwap(ctx.stagingBlobDir, ctx.uploadDir);
-      } catch (err) {
-        if (dbCommitted) {
-          // The wipe+promote transaction already committed new data — the
-          // only way back is to explicitly restore from the snapshot.
-          await opsDb.transaction(async (tx) => {
-            await wipeLive(tx);
-            await copySchemaToLive(tx, SNAPSHOT_SCHEMA);
-          });
-        }
-        await undoBlobSwap(swap, ctx.uploadDir);
-        await opsDb
-          .execute(
-            sql`DROP SCHEMA IF EXISTS ${sql.identifier(SNAPSHOT_SCHEMA)} CASCADE`,
-          )
-          .catch(() => {});
-        throw new RestoreRolledBackError(
-          `force-restore promotion failed and was rolled back: ${toError(err).message}`,
-          { cause: err },
-        );
       }
-
-      await opsDb.execute(
-        sql`DROP SCHEMA IF EXISTS ${sql.identifier(SNAPSHOT_SCHEMA)} CASCADE`,
+      await undoBlobSwap(swap, ctx.uploadDir);
+      await ctx.db
+        .execute(
+          sql`DROP SCHEMA IF EXISTS ${sql.identifier(ctx.snapshotSchema)} CASCADE`,
+        )
+        .catch(() => {});
+      throw new RestoreRolledBackError(
+        `force-restore promotion failed and was rolled back: ${toError(err).message}`,
+        { cause: err },
       );
-      await commitBlobSwap(swap);
-    });
+    }
+
+    await ctx.db.execute(
+      sql`DROP SCHEMA IF EXISTS ${sql.identifier(ctx.snapshotSchema)} CASCADE`,
+    );
+    await commitBlobSwap(swap);
   } finally {
     await exitMaintenance(ctx.db);
   }
