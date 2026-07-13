@@ -36,6 +36,7 @@ import { type BundleBlobEntry, writeBundle } from "../bundle";
 import { createEncryptStream, deriveKey, generateSalt } from "../crypto";
 import { exportDatabase } from "../db-export";
 import { importDatabase, wipeDatabase } from "../db-import";
+import { isMaintenanceActive } from "../maintenance";
 import {
   BACKUP_FORMAT_VERSION,
   type BackupManifest,
@@ -758,5 +759,72 @@ describe("restore service (U5)", () => {
     const files = await readUploadDirKeys(uploadDir);
     expect(files).toEqual([winningBlobKey]);
     expect(files).not.toContain(losingBlobKey);
+  });
+
+  test("the empty-instance (non-force) restore path also enters maintenance during promote, blocking concurrent ordinary writes (TOCTOU fix)", async () => {
+    // Empty-instance restores used to wipe+promote directly, with no
+    // maintenance flag raised at all — a concurrent ordinary write landing
+    // during that window was never blocked and had no snapshot to recover
+    // from if the promote then failed. `promote` is now unified across both
+    // paths, so this asserts the maintenance flag really does go active for
+    // a plain (non-force) restore too, not just `force: true` ones.
+    const bundle = await buildEncryptedBundle(db, {});
+
+    let observedActiveDuringPromote = false;
+    const outcomePromise = restore(
+      Readable.from([bundle]),
+      PASSWORD,
+      restoreOptions({
+        _testFaultInjection: async (point) => {
+          if (point === "pre-commit") {
+            // Hold the promote transaction open long enough for the poll
+            // below to observe the maintenance flag while it's mid-flight.
+            await new Promise((resolve) => setTimeout(resolve, 200));
+          }
+        },
+      }),
+    );
+
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      if (await isMaintenanceActive(db)) {
+        observedActiveDuringPromote = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    const outcome = await outcomePromise;
+
+    expect(observedActiveDuringPromote).toBe(true);
+    expect(outcome.kind).toBe("ok");
+    // The flag must be cleared again once the (successful) restore finishes.
+    expect(await isMaintenanceActive(db)).toBe(false);
+  });
+
+  test("_testFaultInjection is refused outside a test environment (production footgun guard)", async () => {
+    // `NODE_ENV` is typed read-only (bun-types) — `Object.assign` on
+    // `process.env` sidesteps that at the type level while still mutating
+    // the real, live environment the running process reads from.
+    const originalNodeEnv = process.env.NODE_ENV;
+    Object.assign(process.env, { NODE_ENV: "production" });
+    try {
+      let thrown: unknown;
+      try {
+        await restore(
+          Readable.from([]),
+          PASSWORD,
+          restoreOptions({ _testFaultInjection: () => {} }),
+        );
+      } catch (err) {
+        thrown = err;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).toMatch(/_testFaultInjection/);
+      expect(thrown).not.toBeInstanceOf(NotAuthorizedError);
+    } finally {
+      Object.assign(process.env, { NODE_ENV: originalNodeEnv });
+    }
   });
 });

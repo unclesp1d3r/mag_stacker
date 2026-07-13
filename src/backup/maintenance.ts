@@ -1,17 +1,19 @@
 /**
- * Force-restore maintenance envelope (plan Unit U5, KTD5): a durable,
+ * Restore maintenance envelope (plan Unit U5, KTD5): a durable,
  * crash-recoverable "restore in progress" flag plus a pool-safe advisory
  * lock, both scoped OUTSIDE the `public` schema so they never show up as
  * live application tables (and so U3's `db-roundtrip.test.ts` regression
  * guard — which asserts `EXPORT_TABLE_ORDER` + `EPHEMERAL_TABLE_NAMES` cover
  * every `public`-schema table exactly — stays green without needing to know
- * about restore's own bookkeeping).
+ * about restore's own bookkeeping). Entered for EVERY restore promote —
+ * empty-instance (F2) and force-replace (F3) alike, see
+ * `restore-service.ts`'s `promote` — not just force-restore.
  *
  * **Durable flag.** A single-row table (`restore_ops.maintenance_flag`)
  * rather than an in-memory flag: the flag must survive a process restart so
- * a crash mid-force-restore is still visible afterward. The row also records
- * which `restore_snapshot_*` schema (if any) belongs to the in-progress
- * force-restore (`recordMaintenanceSnapshotSchema`) — this is what lets
+ * a crash mid-restore is still visible afterward. The row also records which
+ * `restore_snapshot_*` schema (if any) belongs to the in-progress restore
+ * (`recordMaintenanceSnapshotSchema`) — this is what lets
  * `recoverInterruptedRestore` tell "crashed before the risky section began,
  * nothing live touched" (`active = true`, no recorded snapshot) apart from
  * "crashed mid wipe+promote, live data may be in the new OR old state"
@@ -432,13 +434,29 @@ async function restoreBlobsFromNewestPreRestoreDir(
   }
 }
 
-/** Drops every leftover `restore_staging_*`/`restore_snapshot_*` schema found in the database — orphans from a restore that never reached its own cleanup. Uses a regex match (not `LIKE`) so the prefixes' literal underscores aren't treated as single-character wildcards. */
+/**
+ * Drops every leftover `restore_staging_*`/`restore_snapshot_*` schema found
+ * in the database — orphans from a restore that never reached its own
+ * cleanup. Uses a regex match (not `LIKE`) so the prefixes' literal
+ * underscores aren't treated as single-character wildcards.
+ *
+ * EXCLUDES whatever `restore_snapshot_*` schema is currently recorded by an
+ * ACTIVE maintenance flag: that schema is a still-live recovery artifact (a
+ * rollback that failed partway and deliberately left the flag active — see
+ * `recoverInterruptedRestore`'s doc comment), not an orphan. Sweeping it out
+ * from under a stuck recovery would make that half-completed rollback
+ * unrecoverable.
+ */
 async function sweepLeftoverSchemas(db: DbOrTx): Promise<void> {
+  const flag = await readMaintenanceFlag(db);
+  const protectedSchema = flag.active ? flag.snapshotSchema : null;
+
   const result = await db.execute<{ nspname: string }>(sql`
     SELECT nspname FROM pg_catalog.pg_namespace
     WHERE nspname ~ '^restore_(staging|snapshot)_'
   `);
   for (const row of result.rows) {
+    if (row.nspname === protectedSchema) continue;
     try {
       await dropSchemaIfExists(db, row.nspname);
     } catch (err) {
@@ -474,12 +492,13 @@ async function sweepLeftoverStagingDirs(uploadDir: string): Promise<void> {
 }
 
 /**
- * Boot-time crash recovery for an interrupted force-restore (KTD5 fix): a
- * process that dies mid force-restore (`restore-service.ts`'s
- * `forcePromote`) can leave the durable maintenance flag stuck active, its
- * `restore_snapshot_*` schema orphaned, the pre-restore blob directory never
- * swapped back in, and staging schemas/directories leaked. Called once from
- * `instrumentation.ts`'s `register()` on every server boot.
+ * Boot-time crash recovery for an interrupted restore (KTD5 fix): a process
+ * that dies mid-promote (`restore-service.ts`'s `promote`, which now runs
+ * for both the empty-instance and force-replace restore paths) can leave the
+ * durable maintenance flag stuck active, its `restore_snapshot_*` schema
+ * orphaned, the pre-restore blob directory never swapped back in, and
+ * staging schemas/directories leaked. Called once from `instrumentation.ts`'s
+ * `register()` on every server boot.
  *
  * Recovery contract: `active = true` together with a recorded
  * `snapshot_schema` that still exists in the database means the crash
@@ -488,11 +507,24 @@ async function sweepLeftoverStagingDirs(uploadDir: string): Promise<void> {
  * pre-restore directory, then the snapshot is dropped. `active = true` with
  * no recorded snapshot (or one that no longer exists) means the crash
  * happened before the risky section began — nothing live was touched, so no
- * rollback is needed. Either way the flag is always cleared afterward, and a
+ * rollback is needed, and the flag is cleared immediately. Either way, once
+ * recovery genuinely succeeds (or wasn't needed), the flag is cleared and a
  * general sweep removes any other leftover restore staging/snapshot schema
  * or temp directory regardless of what the flag says (they can only be
  * orphans by the time this runs — nothing should be actively restoring at
  * boot).
+ *
+ * **Partial-rollback failure.** `rollbackLiveFromSnapshot` is intentionally
+ * NOT transactional (see its own doc comment) — if it dies partway through
+ * its table-by-table loop, `public` may now be a genuine mix of wiped and
+ * restored tables. In that case the maintenance flag is deliberately left
+ * ACTIVE (not cleared) and the snapshot schema is deliberately preserved
+ * (not dropped, and excluded from the general schema sweep below — see
+ * {@link sweepLeftoverSchemas}) so `assertWritesAllowed` keeps blocking
+ * ordinary writes against the half-wiped DB and a future
+ * `recoverInterruptedRestore` call (or manual operator intervention) can
+ * still retry from that same snapshot. The failure is logged loudly as
+ * requiring manual intervention.
  *
  * Idempotent (safe to call multiple times, e.g. across restarts) and
  * defensive: every step is individually caught and logged, so a failure in
@@ -503,6 +535,11 @@ export async function recoverInterruptedRestore(
   db: DbOrTx,
   uploadDir: string,
 ): Promise<void> {
+  // Set when `rollbackLiveFromSnapshot` fails partway — see the doc comment
+  // above. When true, the flag is deliberately left active below instead of
+  // cleared, so recovery can be retried (or resolved manually) later.
+  let rollbackFailed = false;
+
   try {
     const flag = await readMaintenanceFlag(db);
     if (flag.active && flag.snapshotSchema) {
@@ -518,8 +555,14 @@ export async function recoverInterruptedRestore(
           await dropSchemaIfExists(db, snapshotSchema);
         }
       } catch (err) {
-        logRecoveryFailure(
-          `roll back interrupted force-restore from snapshot "${snapshotSchema}"`,
+        rollbackFailed = true;
+        console.error(
+          `backup/maintenance: MANUAL INTERVENTION REQUIRED — rolling back an ` +
+            `interrupted restore from snapshot "${snapshotSchema}" failed partway; ` +
+            "the live database may now be a mix of wiped and restored tables. " +
+            "The maintenance flag is being left ACTIVE (blocking ordinary writes) " +
+            "and the snapshot schema is being preserved so a retry or manual " +
+            "recovery can still use it.",
           err,
         );
       }
@@ -527,10 +570,12 @@ export async function recoverInterruptedRestore(
   } catch (err) {
     logRecoveryFailure("read maintenance flag", err);
   } finally {
-    try {
-      await exitMaintenance(db);
-    } catch (err) {
-      logRecoveryFailure("clear maintenance flag", err);
+    if (!rollbackFailed) {
+      try {
+        await exitMaintenance(db);
+      } catch (err) {
+        logRecoveryFailure("clear maintenance flag", err);
+      }
     }
   }
 

@@ -346,6 +346,71 @@ describe("maintenance envelope (KTD5 hardening)", () => {
       ).toBe(false);
     });
 
+    test("clears the flag without touching data when maintenance was active but no snapshot was ever recorded (crash before the risky section began)", async () => {
+      await seedOwner(db, "Untouched Owner");
+      const before = await snapshotTables(db);
+
+      await enterMaintenance(db, "restore");
+      // Deliberately no `recordMaintenanceSnapshotSchema` call — this is the
+      // "crash before the risky wipe+promote section ever began" state:
+      // nothing live has been touched, so recovery must be a pure flag clear.
+      expect(await isMaintenanceActive(db)).toBe(true);
+
+      await recoverInterruptedRestore(db, uploadDir);
+
+      expect(await snapshotTables(db)).toEqual(before);
+      expect(await isMaintenanceActive(db)).toBe(false);
+    });
+
+    test("leaves the maintenance flag ACTIVE and preserves the snapshot schema when the snapshot rollback fails partway (manual intervention required)", async () => {
+      await seedOwner(db, "Pre-Restore Owner");
+
+      const snapshotSchema = `${SNAPSHOT_SCHEMA_PREFIX}${randomUUID().replace(/-/g, "")}`;
+      // Deliberately incomplete snapshot: every table EXCEPT the last one in
+      // `EXPORT_TABLE_ORDER`'s insert order is copied, so
+      // `rollbackLiveFromSnapshot` successfully wipes+reinserts everything up
+      // to that point, then dies mid-loop on the missing table — simulating
+      // a crash partway through the non-transactional rollback.
+      await db.execute(
+        sql`DROP SCHEMA IF EXISTS ${sql.identifier(snapshotSchema)} CASCADE`,
+      );
+      await db.execute(sql`CREATE SCHEMA ${sql.identifier(snapshotSchema)}`);
+      const tableNames = EXPORT_TABLE_ORDER.map((table) => getTableName(table));
+      const skippedTable = tableNames[tableNames.length - 1];
+      for (const table of EXPORT_TABLE_ORDER) {
+        const name = getTableName(table);
+        if (name === skippedTable) continue;
+        await db.execute(sql`
+          CREATE TABLE ${qualified(snapshotSchema, name)}
+          AS TABLE ${qualified("public", name)}
+        `);
+      }
+
+      await wipeDatabase(db);
+      await seedOwner(db, "Half-Promoted New Owner");
+
+      await enterMaintenance(db, "restore");
+      await recordMaintenanceSnapshotSchema(db, snapshotSchema);
+
+      await recoverInterruptedRestore(db, uploadDir);
+
+      // The flag must NOT have been cleared — a half-rolled-back DB must
+      // keep blocking ordinary writes until it's retried or resolved by
+      // hand, per the "MANUAL INTERVENTION REQUIRED" contract.
+      expect(await isMaintenanceActive(db)).toBe(true);
+      // The snapshot must be preserved, not swept away — dropping it would
+      // make the half-completed rollback unrecoverable.
+      expect(await schemaExists(db, snapshotSchema)).toBe(true);
+
+      await expect(assertWritesAllowed(db)).rejects.toBeInstanceOf(
+        MaintenanceModeError,
+      );
+
+      // A subsequent sweep must also leave the still-referenced snapshot
+      // alone — it's still the only way back, not an orphan.
+      expect(await listRestoreSchemas(db)).toContain(snapshotSchema);
+    });
+
     test("is idempotent — calling it twice in a row after a rollback is a harmless no-op", async () => {
       await seedOwner(db, "Pre-Restore Owner");
       const expectedSnapshot = await snapshotTables(db);

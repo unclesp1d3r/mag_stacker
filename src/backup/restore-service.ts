@@ -22,25 +22,35 @@
  * 4. Only once the whole bundle has authenticated does `restore()` check
  *    instance emptiness (R6/AE1) and, if empty (or `force`), promote staging
  *    to live.
- * 5. A `force` restore additionally runs the KTD5 envelope (`maintenance.ts`):
+ * 5. EVERY promote — empty-instance (F2) or force-replace (F3) alike — runs
+ *    through the same KTD5 envelope (`maintenance.ts` + `promote` below):
  *    durable maintenance flag, a committed `restore_snapshot_<runId>` schema
  *    of the pre-restore DB, and the pre-restore blob directory moved aside —
  *    so a failure at ANY point in the wipe+promote step (including after the
  *    DB side has already committed, but before the blob directory has been
- *    swapped in) rolls both stores back together.
+ *    swapped in) rolls both stores back together. This used to be a
+ *    force-only envelope, with the empty-instance path wiping+copying
+ *    directly and unprotected; that left a TOCTOU window between the
+ *    emptiness check (step 4) and promote where an ordinary concurrent write
+ *    was never blocked and had no snapshot to recover from. Unifying both
+ *    paths onto the maintenance envelope closes that window — the ONLY
+ *    remaining difference between F2 and F3 is the refuse-unless-empty guard
+ *    in step 4, which only `force` skips.
  *
  * **Concurrency (KTD5 hardening).** Every per-run schema (`restore_staging_*`
- * and, for `force`, `restore_snapshot_*`) is named with a fresh random suffix
- * per call, so two overlapping restores never collide on schema names. That
- * alone isn't enough to prevent corruption, though: both restores still
- * write to the shared `public` schema during promote, and interleaved
- * wipe+promote transactions from two different restores could each commit
- * different tables' worth of data, leaving `public` a genuine mix of both
- * bundles. `restore()` therefore holds `withRestoreAdvisoryLock` for its
- * ENTIRE body — staging through promote, both the empty-instance and force
- * paths — so only one restore attempt is ever inside the risky section at a
- * time; a second concurrent call blocks until the first fully finishes
- * (commit or rollback) before it even begins staging.
+ * and `restore_snapshot_*`) is named with a fresh random suffix per call, so
+ * two overlapping restores never collide on schema names. That alone isn't
+ * enough to prevent corruption, though: both restores still write to the
+ * shared `public` schema during promote, and interleaved wipe+promote
+ * transactions from two different restores could each commit different
+ * tables' worth of data, leaving `public` a genuine mix of both bundles.
+ * `restore()` therefore holds `withRestoreAdvisoryLock` for its ENTIRE body —
+ * staging through promote, both the empty-instance and force paths — so only
+ * one restore attempt is ever inside the risky section at a time; a second
+ * concurrent call blocks until the first fully finishes (commit or rollback)
+ * before it even begins staging. On top of that, `promote`'s maintenance flag
+ * (active for both paths now) blocks ordinary, non-restore writes for the
+ * same window via `assertWritesAllowed`.
  */
 
 import { randomUUID } from "node:crypto";
@@ -79,7 +89,7 @@ import {
 import { BACKUP_FORMAT_VERSION, type BackupManifest } from "./manifest";
 import { EXPORT_TABLE_ORDER, WIPE_TABLE_ORDER } from "./table-order";
 
-/** Discriminated outcome of a restore attempt. Every branch carries an operator-facing `message`; none of them throw for expected restore-flow refusals — only a genuine programming/authorization error (see `restore`'s admin check) or an unclassified staging failure (see the module doc comment on error classification) throws. */
+/** Discriminated outcome of a restore attempt. Every branch carries an operator-facing `message`; none of them throw for expected restore-flow refusals — only a genuine programming/authorization error (see `restore`'s admin check) or an unclassified staging failure (see the error-classification `catch` block inside `restore()`) throws. */
 export type RestoreOutcome =
   | { readonly kind: "ok"; readonly message: string }
   | { readonly kind: "refused_not_empty"; readonly message: string }
@@ -127,6 +137,18 @@ function toError(err: unknown): Error {
   return err instanceof Error ? err : new Error(String(err));
 }
 
+/** Logs a cleanup-step failure loudly instead of swallowing it — mirrors `maintenance.ts`'s `logRecoveryFailure` pattern for its boot-time sweep. Cleanup failures here are leaked staging artifacts, not correctness bugs (the risky section has already committed or rolled back by the time this runs), so they're logged rather than thrown. */
+function logCleanupFailure(step: string, err: unknown): void {
+  console.error(`backup/restore-service: cleanup step "${step}" failed`, err);
+}
+
+/** Exhaustiveness guard for `BundleEvent.kind`'s switch in `stageBundle`: if a new `BundleEvent` variant is ever added in `bundle.ts` without a corresponding `case` here, `event` fails to narrow to `never` and this file fails to typecheck — instead of the new event silently falling through a no-op default at runtime. */
+function assertNeverBundleEvent(event: never): never {
+  throw new Error(
+    `internal: unhandled BundleEvent kind: ${JSON.stringify(event)}`,
+  );
+}
+
 async function pathExists(path: string): Promise<boolean> {
   try {
     await stat(path);
@@ -153,6 +175,17 @@ export async function restore(
   password: string,
   options: RestoreOptions = {},
 ): Promise<RestoreOutcome> {
+  // Production footgun guard (KTD5 hardening): `_testFaultInjection` is an
+  // internal control-flow hook meant ONLY for this module's own test suite.
+  // `RestoreOptions` is a public exported type, so nothing at the type level
+  // stops a caller from wiring it up outside tests — this is the runtime
+  // backstop. `NODE_ENV=test` is set automatically by `bun test`.
+  if (options._testFaultInjection && process.env.NODE_ENV !== "test") {
+    throw new Error(
+      "restore(): options._testFaultInjection must never be supplied outside NODE_ENV=test",
+    );
+  }
+
   const checkIsAdmin = options.checkIsAdmin ?? isAdmin;
   if (!(await checkIsAdmin())) {
     // Not a modeled RestoreOutcome: an unauthorized caller is a programming/
@@ -172,9 +205,9 @@ export async function restore(
 
   // The ENTIRE staging+promote body runs under one advisory lock, held on a
   // single dedicated connection (`opsDb`) for the whole call — see the
-  // module doc comment. `forcePromote`/`emptyInstancePromote` therefore MUST
-  // NOT acquire this lock themselves (it isn't reentrant across connections;
-  // doing so would deadlock this very call).
+  // module doc comment. `promote` therefore MUST NOT acquire this lock
+  // itself (it isn't reentrant across connections; doing so would deadlock
+  // this very call).
   return await withRestoreAdvisoryLock(pool, async (client) => {
     const opsDb = drizzle(client, { schema });
 
@@ -233,23 +266,21 @@ export async function restore(
       }
 
       try {
-        if (force) {
-          await forcePromote({
-            db: opsDb,
-            uploadDir,
-            stagingBlobDir,
-            stagingSchema,
-            snapshotSchema,
-            testFaultInjection: options._testFaultInjection,
-          });
-        } else {
-          await emptyInstancePromote({
-            db: opsDb,
-            uploadDir,
-            stagingBlobDir,
-            stagingSchema,
-          });
-        }
+        // Both the empty-instance (F2) and force-replace (F3) paths now run
+        // through the SAME maintenance+snapshot+rollback envelope — see the
+        // module doc comment and `promote`'s own doc comment for why (KTD5
+        // TOCTOU fix). The only remaining difference between the two is the
+        // refuse-unless-empty guard, which already ran inside `stageBundle`
+        // above.
+        await promote({
+          db: opsDb,
+          uploadDir,
+          stagingBlobDir,
+          stagingSchema,
+          snapshotSchema,
+          reason: force ? "force-restore" : "empty-instance-restore",
+          testFaultInjection: options._testFaultInjection,
+        });
       } catch (err) {
         if (err instanceof RestoreRolledBackError) {
           return { kind: "rolled_back", message: err.message };
@@ -263,9 +294,16 @@ export async function restore(
         .execute(
           sql`DROP SCHEMA IF EXISTS ${sql.identifier(stagingSchema)} CASCADE`,
         )
-        .catch(() => {});
+        .catch((err) => {
+          logCleanupFailure(`drop staging schema "${stagingSchema}"`, err);
+        });
       await rm(stagingBlobDir, { recursive: true, force: true }).catch(
-        () => {},
+        (err) => {
+          logCleanupFailure(
+            `remove staging blob directory "${stagingBlobDir}"`,
+            err,
+          );
+        },
       );
     }
   });
@@ -321,26 +359,37 @@ async function stageBundle(
 
   let manifest: BackupManifest | undefined;
   for await (const event of generator) {
-    if (event.kind === "manifest") {
-      manifest = event.manifest;
-      if (manifest.backupFormatVersion !== BACKUP_FORMAT_VERSION) {
-        throw new VersionMismatchSignal(
-          `bundle backupFormatVersion ${manifest.backupFormatVersion} is incompatible with this instance's ${BACKUP_FORMAT_VERSION}`,
-        );
+    switch (event.kind) {
+      case "manifest": {
+        manifest = event.manifest;
+        if (manifest.backupFormatVersion !== BACKUP_FORMAT_VERSION) {
+          throw new VersionMismatchSignal(
+            `bundle backupFormatVersion ${manifest.backupFormatVersion} is incompatible with this instance's ${BACKUP_FORMAT_VERSION}`,
+          );
+        }
+        if (
+          options.checkEmptiness &&
+          (await options.instanceHasInventoryData())
+        ) {
+          throw new NotEmptySignal(
+            "the instance already holds inventory data; use force-replace to overwrite it",
+          );
+        }
+        break;
       }
-      if (
-        options.checkEmptiness &&
-        (await options.instanceHasInventoryData())
-      ) {
-        throw new NotEmptySignal(
-          "the instance already holds inventory data; use force-replace to overwrite it",
-        );
+      case "db": {
+        await importIntoStaging(pool, event.stream, stagingSchema);
+        break;
       }
-    } else if (event.kind === "db") {
-      await importIntoStaging(pool, event.stream, stagingSchema);
+      case "blob": {
+        // readBundle has already written + path-validated the file under
+        // stagingBlobDir (KTD11) — nothing further to do here.
+        break;
+      }
+      default: {
+        assertNeverBundleEvent(event);
+      }
     }
-    // "blob" events: readBundle has already written + path-validated the
-    // file under stagingBlobDir (KTD11) — nothing further to do here.
   }
 
   if (!manifest) {
@@ -413,16 +462,37 @@ async function finishBlobSwap(
   await rename(stagingBlobDir, uploadDir);
 }
 
-/** Undoes `beginBlobSwap` (and any partial `finishBlobSwap`): removes whatever now sits at `uploadDir` and restores the original contents. */
+/**
+ * Undoes `beginBlobSwap` (and any partial `finishBlobSwap`): removes whatever
+ * now sits at `uploadDir` and restores the original contents.
+ *
+ * Unlike most cleanup helpers in this module, a failure here is NOT
+ * swallowed: this runs only while unwinding an already-failed promote, so a
+ * failure means the live upload directory may now be missing or only
+ * partially restored — the operator must be told loudly (both `uploadDir`
+ * and the moved-aside directory are logged so recovery can be attempted by
+ * hand) and the caller MUST treat this as distinct from a clean rollback
+ * (see `promote`'s catch block).
+ */
 async function undoBlobSwap(
   handle: BlobSwapHandle,
   uploadDir: string,
 ): Promise<void> {
-  await rm(uploadDir, { recursive: true, force: true }).catch(() => {});
-  if (handle.hadExistingDir) {
-    await rename(handle.movedAsideDir, uploadDir).catch(() => {});
-  } else {
-    await mkdir(uploadDir, { recursive: true, mode: 0o700 }).catch(() => {});
+  try {
+    await rm(uploadDir, { recursive: true, force: true });
+    if (handle.hadExistingDir) {
+      await rename(handle.movedAsideDir, uploadDir);
+    } else {
+      await mkdir(uploadDir, { recursive: true, mode: 0o700 });
+    }
+  } catch (err) {
+    console.error(
+      `backup/restore-service: CRITICAL — undoBlobSwap failed while rolling back a failed restore promote; ` +
+        `the live upload directory may be missing or corrupt. MANUAL RECOVERY REQUIRED. ` +
+        `uploadDir="${uploadDir}" movedAsideDir="${handle.movedAsideDir}" hadExistingDir=${handle.hadExistingDir}`,
+      err,
+    );
+    throw err;
   }
 }
 
@@ -456,65 +526,44 @@ async function wipeLive(tx: Transaction): Promise<void> {
 }
 
 /**
- * F2 (empty instance) promote: swap the staged blob directory in, then
- * wipe-and-promote staging rows into live in one transaction. Either step
- * failing undoes the other — no live change survives a partial failure.
+ * The unified promote envelope for BOTH F2 (empty instance) and F3
+ * (force-replace) restores — the KTD5 envelope: durable maintenance flag, a
+ * committed pre-restore snapshot schema, wipe+promote in one transaction, and
+ * a blob-directory swap. A failure anywhere after the snapshot is committed
+ * rolls BOTH the DB (restored from the snapshot, if the wipe+promote
+ * transaction had already committed) and the blobs (restored from the
+ * moved-aside directory) back together.
+ *
+ * This used to be force-restore-only, with the empty-instance path wiping
+ * and copying directly — no maintenance flag, no snapshot. That left a TOCTOU
+ * window: emptiness is checked once, at the start of staging (`stageBundle`),
+ * but the maintenance flag (which is what `assertWritesAllowed` actually
+ * checks) was never raised for that path, so an ordinary write landing during
+ * staging or promote could interleave with the wipe+copy, and if THIS
+ * promote then failed, there was no snapshot to roll back to. Both paths now
+ * share this one envelope; "empty instance" only changes what `stageBundle`
+ * checked before promote was ever called.
  *
  * "Empty" here means no *inventory* data (`instanceHasInventoryData`); the
- * instance can still hold bootstrap auth rows (the admin who is performing the
- * restore always exists in `public.user`). Those must be replaced, not merged
- * into — a plain `INSERT` of the backup's users would collide with the live
- * admin on `user.email`'s UNIQUE constraint and roll the whole restore back.
- * So this wipes live tables before copying, exactly like force-replace, and
- * relies on the single wrapping transaction for atomic DB rollback (no
- * separate snapshot schema is needed: a failed transaction reverts the wipe
- * too, and the blob swap happened first and is undone on failure).
+ * instance can still hold bootstrap auth rows (the admin who is performing
+ * the restore always exists in `public.user`). Those must be replaced, not
+ * merged into — a plain `INSERT` of the backup's users would collide with the
+ * live admin on `user.email`'s UNIQUE constraint and roll the whole restore
+ * back. So this always wipes live tables before copying, for both paths.
  *
- * `ctx.db` is bound to the SAME locked connection `restore()` holds for its
- * entire body (see the module doc comment) — this doesn't need its own
- * advisory lock.
- */
-async function emptyInstancePromote(ctx: {
-  db: Database;
-  uploadDir: string;
-  stagingBlobDir: string;
-  stagingSchema: string;
-}): Promise<void> {
-  const swap = await beginBlobSwap(ctx.uploadDir);
-  try {
-    await finishBlobSwap(ctx.stagingBlobDir, ctx.uploadDir);
-  } catch (err) {
-    await undoBlobSwap(swap, ctx.uploadDir);
-    throw new RestoreRolledBackError(
-      `blob promotion failed: ${toError(err).message}`,
-      { cause: err },
-    );
-  }
-
-  try {
-    await ctx.db.transaction(async (tx) => {
-      await wipeLive(tx);
-      await copySchemaToLive(tx, ctx.stagingSchema);
-    });
-  } catch (err) {
-    await undoBlobSwap(swap, ctx.uploadDir);
-    throw new RestoreRolledBackError(
-      `database promotion failed: ${toError(err).message}`,
-      { cause: err },
-    );
-  }
-
-  await commitBlobSwap(swap);
-}
-
-/**
- * F3 (force-replace) promote — the KTD5 envelope: durable maintenance flag,
- * a committed pre-restore snapshot schema, wipe+promote in one transaction,
- * and a blob-directory swap. A failure anywhere after the snapshot is
- * committed rolls BOTH the DB (restored from the snapshot, if the
- * wipe+promote transaction had already committed) and the blobs (restored
- * from the moved-aside directory) back together, then always exits
- * maintenance.
+ * **Rollback-failure handling.** If undoing a failed promote (restoring the
+ * DB from the snapshot, or `undoBlobSwap`) itself fails, this is NOT reported
+ * to the operator as a clean `RestoreRolledBackError` — that would tell them
+ * the instance is safely back to its pre-restore state when it may not be.
+ * Instead the original rollback failure is logged loudly (`undoBlobSwap`
+ * does its own logging; the DB-rollback failure is logged here) and
+ * re-thrown as a plain error, which `restore()` does NOT convert to a
+ * `'rolled_back'` outcome — it propagates as a generic thrown error instead
+ * (surfaced by the route as a generic 500/"error"). The maintenance flag is
+ * ALSO deliberately left active in that case (see the `finally` below) so
+ * `assertWritesAllowed` keeps blocking ordinary writes against a possibly
+ * half-wiped DB, and `recoverInterruptedRestore` can retry from the
+ * still-recorded snapshot on the next boot.
  *
  * `ctx.db` is bound to the SAME locked connection `restore()` holds for its
  * entire body (see the module doc comment) — this function does NOT acquire
@@ -522,15 +571,21 @@ async function emptyInstancePromote(ctx: {
  * `pg_advisory_lock` call for the same key on a different connection blocks
  * until the first is released, and the first is this very call).
  */
-async function forcePromote(ctx: {
+async function promote(ctx: {
   db: Database;
   uploadDir: string;
   stagingBlobDir: string;
   stagingSchema: string;
   snapshotSchema: string;
+  reason: string;
   testFaultInjection?: RestoreOptions["_testFaultInjection"];
 }): Promise<void> {
-  await enterMaintenance(ctx.db, "force-restore");
+  await enterMaintenance(ctx.db, ctx.reason);
+  // Set when undoing a failed promote itself fails — see the doc comment
+  // above. When true, the `finally` below deliberately skips
+  // `exitMaintenance` so the flag stays active for `recoverInterruptedRestore`
+  // to pick up.
+  let rollbackFailed = false;
   try {
     await ctx.db.execute(
       sql`DROP SCHEMA IF EXISTS ${sql.identifier(ctx.snapshotSchema)} CASCADE`,
@@ -564,22 +619,41 @@ async function forcePromote(ctx: {
       await ctx.testFaultInjection?.("post-commit-pre-blob-swap");
       await finishBlobSwap(ctx.stagingBlobDir, ctx.uploadDir);
     } catch (err) {
-      if (dbCommitted) {
-        // The wipe+promote transaction already committed new data — the
-        // only way back is to explicitly restore from the snapshot.
-        await ctx.db.transaction(async (tx) => {
-          await wipeLive(tx);
-          await copySchemaToLive(tx, ctx.snapshotSchema);
-        });
+      try {
+        if (dbCommitted) {
+          // The wipe+promote transaction already committed new data — the
+          // only way back is to explicitly restore from the snapshot.
+          await ctx.db.transaction(async (tx) => {
+            await wipeLive(tx);
+            await copySchemaToLive(tx, ctx.snapshotSchema);
+          });
+        }
+        await undoBlobSwap(swap, ctx.uploadDir);
+      } catch (rollbackErr) {
+        // The rollback itself failed — do NOT report a clean 'rolled_back'.
+        // Leave the snapshot and the maintenance flag in place (see
+        // `rollbackFailed` above) and let this propagate as a generic error.
+        rollbackFailed = true;
+        console.error(
+          "backup/restore-service: CRITICAL — rollback of a failed restore promote itself failed; " +
+            "the instance may be left in a mixed/inconsistent state. MANUAL INTERVENTION REQUIRED. " +
+            `snapshotSchema="${ctx.snapshotSchema}" uploadDir="${ctx.uploadDir}"`,
+          { promoteError: err, rollbackError: rollbackErr },
+        );
+        throw rollbackErr;
       }
-      await undoBlobSwap(swap, ctx.uploadDir);
       await ctx.db
         .execute(
           sql`DROP SCHEMA IF EXISTS ${sql.identifier(ctx.snapshotSchema)} CASCADE`,
         )
-        .catch(() => {});
+        .catch((dropErr) => {
+          logCleanupFailure(
+            `drop snapshot schema "${ctx.snapshotSchema}" after a successful rollback`,
+            dropErr,
+          );
+        });
       throw new RestoreRolledBackError(
-        `force-restore promotion failed and was rolled back: ${toError(err).message}`,
+        `restore promotion failed and was rolled back: ${toError(err).message}`,
         { cause: err },
       );
     }
@@ -589,6 +663,8 @@ async function forcePromote(ctx: {
     );
     await commitBlobSwap(swap);
   } finally {
-    await exitMaintenance(ctx.db);
+    if (!rollbackFailed) {
+      await exitMaintenance(ctx.db);
+    }
   }
 }
