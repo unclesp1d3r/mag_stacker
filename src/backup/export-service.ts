@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { NotAuthorizedError } from "@/src/auth/errors";
 import { isAdmin } from "@/src/auth/session";
-import type { DbOrTx } from "@/src/db/client";
+import type { Database } from "@/src/db/client";
 import { activeStorageRoot } from "@/src/storage/index";
 import { type BundleBlobEntry, writeBundle } from "./bundle";
 import { createEncryptStream, deriveKey, generateSalt } from "./crypto";
@@ -103,24 +103,43 @@ async function* blobEntriesFor(
  * `exportDatabase` yields exactly one NDJSON line per row, so the row count is
  * tallied in the same pass that buffers the bytes — no second scan of the
  * payload. The `Buffer` is returned as-is (no `toString`/re-encode round trip).
+ *
+ * Runs the whole export inside one `repeatable read`, `read only` snapshot
+ * transaction: every per-table `SELECT` `exportDatabase` issues then shares
+ * a single MVCC snapshot taken at the transaction's first statement. Without
+ * this, `exportDatabase`'s per-table `SELECT`s ran unscoped against
+ * whatever the table looked like at the moment each one executed — a write
+ * landing mid-export (e.g. a new `firearm_document` row FK'ing to a
+ * `firearm` the export already read) could produce a torn bundle mixing
+ * pre- and post-write rows, potentially violating referential integrity
+ * within the bundle itself. `read only` is an extra guarantee that this
+ * transaction can never itself write, matching what it's actually doing.
  */
 async function bufferDbExport(
-  db: DbOrTx,
+  db: Database,
 ): Promise<{ buffer: Buffer; rowCount: number }> {
-  const chunks: Buffer[] = [];
-  let rowCount = 0;
-  for await (const chunk of exportDatabase(db)) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    rowCount += 1;
-  }
-  return { buffer: Buffer.concat(chunks), rowCount };
+  return db.transaction(
+    async (tx) => {
+      const chunks: Buffer[] = [];
+      let rowCount = 0;
+      for await (const chunk of exportDatabase(tx)) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        rowCount += 1;
+      }
+      return { buffer: Buffer.concat(chunks), rowCount };
+    },
+    { isolationLevel: "repeatable read", accessMode: "read only" },
+  );
 }
 
 export interface CreateBackupOptions {
   /** Drizzle handle to export from. Production callers pass the shared `db`
    * from `@/src/db/client`; tests pass a handle bound to their own instance
-   * (e.g. a Testcontainers Postgres). */
-  readonly db: DbOrTx;
+   * (e.g. a Testcontainers Postgres). Must be a top-level `Database`, not an
+   * already-open `Transaction` — `bufferDbExport` opens its own
+   * repeatable-read, read-only snapshot transaction around the whole export
+   * to keep the bundle internally consistent even if writes land mid-export. */
+  readonly db: Database;
 }
 
 /**

@@ -192,6 +192,49 @@ function makeStagingDir(): string {
   return mkdtempSync(join(tmpdir(), "export-service-staging-"));
 }
 
+/**
+ * Temporarily wraps `targetPool.connect` so every query text issued by
+ * whichever client a transaction checks out gets captured — used to prove
+ * `createBackup` actually opens its DB-export transaction with the
+ * isolation level and access mode the snapshot-isolation fix mandates.
+ * Drizzle issues that as a single `begin isolation level ... <access mode>`
+ * statement (see `PgTransaction.getTransactionConfigSQL` /
+ * `NodePgSession.transaction` in `drizzle-orm/pg-core/session.js` and
+ * `drizzle-orm/node-postgres/session.js`), passed to `client.query` as a
+ * `{ text, ... }` config object rather than a bare string. Always call
+ * `restore()` (a `try/finally` around the exercised code) so the spy doesn't
+ * leak into other tests sharing the same pooled connections.
+ */
+function captureBeginStatements(targetPool: Pool): {
+  statements: string[];
+  restore: () => void;
+} {
+  const statements: string[] = [];
+  const originalConnect = targetPool.connect.bind(targetPool);
+  // biome-ignore lint/suspicious/noExplicitAny: instrumenting pg's own overloaded connect()/query() for a test-only spy.
+  (targetPool as any).connect = async (...args: unknown[]) => {
+    // biome-ignore lint/suspicious/noExplicitAny: see above.
+    const client = await (originalConnect as any)(...args);
+    const originalQuery = client.query.bind(client);
+    client.query = (...queryArgs: unknown[]) => {
+      const first = queryArgs[0];
+      const text =
+        typeof first === "string"
+          ? first
+          : (first as { text?: string } | undefined)?.text;
+      if (typeof text === "string") statements.push(text);
+      return originalQuery(...queryArgs);
+    };
+    return client;
+  };
+  return {
+    statements,
+    restore: () => {
+      targetPool.connect = originalConnect;
+    },
+  };
+}
+
 describe("backup export service (U4)", () => {
   let container: StartedPostgreSqlContainer;
   let pool: Pool;
@@ -319,6 +362,35 @@ describe("backup export service (U4)", () => {
     // retained server-side).
     const afterFiles = new Set(listUploadFiles());
     expect(afterFiles).toEqual(beforeFiles);
+  });
+
+  test("the DB export runs inside a repeatable-read, read-only snapshot transaction (torn-bundle guard)", async () => {
+    const ownerId = `owner-${randomUUID()}`;
+    await db.insert(user).values({
+      id: ownerId,
+      name: "Snapshot Owner",
+      email: `${ownerId}@example.test`,
+    });
+
+    const capture = captureBeginStatements(pool);
+    try {
+      const stream = await createBackup(PASSWORD, { db });
+      await collectWithStats(stream);
+    } finally {
+      capture.restore();
+    }
+
+    const beginStatements = capture.statements.filter((statement) =>
+      statement.trim().toLowerCase().startsWith("begin"),
+    );
+    expect(beginStatements.length).toBeGreaterThan(0);
+    expect(
+      beginStatements.some(
+        (statement) =>
+          statement.trim().toLowerCase() ===
+          "begin isolation level repeatable read read only",
+      ),
+    ).toBe(true);
   });
 
   test("a non-admin caller is rejected", async () => {

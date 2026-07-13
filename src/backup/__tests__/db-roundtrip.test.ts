@@ -38,7 +38,11 @@ import {
   verification,
 } from "../../db/schema";
 import { type ExportedRow, exportDatabase } from "../db-export";
-import { importDatabase, wipeDatabase } from "../db-import";
+import {
+  importDatabase,
+  MAX_NDJSON_LINE_BYTES,
+  wipeDatabase,
+} from "../db-import";
 import { EPHEMERAL_TABLE_NAMES, EXPORT_TABLE_ORDER } from "../table-order";
 
 /**
@@ -374,5 +378,69 @@ describe("DB export/import round trip (U3)", () => {
     // integer.
     expect(afterMagazine.baseCapacity).toBe(beforeMagazine.baseCapacity);
     expect(afterMagazine.baseCapacity).toBe(17);
+  });
+
+  test("import rejects a db.ndjson line larger than the cap, without inserting any rows (oversized-line DoS guard)", async () => {
+    const validLine = `${JSON.stringify({
+      table: "user",
+      row: {
+        id: randomUUID(),
+        name: "Should Not Persist",
+        email: `${randomUUID()}@example.test`,
+      },
+    } satisfies ExportedRow)}\n`;
+    // Deliberately no trailing newline — the reader must reject this before
+    // ever handing it to JSON.parse, not just at end-of-stream.
+    const oversizedLine = JSON.stringify({
+      table: "user",
+      row: {
+        id: randomUUID(),
+        name: "x".repeat(MAX_NDJSON_LINE_BYTES + 1024),
+        email: `${randomUUID()}@example.test`,
+      },
+    } satisfies ExportedRow);
+
+    let caught: unknown;
+    try {
+      await importDatabase(db, Readable.from([validLine + oversizedLine]));
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toMatch(/longer than/i);
+
+    // The whole import runs in one transaction — the oversized line's
+    // rejection must roll back the earlier, otherwise-valid `user` insert
+    // too, not leave a partially-applied import.
+    const rows = await db.select().from(user);
+    expect(rows).toHaveLength(0);
+  });
+
+  test("import still handles a final line with no trailing newline (no regression from switching off the readline-based reader)", async () => {
+    const rows: ExportedRow[] = [
+      {
+        table: "user",
+        row: {
+          id: randomUUID(),
+          name: "No Trailing Newline A",
+          email: `${randomUUID()}@example.test`,
+        },
+      },
+      {
+        table: "user",
+        row: {
+          id: randomUUID(),
+          name: "No Trailing Newline B",
+          email: `${randomUUID()}@example.test`,
+        },
+      },
+    ];
+    const ndjson = rows.map((row) => JSON.stringify(row)).join("\n");
+
+    await importDatabase(db, Readable.from([ndjson]));
+
+    const persisted = await db.select().from(user);
+    expect(persisted).toHaveLength(2);
   });
 });
