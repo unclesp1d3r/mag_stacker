@@ -76,7 +76,11 @@ services:
       # with a host Postgres. The app reaches the db by service name internally.
       - "${POSTGRES_HOST_PORT:-5544}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-magstacker} -d ${POSTGRES_DB:-magstacker}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-magstacker} -d ${POSTGRES_DB:-magstacker}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -171,7 +175,7 @@ services:
       # before `bun run start` runs.
       BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
-      UPLOAD_DIR: /data/uploads
+      UPLOAD_DIR: ${UPLOAD_DIR:-/data/uploads}
     secrets:
       - postgres_password
       - better_auth_secret
