@@ -215,17 +215,15 @@ export function RestorePanel() {
                 ? RESTORE_UNEXPECTED_ERROR.detail
                 : RESTORE_OUTCOME_COPY[outcome.kind].detail}
             </p>
-            {outcome.kind !== "client_error" && outcome.message ? (
-              // The server-computed detail for this specific outcome (e.g.
-              // the decrypt-error text, or version numbers on a
-              // `version_mismatch`) — additional to the fixed per-kind copy
-              // above, not a replacement for it. Deliberately excluded for
-              // `client_error`: that fallback's `message` is a raw
-              // network/parse error string, not server-vetted copy, and
-              // `RESTORE_UNEXPECTED_ERROR`'s generic detail is what's meant
-              // to be shown for it.
-              <p className="mt-0.5 text-ink-soft">{outcome.message}</p>
-            ) : null}
+            {/*
+              `outcome.message` (the server-computed detail carried by every
+              RestoreOutcome) is intentionally NOT rendered here for known
+              kinds: it paraphrases the curated `RESTORE_OUTCOME_COPY` detail
+              above, so showing both is redundant and confusing. The curated
+              copy is the operator-facing source of truth; `message` remains
+              part of the route's JSON response (machine-readable / logged) and
+              drives the `client_error` fallback text above.
+            */}
           </Callout>
         ) : null}
 
