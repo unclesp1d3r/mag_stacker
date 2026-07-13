@@ -33,15 +33,22 @@ just env-setup          # create .env.local from .env.example
 just install-hooks      # install the pre-commit hooks (once)
 ```
 
-The database password and Better Auth signing secret are Docker secrets (R16), not `.env` values — create them once (see [`secrets/README.md`](secrets/README.md)):
+The database password and Better Auth signing secret are Docker secrets (R16), not `.env` values — create them once, owner-only and only if they don't already exist (see [`secrets/README.md`](secrets/README.md)). Re-running the commands below is safe: an existing Postgres data volume keeps the password it was created with, so overwriting the file would just lock you out.
 
 ```bash
 mkdir -p secrets
-openssl rand -hex 24 > secrets/postgres_password.txt
-openssl rand -hex 32 > secrets/better_auth_secret.txt
+[ -f secrets/postgres_password.txt ] || (umask 077 && openssl rand -hex 24 > secrets/postgres_password.txt)
+[ -f secrets/better_auth_secret.txt ] || (umask 077 && openssl rand -hex 32 > secrets/better_auth_secret.txt)
 ```
 
-Then set `DATABASE_URL` and `BETTER_AUTH_SECRET` in `.env.local` so `mise` loads them into your shell — for the local Postgres below that's `postgres://magstacker:$(cat secrets/postgres_password.txt)@localhost:5544/magstacker`. If you want a seeded admin, also fill in `ADMIN_EMAIL` / `ADMIN_PASSWORD`. Now bring up the database and start the app:
+`mise` loads `DATABASE_URL` and `BETTER_AUTH_SECRET` from `.env.local` like any other variable, but it only parses `KEY=VALUE` lines — it doesn't run a shell, so a literal `$(cat ...)` typed into the file is never expanded and `DATABASE_URL` would end up containing that unevaluated text. Let your shell do the substitution once, when you write the file:
+
+```bash
+echo "DATABASE_URL=postgres://magstacker:$(cat secrets/postgres_password.txt)@localhost:5544/magstacker" >> .env.local
+echo "BETTER_AUTH_SECRET=$(cat secrets/better_auth_secret.txt)" >> .env.local
+```
+
+If you want a seeded admin, also fill in `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env.local`. Now bring up the database and start the app:
 
 ```bash
 docker compose up -d db   # local Postgres on host port 5544

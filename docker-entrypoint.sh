@@ -30,6 +30,17 @@ resolve_secret BETTER_AUTH_SECRET "${BETTER_AUTH_SECRET_FILE:-}"
 # that would require the plaintext password in the host's `.env`/shell
 # environment, defeating the point of the secret file.
 if [ -z "${DATABASE_URL:-}" ] && [ -n "${POSTGRES_PASSWORD:-}" ]; then
+  # secrets/README.md documents a hex-only password contract (openssl rand
+  # -hex): the password is interpolated unescaped below, so anything with
+  # `@ : / ? # %` etc. would be misparsed by the connection-string consumer
+  # and silently connect to the wrong host/db, or fail to connect at all.
+  # Enforce that contract instead of exporting a malformed URL.
+  case "${POSTGRES_PASSWORD}" in
+    *[!0-9A-Fa-f]*)
+      echo "docker-entrypoint.sh: POSTGRES_PASSWORD_FILE must contain a hex-only password (see secrets/README.md, 'openssl rand -hex'); refusing to build DATABASE_URL from a non-hex value." >&2
+      exit 1
+      ;;
+  esac
   export DATABASE_URL="postgres://${POSTGRES_USER:-magstacker}:${POSTGRES_PASSWORD}@${DB_HOST:-db}:${DB_PORT:-5432}/${POSTGRES_DB:-magstacker}"
 fi
 

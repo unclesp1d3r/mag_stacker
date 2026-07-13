@@ -53,10 +53,11 @@ curl -o .env https://raw.githubusercontent.com/unclesp1d3r/mag_stacker/main/.env
 #    set to the address you'll actually open it at.
 
 # 3. Create the two Docker secret files (R16) — the database password and the
-#    Better Auth signing secret are NOT set in .env:
+#    Better Auth signing secret are NOT set in .env. Restrict them to
+#    owner-only permissions as you create them:
 mkdir -p secrets
-openssl rand -hex 24 > secrets/postgres_password.txt
-openssl rand -hex 32 > secrets/better_auth_secret.txt
+(umask 077 && openssl rand -hex 24 > secrets/postgres_password.txt)
+(umask 077 && openssl rand -hex 32 > secrets/better_auth_secret.txt)
 
 # 4. Pull the published image and start the stack
 docker compose pull
@@ -77,10 +78,11 @@ cp .env.example .env
 # to the address you'll actually open it at.
 
 # Create the two Docker secret files (R16) — the database password and the
-# Better Auth signing secret are NOT set in .env:
+# Better Auth signing secret are NOT set in .env. Restrict them to
+# owner-only permissions as you create them:
 mkdir -p secrets
-openssl rand -hex 24 > secrets/postgres_password.txt
-openssl rand -hex 32 > secrets/better_auth_secret.txt
+(umask 077 && openssl rand -hex 24 > secrets/postgres_password.txt)
+(umask 077 && openssl rand -hex 32 > secrets/better_auth_secret.txt)
 
 docker compose up --build -d                  # migrates, seeds your first admin, starts the app
 ```
@@ -93,11 +95,13 @@ Open `http://<your-server>:3000/login`, sign in, and add the rest of the account
 
 ### Backups
 
-Everything lives in Postgres, so a normal `pg_dump` is your backup. Restoring it brings back every firearm, magazine, compatibility link, and share exactly as they were:
+A `pg_dump` covers the database — every firearm, magazine, compatibility link, and share exactly as they were:
 
 ```bash
 docker compose exec db pg_dump -U "$POSTGRES_USER" -Fc -d "$POSTGRES_DB" > magstacker.dump
 ```
+
+**It does not include uploaded documents** (receipts, warranties, ATF forms) — those blobs live on the separate `magstacker-uploads` volume, not in Postgres, so a Postgres-only restore would come back missing every attachment. To back up both together, use the password-encrypted export on the **Admin → Backup** screen, or take a separate backup of the uploads volume alongside your `pg_dump`.
 
 For running the Postgres and upload volumes on an encrypted host disk — and
 a rundown of which threats disk encryption covers versus which an encrypted
@@ -126,7 +130,7 @@ Stack: Next.js 16 (App Router), React 19, Bun, Drizzle ORM, Postgres, Better Aut
 
 ```bash
 mkdir -p secrets                                          # once, if not already created
-openssl rand -hex 24 > secrets/postgres_password.txt      # (see secrets/README.md)
+[ -f secrets/postgres_password.txt ] || (umask 077 && openssl rand -hex 24 > secrets/postgres_password.txt)  # (see secrets/README.md)
 docker compose up -d db        # local Postgres on host port 5544
 export DATABASE_URL="postgres://magstacker:$(cat secrets/postgres_password.txt)@localhost:5544/magstacker"
 bun install

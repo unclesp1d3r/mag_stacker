@@ -72,10 +72,11 @@ if [[ ! -f .env ]]; then
   echo "  - BETTER_AUTH_URL     (must match the origin you'll open the app at)"
   echo ""
   echo "Then create the two Docker secret files (R16) — the database password"
-  echo "and the Better Auth signing secret are NOT set in .env:"
+  echo "and the Better Auth signing secret are NOT set in .env. Restrict them to"
+  echo "owner-only permissions as you create them:"
   echo "  mkdir -p secrets"
-  echo "  openssl rand -hex 24 > secrets/postgres_password.txt"
-  echo "  openssl rand -hex 32 > secrets/better_auth_secret.txt"
+  echo "  (umask 077 && openssl rand -hex 24 > secrets/postgres_password.txt)"
+  echo "  (umask 077 && openssl rand -hex 32 > secrets/better_auth_secret.txt)"
   echo "(hex, not base64 — the password lands unescaped in a connection URL.)"
   echo ""
   echo "Postgres only applies the password the first time its data volume is"
@@ -95,16 +96,24 @@ auth_secret_file="secrets/better_auth_secret.txt"
 
 fail=0
 
+# Secret files inherit the caller's umask at creation time, which commonly
+# leaves them 0644 (world-readable). Tighten any existing file to owner-only
+# on every run rather than just checking non-emptiness — best-effort (a
+# read-only bind mount or a file we don't own shouldn't block startup).
 if [[ ! -s "${postgres_password_file}" ]]; then
   echo "Error: ${postgres_password_file} is missing or empty." >&2
-  echo "       Create it: openssl rand -hex 24 > ${postgres_password_file}" >&2
+  echo "       Create it: (umask 077 && openssl rand -hex 24 > ${postgres_password_file})" >&2
   fail=1
+else
+  chmod 600 "${postgres_password_file}" 2>/dev/null || true
 fi
 
 if [[ ! -s "${auth_secret_file}" ]]; then
   echo "Error: ${auth_secret_file} is missing or empty." >&2
-  echo "       Create it: openssl rand -hex 32 > ${auth_secret_file}" >&2
+  echo "       Create it: (umask 077 && openssl rand -hex 32 > ${auth_secret_file})" >&2
   fail=1
+else
+  chmod 600 "${auth_secret_file}" 2>/dev/null || true
 fi
 
 # --- Read .env for presence/placeholder checks (values are never printed) --
