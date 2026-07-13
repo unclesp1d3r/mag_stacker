@@ -33,6 +33,37 @@ import {
  * progress, so this is a readable approximation, not a literal signal. */
 const ASSUME_APPLYING_AFTER_MS = 4000;
 
+/** Highest Unicode code point the Fetch spec allows in a header value (it
+ * restricts values to `ByteString` — code units U+0000 through U+00FF). */
+const MAX_HEADER_SAFE_CODE_POINT = 0xff;
+
+/**
+ * Whether `password` is safe to send as the `X-Backup-Password` request
+ * header (review finding: data integrity). `fetch()`/`Headers` throw
+ * synchronously while building the request for any header value containing
+ * a code point above `MAX_HEADER_SAFE_CODE_POINT` — e.g. a currency symbol
+ * like the euro sign, curly quotes, CJK, or emoji. `postRestore`'s
+ * try/catch already keeps that exception from crashing the page, but
+ * without this check it surfaced as an opaque browser error via the generic
+ * `client_error` fallback. Checked up front instead, so the operator gets
+ * an accurate, actionable message and the doomed request is never attempted.
+ *
+ * Exported as a pure function so the gate is unit-testable without a DOM,
+ * mirroring `canExportBackup` in the sibling export panel. Iterates code
+ * points (not UTF-16 code units) so a surrogate-pair character such as an
+ * emoji is correctly flagged as unsafe rather than accidentally passing on
+ * its individual halves.
+ */
+export function isRestorePasswordTransportSafe(password: string): boolean {
+  for (const character of password) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint === undefined || codePoint > MAX_HEADER_SAFE_CODE_POINT) {
+      return false;
+    }
+  }
+  return true;
+}
+
 type Phase = "idle" | "verifying" | "applying";
 
 /** `RestoreOutcome` plus a client-only kind for a request that never got a
@@ -103,7 +134,9 @@ export function RestorePanel() {
   );
 
   const restoring = phase !== "idle";
-  const canSubmit = file !== null && password.length > 0 && !restoring;
+  const passwordTransportSafe = isRestorePasswordTransportSafe(password);
+  const canSubmit =
+    file !== null && password.length > 0 && passwordTransportSafe && !restoring;
 
   function onFileChange(event: ChangeEvent<HTMLInputElement>) {
     setFile(event.currentTarget.files?.[0] ?? null);
@@ -148,10 +181,12 @@ export function RestorePanel() {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canSubmit) return;
     void runRestore(false);
   }
 
   function onConfirmForce() {
+    if (!passwordTransportSafe) return;
     void runRestore(true);
   }
 
@@ -180,13 +215,23 @@ export function RestorePanel() {
             className="block w-full text-sm text-foreground file:mr-3 file:h-8 file:cursor-pointer file:rounded-md file:border-0 file:bg-primary file:px-3 file:text-sm file:font-medium file:text-primary-foreground file:transition-[filter] hover:file:brightness-105 disabled:cursor-not-allowed disabled:opacity-55"
           />
         </Field>
-        <Field label="Restore password" controlId={passwordId} required>
+        <Field
+          label="Restore password"
+          controlId={passwordId}
+          required
+          error={
+            password.length > 0 && !passwordTransportSafe
+              ? "This password contains characters that can't be sent to the server (e.g. emoji, curly quotes, or non-Latin script). Use only Latin-1 characters."
+              : undefined
+          }
+        >
           <Input
             id={passwordId}
             type="password"
             autoComplete="current-password"
             required
             disabled={restoring}
+            aria-invalid={password.length > 0 && !passwordTransportSafe}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />

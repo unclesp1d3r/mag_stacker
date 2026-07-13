@@ -47,9 +47,14 @@ export interface ExportGateState {
  * Whether the export trigger should be enabled (hardening pass, mirrors
  * `MIN_BACKUP_PASSWORD_LENGTH`/`readPassword` in the export route): the
  * password meets the minimum length, both password fields match, the
- * no-recovery warning is acknowledged, and no export is already in flight.
- * Exported as a pure function so the exact gating logic backing the
- * rendered button's `disabled` state is unit-testable without a DOM.
+ * no-recovery warning is acknowledged, and no export has been submitted yet
+ * this session (`pending` covers the whole "pending" → "started" lifetime,
+ * not just the brief pre-navigation window — see `status` in `ExportPanel`).
+ * A genuine full-instance export streams for as long as the underlying data
+ * takes; there's no client-visible completion signal, so the only safe gate
+ * is "has this view already fired one," not a timer. Exported as a pure
+ * function so the exact gating logic backing the rendered button's
+ * `disabled` state is unit-testable without a DOM.
  */
 export function canExportBackup(state: ExportGateState): boolean {
   const passwordLongEnough =
@@ -73,18 +78,27 @@ export function ExportPanel() {
 
   const passwordLongEnough = password.length >= MIN_BACKUP_PASSWORD_LENGTH;
   const passwordsMatch = password.length > 0 && password === confirmPassword;
+  // Anything past "idle" means this view has already fired a submission —
+  // the "started" state (reached ASSUME_STARTED_MS after submit, purely to
+  // update the readout) must NOT re-enable the button, or an admin can fire
+  // a second full-instance encrypted export while the first is still
+  // streaming server-side (review finding: duplicate concurrent export).
+  const alreadySubmitted = status !== "idle";
   const canExport = canExportBackup({
     password,
     confirmPassword,
     acknowledged,
-    pending: status === "pending",
+    pending: alreadySubmitted,
   });
 
   function onSubmit() {
     if (!canExport) return;
     setStatus("pending");
     // The native form submission proceeds after this handler returns (no
-    // preventDefault) — this just drives the in-page status readout.
+    // preventDefault) — this just drives the in-page status readout. Status
+    // never returns to "idle" afterward, so `canExport` above stays false
+    // for the rest of this view's lifetime (a page reload is required to
+    // export again), which is the intended one-export-per-view guard.
     window.setTimeout(() => setStatus("started"), ASSUME_STARTED_MS);
   }
 
