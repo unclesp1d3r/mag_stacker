@@ -294,6 +294,7 @@ export async function* readBundle(
   let entryCount = 0;
   let blobsSeen = 0;
   let blobBytesSeen = 0;
+  const ensuredDirs = new Set<string>();
 
   for await (const entry of extract) {
     entryCount++;
@@ -368,7 +369,11 @@ export async function* readBundle(
       );
     }
 
-    await mkdir(dirname(destPath), { recursive: true, mode: 0o700 });
+    const destDir = dirname(destPath);
+    if (!ensuredDirs.has(destDir)) {
+      await mkdir(destDir, { recursive: true, mode: 0o700 });
+      ensuredDirs.add(destDir);
+    }
     const remainingBudget = manifest.counts.totalBlobBytes - blobBytesSeen;
     const writtenSize = await writeEntryToFile(
       entry,

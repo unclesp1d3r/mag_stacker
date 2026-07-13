@@ -387,8 +387,18 @@ async function wipeLive(tx: Transaction): Promise<void> {
 
 /**
  * F2 (empty instance) promote: swap the staged blob directory in, then
- * promote staging rows into live in one transaction. Either step failing
- * undoes the other — no live change survives a partial failure.
+ * wipe-and-promote staging rows into live in one transaction. Either step
+ * failing undoes the other — no live change survives a partial failure.
+ *
+ * "Empty" here means no *inventory* data (`instanceHasInventoryData`); the
+ * instance can still hold bootstrap auth rows (the admin who is performing the
+ * restore always exists in `public.user`). Those must be replaced, not merged
+ * into — a plain `INSERT` of the backup's users would collide with the live
+ * admin on `user.email`'s UNIQUE constraint and roll the whole restore back.
+ * So this wipes live tables before copying, exactly like force-replace, and
+ * relies on the single wrapping transaction for atomic DB rollback (no
+ * separate snapshot schema is needed: a failed transaction reverts the wipe
+ * too, and the blob swap happened first and is undone on failure).
  */
 async function emptyInstancePromote(ctx: {
   db: Database;
@@ -408,6 +418,7 @@ async function emptyInstancePromote(ctx: {
 
   try {
     await ctx.db.transaction(async (tx) => {
+      await wipeLive(tx);
       await copySchemaToLive(tx, STAGING_SCHEMA);
     });
   } catch (err) {

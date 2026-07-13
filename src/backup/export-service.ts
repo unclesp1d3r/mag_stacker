@@ -62,12 +62,12 @@ async function listUploadBlobs(): Promise<BlobFileInfo[]> {
   );
   const fileNames = entries.filter((entry) => entry.isFile());
 
-  const infos: BlobFileInfo[] = [];
-  for (const entry of fileNames) {
-    const info = await stat(join(uploadDir, entry.name));
-    infos.push({ storageKey: entry.name, size: info.size });
-  }
-  return infos;
+  return Promise.all(
+    fileNames.map(async (entry) => ({
+      storageKey: entry.name,
+      size: (await stat(join(uploadDir, entry.name))).size,
+    })),
+  );
 }
 
 /**
@@ -97,21 +97,23 @@ async function* blobEntriesFor(
  * `bundle.ts`'s own documented exception: `db.ndjson` is JSON-per-row text,
  * not the binary attachments R13/KTD3 are actually concerned with, and
  * `writeBundle` buffers it internally regardless (it needs an exact byte
- * length up front for the tar header). Buffering it once here — instead of
- * once here and again inside `writeBundle` — would require re-plumbing
- * `writeBundle`'s API, which U4 does not own; the double-buffer cost is a
- * small NDJSON payload, not the large blob set R13 is about.
+ * length up front for the tar header); the double-buffer cost is a small
+ * NDJSON payload, not the large blob set R13 is about.
+ *
+ * `exportDatabase` yields exactly one NDJSON line per row, so the row count is
+ * tallied in the same pass that buffers the bytes — no second scan of the
+ * payload. The `Buffer` is returned as-is (no `toString`/re-encode round trip).
  */
 async function bufferDbExport(
   db: DbOrTx,
-): Promise<{ text: string; rowCount: number }> {
+): Promise<{ buffer: Buffer; rowCount: number }> {
   const chunks: Buffer[] = [];
+  let rowCount = 0;
   for await (const chunk of exportDatabase(db)) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    rowCount += 1;
   }
-  const text = Buffer.concat(chunks).toString("utf8");
-  const rowCount = text.split("\n").filter((line) => line.trim() !== "").length;
-  return { text, rowCount };
+  return { buffer: Buffer.concat(chunks), rowCount };
 }
 
 export interface CreateBackupOptions {
@@ -141,7 +143,7 @@ export async function createBackup(
 ): Promise<Readable> {
   await requireAdmin();
 
-  const [{ text: dbText, rowCount }, blobInfos] = await Promise.all([
+  const [{ buffer: dbBuffer, rowCount }, blobInfos] = await Promise.all([
     bufferDbExport(options.db),
     listUploadBlobs(),
   ]);
@@ -161,7 +163,7 @@ export async function createBackup(
   return writeBundle(
     {
       manifest,
-      dbStream: Readable.from([dbText]),
+      dbStream: Readable.from([dbBuffer]),
       blobEntries: blobEntriesFor(blobInfos),
     },
     createEncryptStream(key, salt),

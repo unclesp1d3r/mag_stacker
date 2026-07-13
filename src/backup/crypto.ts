@@ -69,6 +69,15 @@ export const DEFAULT_KDF_PARAMS: KdfParams = {
   alg: sodium.crypto_pwhash_ALG_ARGON2ID13,
 };
 
+/**
+ * Upper bounds accepted for KDF parameters read from an untrusted bundle
+ * header (see `readHeader`). Generous relative to MODERATE (3 / 256 MiB) so a
+ * future SENSITIVE-tier bundle still validates, but finite so a hostile header
+ * cannot force an unbounded pre-authentication Argon2id allocation.
+ */
+const MAX_KDF_OPSLIMIT = 10;
+const MAX_KDF_MEMLIMIT = 1024 * 1024 * 1024; // 1 GiB
+
 /** The bundle's unencrypted crypto header — see module doc comment. */
 export interface CryptoHeader {
   readonly version: number;
@@ -220,6 +229,18 @@ export function readHeader(buf: Buffer): CryptoHeader {
 
   const alg = buf.readUInt8(offset);
   offset += 1;
+
+  // The KDF cost parameters come straight off an untrusted bundle header and
+  // are fed to Argon2id (`deriveKey`) BEFORE any ciphertext byte is
+  // authenticated. Without an upper bound, a crafted bundle could set
+  // memlimit/opslimit arbitrarily high and exhaust memory/CPU on an admin's
+  // restore attempt. Legitimate bundles use OWASP MODERATE (opslimit 3,
+  // memlimit 256 MiB), well within these ceilings.
+  if (opslimit > MAX_KDF_OPSLIMIT || memlimit > MAX_KDF_MEMLIMIT) {
+    throw new InvalidHeaderError(
+      `crypto header KDF parameters exceed the accepted maximum (opslimit=${opslimit}, memlimit=${memlimit})`,
+    );
+  }
 
   const secretstreamHeader = Buffer.from(
     buf.subarray(offset, offset + SECRETSTREAM_HEADER_BYTES),

@@ -60,13 +60,19 @@ async function postRestore(
       outcome?: string;
       message?: string;
     };
-    if (!body.outcome) {
-      return { kind: "client_error", message: "Malformed response." };
+    if (!body.outcome || !(body.outcome in RESTORE_OUTCOME_COPY)) {
+      // The route can also return outcomes the UI doesn't model (`bad_request`,
+      // `error`); render those through the unexpected-error fallback rather
+      // than indexing the copy map with an unknown key.
+      return {
+        kind: "client_error",
+        message: body.message ?? "Malformed response.",
+      };
     }
     return {
-      kind: body.outcome,
+      kind: body.outcome as RestoreOutcome["kind"],
       message: body.message ?? "",
-    } as DisplayOutcome;
+    };
   } catch (error) {
     return {
       kind: "client_error",
