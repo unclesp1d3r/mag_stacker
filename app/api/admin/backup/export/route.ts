@@ -64,7 +64,12 @@ export async function POST(request: Request): Promise<Response> {
       actor: user.email,
       action: "export",
       outcome: `failure: ${errorMessage(error)}`,
-    }).catch(() => {});
+    }).catch((auditError) =>
+      console.error(
+        "backup export: failed to record a bad-password audit event",
+        auditError,
+      ),
+    );
     return Response.json({ error: errorMessage(error) }, { status: 400 });
   }
 
@@ -76,17 +81,45 @@ export async function POST(request: Request): Promise<Response> {
       actor: user.email,
       action: "export",
       outcome: `failure: ${errorMessage(error)}`,
-    }).catch(() => {});
+    }).catch((auditError) =>
+      console.error(
+        "backup export: failed to record a build-failure audit event",
+        auditError,
+      ),
+    );
     return Response.json({ error: "backup export failed" }, { status: 500 });
   }
 
+  // Unlike the failure paths above (which already have a real result — a
+  // 400/500 — to return regardless of whether the audit write lands), a
+  // failure to record *this* row must not silently discard the bundle that
+  // was just built by letting the rejection propagate as an unhandled 500
+  // (which the client couldn't distinguish from a real export failure).
+  // Log-and-still-deliver: the export already succeeded, so the bundle ships
+  // either way — the audit-write failure is only ever logged, never masked.
   await recordOperatorEvent({
     actor: user.email,
     action: "export",
     outcome: "success",
-  });
+  }).catch((auditError) =>
+    console.error(
+      "backup export: failed to record the success audit event (bundle is being delivered anyway)",
+      auditError,
+    ),
+  );
 
   const filename = `magstacker-backup-${timestampForFilename()}.magstacker-backup`;
+  // A mid-stream failure (e.g. a blob deleted between stat and read, an I/O
+  // error) would otherwise yield a truncated download with `operator_audit`
+  // permanently showing "success" above and zero server-side signal — attach
+  // an error listener before handing the stream off so at least the failure
+  // is logged.
+  bundle.on("error", (err) =>
+    console.error(
+      "backup export: bundle stream failed after the success audit was already recorded",
+      err,
+    ),
+  );
   return new Response(Readable.toWeb(bundle) as unknown as ReadableStream, {
     status: 200,
     headers: {

@@ -420,6 +420,69 @@ describe("admin backup API routes (U6)", () => {
     expect(res.status).toBe(403);
   });
 
+  // `same-origin.ts`'s third branch: neither `Origin` nor `Referer` present,
+  // decided from `Sec-Fetch-Site` alone.
+  test("an export POST with no Origin/Referer and Sec-Fetch-Site: cross-site is refused with 403", async () => {
+    currentUser = ADMIN;
+    const res = await exportPost(
+      exportRequest(PASSWORD, {
+        Origin: null,
+        "Sec-Fetch-Site": "cross-site",
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(await auditRowsFor("export")).toHaveLength(0);
+  });
+
+  test("an export POST with no Origin/Referer and Sec-Fetch-Site: same-origin is allowed", async () => {
+    currentUser = ADMIN;
+    const res = await exportPost(
+      exportRequest(PASSWORD, {
+        Origin: null,
+        "Sec-Fetch-Site": "same-origin",
+      }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  test("an export POST with no Origin/Referer and Sec-Fetch-Site: none is allowed", async () => {
+    currentUser = ADMIN;
+    const res = await exportPost(
+      exportRequest(PASSWORD, {
+        Origin: null,
+        "Sec-Fetch-Site": "none",
+      }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  // `same-origin.ts`'s fourth branch: none of the three signals present at
+  // all — default-deny rather than assumed same-origin.
+  test("an export POST with none of Origin, Referer, or Sec-Fetch-Site is refused with 403", async () => {
+    currentUser = ADMIN;
+    const res = await exportPost(
+      exportRequest(PASSWORD, {
+        Origin: null,
+        "Sec-Fetch-Site": null,
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(await auditRowsFor("export")).toHaveLength(0);
+  });
+
+  test("a restore POST with none of Origin, Referer, or Sec-Fetch-Site is refused with 403", async () => {
+    currentUser = ADMIN;
+    const res = await restorePost(
+      restoreRequest({
+        password: PASSWORD,
+        body: Readable.from([Buffer.alloc(0)]),
+        headerOverrides: { Origin: null, "Sec-Fetch-Site": null },
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(await auditRowsFor("restore")).toHaveLength(0);
+  });
+
   // --- Minimum export password length (hardening pass) -----------------------
 
   test("an export with a too-short password returns 400 and records no backup", async () => {

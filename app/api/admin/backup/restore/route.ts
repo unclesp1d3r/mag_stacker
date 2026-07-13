@@ -77,18 +77,34 @@ export async function POST(request: Request): Promise<Response> {
       actor: user.email,
       action: "restore",
       outcome: `failure: ${errorMessage(error)}`,
-    }).catch(() => {});
+    }).catch((auditError) =>
+      console.error(
+        "backup restore: failed to record a restore-failure audit event",
+        auditError,
+      ),
+    );
     return Response.json(
       { outcome: "error", message: "restore failed unexpectedly" },
       { status: 500 },
     );
   }
 
+  // Mirrors the export route's success-path handling: the restore already
+  // committed (or was refused) by the time this runs, so an audit-write
+  // failure here must be logged rather than left to propagate as an
+  // unhandled rejection — that would surface as a generic 500 to the client,
+  // indistinguishable from a real restore failure, even though the restore
+  // itself already has a real, decided `outcome`.
   await recordOperatorEvent({
     actor: user.email,
     action: "restore",
     outcome: outcome.kind,
-  });
+  }).catch((auditError) =>
+    console.error(
+      `backup restore: failed to record the "${outcome.kind}" audit event`,
+      auditError,
+    ),
+  );
 
   return Response.json(
     { outcome: outcome.kind, message: outcome.message },
