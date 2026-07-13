@@ -82,6 +82,39 @@ function decodeLine(buffer: Buffer<ArrayBufferLike>): string {
 }
 
 /**
+ * Thrown when a parsed `db.ndjson` line is not a well-formed
+ * `{ table, row }` entry. A restore bundle is admin-uploaded but its content
+ * is still untrusted (corrupted download, or a deliberately crafted bundle —
+ * KTD11), so a malformed line must fail with a clear, attributable error
+ * before it is ever spread into `tx.insert(...).values(row)`, rather than
+ * surfacing as a generic downstream Postgres error.
+ */
+export class InvalidExportRowError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidExportRowError";
+  }
+}
+
+/**
+ * Shape guard for one `JSON.parse`d NDJSON line, mirroring `manifest.ts`'s
+ * `parseManifest` validation pattern rather than trusting the parse result
+ * via a bare `as ExportedRow` cast: `table` must be a string, and `row` must
+ * be a plain object — not `null`, and not an array (both of which pass
+ * `typeof x === "object"`).
+ */
+export function isExportedRow(value: unknown): value is ExportedRow {
+  if (typeof value !== "object" || value === null) return false;
+  const { table, row } = value as Record<string, unknown>;
+  return (
+    typeof table === "string" &&
+    typeof row === "object" &&
+    row !== null &&
+    !Array.isArray(row)
+  );
+}
+
+/**
  * JS property keys (not SQL column names) on `table` whose values are
  * date/timestamp columns. Cached per table by `importDatabase` since the same
  * table appears across many NDJSON lines.
@@ -141,7 +174,13 @@ export async function importDatabase(
     for await (const line of readBoundedLines(stream, MAX_NDJSON_LINE_BYTES)) {
       if (line.trim() === "") continue;
 
-      const parsed = JSON.parse(line) as ExportedRow;
+      const parsed: unknown = JSON.parse(line);
+      if (!isExportedRow(parsed)) {
+        throw new InvalidExportRowError(
+          "Backup's db.ndjson contains a line that is not a well-formed { table, row } entry — refusing to import; this may be a corrupted or malicious bundle.",
+        );
+      }
+
       const table = TABLES_BY_NAME.get(parsed.table);
       if (!table) {
         throw new Error(

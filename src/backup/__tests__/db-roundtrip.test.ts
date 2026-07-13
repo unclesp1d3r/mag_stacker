@@ -39,6 +39,7 @@ import {
 } from "../../db/schema";
 import { type ExportedRow, exportDatabase } from "../db-export";
 import {
+  InvalidExportRowError,
   importDatabase,
   MAX_NDJSON_LINE_BYTES,
   wipeDatabase,
@@ -415,6 +416,74 @@ describe("DB export/import round trip (U3)", () => {
     // too, not leave a partially-applied import.
     const rows = await db.select().from(user);
     expect(rows).toHaveLength(0);
+  });
+
+  test("import rejects a line referencing an unknown table, without inserting any rows from earlier in the same stream (rollback guard)", async () => {
+    const validLine = `${JSON.stringify({
+      table: "user",
+      row: {
+        id: randomUUID(),
+        name: "Should Not Persist",
+        email: `${randomUUID()}@example.test`,
+      },
+    } satisfies ExportedRow)}\n`;
+    const unknownTableLine = JSON.stringify({
+      table: "not_a_real_table",
+      row: {},
+    } satisfies ExportedRow);
+
+    let caught: unknown;
+    try {
+      await importDatabase(db, Readable.from([validLine + unknownTableLine]));
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toMatch(/unknown table/i);
+
+    // The whole import runs in one transaction — the unknown-table line's
+    // rejection must roll back the earlier, otherwise-valid `user` insert
+    // too, not leave a partially-applied import.
+    const rows = await db.select().from(user);
+    expect(rows).toHaveLength(0);
+  });
+
+  test("import rejects a malformed row (null, string, or array `row`) via a named InvalidExportRowError, without inserting any rows from earlier in the same stream", async () => {
+    const validLine = `${JSON.stringify({
+      table: "user",
+      row: {
+        id: randomUUID(),
+        name: "Should Not Persist Either",
+        email: `${randomUUID()}@example.test`,
+      },
+    } satisfies ExportedRow)}\n`;
+
+    const malformedRowLines = [
+      `{"table":"user","row":null}`,
+      `{"table":"user","row":"not-an-object"}`,
+      `{"table":"user","row":[]}`,
+    ];
+
+    for (const malformedLine of malformedRowLines) {
+      await wipeDatabase(db);
+
+      let caught: unknown;
+      try {
+        await importDatabase(db, Readable.from([validLine + malformedLine]));
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(InvalidExportRowError);
+      expect((caught as Error).message).toMatch(/not a well-formed/i);
+
+      // The whole import runs in one transaction — the malformed row's
+      // rejection must roll back the earlier, otherwise-valid `user` insert
+      // too, not leave a partially-applied import.
+      const rows = await db.select().from(user);
+      expect(rows).toHaveLength(0);
+    }
   });
 
   test("import still handles a final line with no trailing newline (no regression from switching off the readline-based reader)", async () => {

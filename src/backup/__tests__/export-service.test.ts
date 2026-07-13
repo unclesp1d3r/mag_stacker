@@ -34,6 +34,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
+import { eq } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
@@ -50,6 +51,7 @@ import {
   HEADER_BYTE_LENGTH,
   readHeader,
 } from "../crypto";
+import { type ExportedRow, exportDatabase } from "../db-export";
 import { wipeDatabase } from "../db-import";
 import { createBackup } from "../export-service";
 import {
@@ -391,6 +393,68 @@ describe("backup export service (U4)", () => {
           "begin isolation level repeatable read read only",
       ),
     ).toBe(true);
+  });
+
+  test("the DB export's snapshot is behaviorally consistent: a row inserted by a second, concurrent connection while the export transaction is open never appears in the export (torn-bundle guard, behavioral)", async () => {
+    // The previous test only proves the mechanism — that `begin isolation
+    // level repeatable read read only` was issued. This test proves the
+    // outcome that mechanism is supposed to guarantee: once the transaction's
+    // snapshot is pinned, a write landing on a second, independent connection
+    // is invisible to a `SELECT` running inside it.
+    const ownerId = `owner-${randomUUID()}`;
+    await db.insert(user).values({
+      id: ownerId,
+      name: "Snapshot Before",
+      email: `${ownerId}@example.test`,
+    });
+
+    const concurrentOwnerId = `owner-${randomUUID()}`;
+    let dbText = "";
+
+    await db.transaction(
+      async (tx) => {
+        // Repeatable read's MVCC snapshot is pinned at the transaction's
+        // first statement, so issue one here — before the concurrent write
+        // below — to make the snapshot boundary deterministic instead of
+        // racing it.
+        await tx.select().from(user).where(eq(user.id, ownerId));
+
+        // A second, fully independent connection writes a brand-new row into
+        // an exported table WHILE this transaction's snapshot is already
+        // pinned open.
+        const otherPool = new Pool({
+          connectionString: container.getConnectionUri(),
+        });
+        try {
+          const otherDb = drizzle(otherPool, { schema });
+          await otherDb.insert(user).values({
+            id: concurrentOwnerId,
+            name: "Snapshot After (must not appear in export)",
+            email: `${concurrentOwnerId}@example.test`,
+          });
+        } finally {
+          await otherPool.end();
+        }
+
+        // exportDatabase reads through tx's pinned snapshot — the concurrent
+        // insert above must be invisible to it.
+        const { buffer } = await collectWithStats(exportDatabase(tx));
+        dbText = buffer.toString("utf8");
+      },
+      { isolationLevel: "repeatable read", accessMode: "read only" },
+    );
+
+    const exportedUserIds = new Set(
+      dbText
+        .split("\n")
+        .filter((line) => line.trim() !== "")
+        .map((line) => JSON.parse(line) as ExportedRow)
+        .filter((entry) => entry.table === "user")
+        .map((entry) => entry.row.id),
+    );
+
+    expect(exportedUserIds.has(ownerId)).toBe(true);
+    expect(exportedUserIds.has(concurrentOwnerId)).toBe(false);
   });
 
   test("a non-admin caller is rejected", async () => {
