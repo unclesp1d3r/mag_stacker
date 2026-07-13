@@ -75,8 +75,8 @@ export const DEFAULT_KDF_PARAMS: KdfParams = {
  * future SENSITIVE-tier bundle still validates, but finite so a hostile header
  * cannot force an unbounded pre-authentication Argon2id allocation.
  */
-const MAX_KDF_OPSLIMIT = 10;
-const MAX_KDF_MEMLIMIT = 1024 * 1024 * 1024; // 1 GiB
+export const MAX_KDF_OPSLIMIT = 10;
+export const MAX_KDF_MEMLIMIT = 1024 * 1024 * 1024; // 1 GiB
 
 /** The bundle's unencrypted crypto header — see module doc comment. */
 export interface CryptoHeader {
@@ -242,6 +242,18 @@ export function readHeader(buf: Buffer): CryptoHeader {
     );
   }
 
+  // `alg` is the third untrusted KDF field and is fed to `crypto_pwhash`
+  // (`deriveKey`) just like opslimit/memlimit above. This module only ever
+  // writes Argon2id (see `DEFAULT_KDF_PARAMS`), so any other value is a
+  // corrupt or crafted bundle — reject it here as a header problem, rather
+  // than letting a generic native `crypto_pwhash` error escape unclassified
+  // past `InvalidHeaderError`/`DecryptionAuthError`.
+  if (alg !== sodium.crypto_pwhash_ALG_ARGON2ID13) {
+    throw new InvalidHeaderError(
+      `crypto header KDF algorithm is not supported: ${alg}`,
+    );
+  }
+
   const secretstreamHeader = Buffer.from(
     buf.subarray(offset, offset + SECRETSTREAM_HEADER_BYTES),
   );
@@ -317,6 +329,12 @@ export function createEncryptStream(
     throw new RangeError(`salt must be ${SALT_BYTES} bytes`);
   }
 
+  // Defensively copy on ingest, matching `readHeader`'s discipline — this
+  // closure holds `salt` for the lifetime of the stream (it's written into
+  // every call's header), so a caller mutating its buffer after the call
+  // must not be able to affect an already-in-flight encryption.
+  const ingestedSalt = Buffer.from(salt);
+
   const state = Buffer.alloc(SECRETSTREAM_STATE_BYTES);
   const secretstreamHeader = Buffer.alloc(SECRETSTREAM_HEADER_BYTES);
   sodium.crypto_secretstream_xchacha20poly1305_init_push(
@@ -351,7 +369,7 @@ export function createEncryptStream(
           this.push(
             writeHeader({
               version: FORMAT_VERSION,
-              salt,
+              salt: ingestedSalt,
               kdfParams,
               secretstreamHeader,
             }),
@@ -374,7 +392,7 @@ export function createEncryptStream(
           this.push(
             writeHeader({
               version: FORMAT_VERSION,
-              salt,
+              salt: ingestedSalt,
               kdfParams,
               secretstreamHeader,
             }),
@@ -394,19 +412,6 @@ export function createEncryptStream(
   });
 }
 
-/**
- * Builds a `Transform` that decrypts a MagStacker backup bundle stream
- * produced by {@link createEncryptStream}: it parses the leading
- * {@link CryptoHeader} itself (the header is unencrypted preamble, so no key
- * is needed to read it), then authenticates and decrypts each ciphertext
- * chunk with `key`.
- *
- * Throws {@link InvalidHeaderError} for a malformed/truncated header and
- * {@link DecryptionAuthError} for a wrong key, a tampered ciphertext byte
- * (anywhere, including the final chunk), or a stream that ends before an
- * authenticated final chunk — in every failure case, no unauthenticated
- * plaintext is ever pushed downstream.
- */
 /**
  * Builds a `Transform` that decrypts a MagStacker backup bundle stream from a
  * `password` alone (U5's restore entry point). {@link createDecryptStream}
@@ -494,6 +499,19 @@ export function createDecryptStreamFromPassword(password: string): Transform {
   return outer;
 }
 
+/**
+ * Builds a `Transform` that decrypts a MagStacker backup bundle stream
+ * produced by {@link createEncryptStream}: it parses the leading
+ * {@link CryptoHeader} itself (the header is unencrypted preamble, so no key
+ * is needed to read it), then authenticates and decrypts each ciphertext
+ * chunk with `key`.
+ *
+ * Throws {@link InvalidHeaderError} for a malformed/truncated header and
+ * {@link DecryptionAuthError} for a wrong key, a tampered ciphertext byte
+ * (anywhere, including the final chunk), or a stream that ends before an
+ * authenticated final chunk — in every failure case, no unauthenticated
+ * plaintext is ever pushed downstream.
+ */
 export function createDecryptStream(key: Buffer): Transform {
   if (key.byteLength !== SECRETSTREAM_KEY_BYTES) {
     throw new RangeError(`key must be ${SECRETSTREAM_KEY_BYTES} bytes`);

@@ -11,6 +11,8 @@ import {
   FORMAT_VERSION,
   generateSalt,
   InvalidHeaderError,
+  MAX_KDF_MEMLIMIT,
+  MAX_KDF_OPSLIMIT,
   readHeader,
   writeHeader,
 } from "../crypto";
@@ -127,6 +129,63 @@ describe("header round-trip", () => {
       secretstreamHeader: Buffer.alloc(24),
     });
     bytes[4] = 99; // version byte follows the 4-byte magic
+
+    expect(() => readHeader(bytes)).toThrow(InvalidHeaderError);
+  });
+
+  test("readHeader rejects an opslimit one above the accepted maximum", () => {
+    const salt = generateSalt();
+    const bytes = writeHeader({
+      version: FORMAT_VERSION,
+      salt,
+      kdfParams: { ...DEFAULT_KDF_PARAMS, opslimit: MAX_KDF_OPSLIMIT + 1 },
+      secretstreamHeader: Buffer.alloc(24),
+    });
+
+    expect(() => readHeader(bytes)).toThrow(InvalidHeaderError);
+    expect(() => readHeader(bytes)).toThrow(/exceed/i);
+  });
+
+  test("readHeader rejects a memlimit one above the accepted maximum", () => {
+    const salt = generateSalt();
+    const bytes = writeHeader({
+      version: FORMAT_VERSION,
+      salt,
+      kdfParams: { ...DEFAULT_KDF_PARAMS, memlimit: MAX_KDF_MEMLIMIT + 1 },
+      secretstreamHeader: Buffer.alloc(24),
+    });
+
+    expect(() => readHeader(bytes)).toThrow(InvalidHeaderError);
+    expect(() => readHeader(bytes)).toThrow(/exceed/i);
+  });
+
+  test("readHeader accepts opslimit and memlimit exactly at the accepted maximum", () => {
+    const salt = generateSalt();
+    const bytes = writeHeader({
+      version: FORMAT_VERSION,
+      salt,
+      kdfParams: {
+        ...DEFAULT_KDF_PARAMS,
+        opslimit: MAX_KDF_OPSLIMIT,
+        memlimit: MAX_KDF_MEMLIMIT,
+      },
+      secretstreamHeader: Buffer.alloc(24),
+    });
+
+    const header = readHeader(bytes);
+
+    expect(header.kdfParams.opslimit).toBe(MAX_KDF_OPSLIMIT);
+    expect(header.kdfParams.memlimit).toBe(MAX_KDF_MEMLIMIT);
+  });
+
+  test("readHeader rejects a KDF algorithm other than Argon2id", () => {
+    const salt = generateSalt();
+    const bytes = writeHeader({
+      version: FORMAT_VERSION,
+      salt,
+      kdfParams: { ...DEFAULT_KDF_PARAMS, alg: DEFAULT_KDF_PARAMS.alg + 1 },
+      secretstreamHeader: Buffer.alloc(24),
+    });
 
     expect(() => readHeader(bytes)).toThrow(InvalidHeaderError);
   });
@@ -258,6 +317,26 @@ describe("encrypt/decrypt round-trip", () => {
     expect(() =>
       createEncryptStream(Buffer.alloc(10), generateSalt()),
     ).toThrow();
+  });
+
+  test("mutating the caller's salt buffer after createEncryptStream does not affect the written header", async () => {
+    const salt = generateSalt();
+    const originalSalt = Buffer.from(salt);
+    const key = deriveKey("hunter2", salt);
+    const plaintext = Buffer.from("small payload");
+
+    const source = Readable.from([plaintext]);
+    const stream = source.pipe(createEncryptStream(key, salt));
+
+    // Mutate the caller's salt buffer immediately after creating the stream,
+    // before any data has necessarily been pushed through it.
+    salt.fill(0xff);
+
+    const encrypted = await collect(stream);
+    const header = readHeader(encrypted);
+
+    expect(header.salt.equals(originalSalt)).toBe(true);
+    expect(header.salt.equals(salt)).toBe(false);
   });
 });
 
