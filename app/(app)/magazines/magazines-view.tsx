@@ -37,6 +37,7 @@ import {
   magazineCapacityAggregate,
 } from "@/src/domain/tables/magazine-groups";
 import { deleteMagazineAction } from "./actions";
+import { formatLastInventoried } from "./last-inventoried";
 import { type FirearmOption, MagazineForm } from "./magazine-form";
 
 export interface MagazineListItem {
@@ -49,6 +50,8 @@ export interface MagazineListItem {
   label: string;
   acquiredDate: string | null;
   notes: string;
+  /** ISO datetime of the most recent "inventoried" log entry; null when never inventoried (U2/U3, #70). */
+  lastInventoriedAt: string | null;
   compatibleFirearmIds: string[];
   compatibleFirearmNames: string[];
 }
@@ -205,6 +208,26 @@ export function MagazinesView({
         header: "Acquired",
         meta: { label: "Acquired" },
         optIn: true,
+      },
+      {
+        // Default-visible counterpart to the opt-in "Acquired" column above
+        // (#70): surfaces inventory staleness without an extra click.
+        // `null -> undefined` lets TanStack's `sortUndefined` (not a plain
+        // comparator) govern where never-inventoried rows land — a plain
+        // comparator would flip their position between ascending and
+        // descending sorts because TanStack negates its result for `desc`,
+        // whereas `sortUndefined` pins undefined consistently regardless of
+        // direction.
+        id: "lastInventoried",
+        accessorFn: (m) => m.lastInventoriedAt ?? undefined,
+        sortUndefined: "first",
+        header: "Last inventoried",
+        meta: { label: "Last inventoried" },
+        cell: ({ getValue }) => (
+          <span className="tabular">
+            {formatLastInventoried(getValue<string | undefined>())}
+          </span>
+        ),
       },
       {
         id: ACTIONS_COLUMN_ID,
