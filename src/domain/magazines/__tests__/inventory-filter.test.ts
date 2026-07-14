@@ -65,6 +65,12 @@ describe("matchesInventoryFilter", () => {
     test("matches a never-inventoried magazine (maximally stale)", () => {
       expect(matchesInventoryFilter(null, { preset: "d90" }, NOW)).toBe(true);
     });
+
+    test("does not match an unparsable lastInventoriedAt", () => {
+      expect(matchesInventoryFilter("not-a-date", { preset: "d90" }, NOW)).toBe(
+        false,
+      );
+    });
   });
 
   describe("d30 and d365 presets share the same strict threshold semantics", () => {
@@ -141,6 +147,10 @@ describe("matchesInventoryFilter", () => {
         matchesInventoryFilter("2030-01-01T00:00:00.000Z", openUpper, NOW),
       ).toBe(true);
     });
+
+    test("does not match an unparsable lastInventoriedAt", () => {
+      expect(matchesInventoryFilter("not-a-date", range, NOW)).toBe(false);
+    });
   });
 });
 
@@ -186,5 +196,50 @@ describe("sanitizeInventoryFilter", () => {
     expect(sanitizeInventoryFilter({ preset: "d90" })).toEqual({
       preset: "d90",
     });
+  });
+
+  test("a non-custom preset strips a stray `after` left over from a prior custom selection", () => {
+    expect(
+      sanitizeInventoryFilter({ preset: "d90", after: "2026-01-01" }),
+    ).toEqual({ preset: "d90" });
+  });
+
+  test("an overflowed custom-range date (e.g. Feb 31) is rejected", () => {
+    expect(
+      sanitizeInventoryFilter({ preset: "custom", after: "2026-02-31" }),
+    ).toEqual({ preset: "all" });
+  });
+
+  test("an inverted custom range (`after` later than `before`) falls back to all", () => {
+    expect(
+      sanitizeInventoryFilter({
+        preset: "custom",
+        after: "2026-06-01",
+        before: "2026-01-01",
+      }),
+    ).toEqual({ preset: "all" });
+  });
+
+  test("a fully-open custom range (no bounds) passes through unchanged", () => {
+    expect(sanitizeInventoryFilter({ preset: "custom" })).toEqual({
+      preset: "custom",
+    });
+  });
+});
+
+describe("sanitizeInventoryFilter + matchesInventoryFilter: fully-open custom range", () => {
+  test("a fully-open custom range matches any real date", () => {
+    const sanitized = sanitizeInventoryFilter({ preset: "custom" });
+    expect(
+      matchesInventoryFilter("2020-01-01T00:00:00.000Z", sanitized, NOW),
+    ).toBe(true);
+    expect(
+      matchesInventoryFilter("2030-01-01T00:00:00.000Z", sanitized, NOW),
+    ).toBe(true);
+  });
+
+  test("a fully-open custom range does not match never-inventoried", () => {
+    const sanitized = sanitizeInventoryFilter({ preset: "custom" });
+    expect(matchesInventoryFilter(null, sanitized, NOW)).toBe(false);
   });
 });

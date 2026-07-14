@@ -221,20 +221,26 @@ export function MagazinesView({
       {
         // Default-visible counterpart to the opt-in "Acquired" column above
         // (#70): surfaces inventory staleness without an extra click.
-        // `null -> undefined` lets TanStack's `sortUndefined` (not a plain
-        // comparator) govern where never-inventoried rows land — a plain
-        // comparator would flip their position between ascending and
-        // descending sorts because TanStack negates its result for `desc`,
-        // whereas `sortUndefined` pins undefined consistently regardless of
-        // direction.
+        // Never-inventoried must sort as if *infinitely old* — top when
+        // ascending (oldest-first), bottom when descending (newest-first) —
+        // so the accessor returns a NUMBER (`-Infinity` for never) and lets
+        // the built-in `"basic"` comparator handle it: TanStack negates a
+        // comparator's result for `desc`, so `-Infinity` naturally flips ends
+        // with direction. (`sortUndefined: "first"` would NOT do this — it
+        // returns before that `desc` inversion, so it pins undefined rows to
+        // the top regardless of sort direction.) The `cell` below still reads
+        // the real value off `row.original`, not this numeric accessor.
         id: "lastInventoried",
-        accessorFn: (m) => m.lastInventoriedAt ?? undefined,
-        sortUndefined: "first",
+        accessorFn: (m) =>
+          m.lastInventoriedAt
+            ? Date.parse(m.lastInventoriedAt)
+            : Number.NEGATIVE_INFINITY,
+        sortingFn: "basic",
         header: "Last inventoried",
         meta: { label: "Last inventoried" },
-        cell: ({ getValue }) => (
+        cell: ({ row }) => (
           <span className="tabular">
-            {formatLastInventoried(getValue<string | undefined>())}
+            {formatLastInventoried(row.original.lastInventoriedAt)}
           </span>
         ),
       },
@@ -506,9 +512,24 @@ export function MagazinesView({
           value={inventoryFilter.preset}
           onChange={(e) => {
             const preset = e.target.value as InventoryPreset;
-            // Presets and a custom range are mutually exclusive: choosing a
-            // non-custom preset clears any persisted after/before bounds.
-            setInventoryFilter({ preset });
+            // Switching to a non-custom preset clears any after/before bounds
+            // (they're mutually exclusive with a preset). Re-selecting
+            // "Custom range…" instead preserves whatever bounds were already
+            // entered, so toggling the preset select back and forth doesn't
+            // silently wipe the user's range.
+            setInventoryFilter(
+              preset === "custom"
+                ? {
+                    preset: "custom",
+                    ...(inventoryFilter.preset === "custom"
+                      ? {
+                          after: inventoryFilter.after,
+                          before: inventoryFilter.before,
+                        }
+                      : {}),
+                  }
+                : { preset },
+            );
           }}
         >
           {INVENTORY_PRESET_OPTIONS.map((option) => (
@@ -531,6 +552,7 @@ export function MagazinesView({
               id={inventoryAfterId}
               type="date"
               value={inventoryFilter.after ?? ""}
+              max={inventoryFilter.before}
               onChange={(e) =>
                 setInventoryFilter({
                   ...inventoryFilter,
@@ -551,6 +573,7 @@ export function MagazinesView({
               id={inventoryBeforeId}
               type="date"
               value={inventoryFilter.before ?? ""}
+              min={inventoryFilter.after}
               onChange={(e) =>
                 setInventoryFilter({
                   ...inventoryFilter,

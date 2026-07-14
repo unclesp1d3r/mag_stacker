@@ -104,4 +104,41 @@ live("loadLastInventoriedBatch (U1)", () => {
     const result = await loadLastInventoriedBatch(db, "magazine", []);
     expect(result.size).toBe(0);
   });
+
+  test("each of several magazine parents in one call gets its own correct max (groupBy doesn't collapse to a global aggregate)", async () => {
+    const magA = await makeMagazine(owner);
+    const magB = await makeMagazine(owner);
+    const magC = await makeMagazine(owner);
+
+    await makeLogEntry("magazine", magA.id, {
+      actorId: owner,
+      eventType: "inventoried",
+      occurredAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+    await makeLogEntry("magazine", magA.id, {
+      actorId: owner,
+      eventType: "inventoried",
+      occurredAt: new Date("2026-01-10T00:00:00.000Z"),
+    });
+
+    await makeLogEntry("magazine", magB.id, {
+      actorId: owner,
+      eventType: "inventoried",
+      occurredAt: new Date("2026-05-01T00:00:00.000Z"),
+    });
+
+    // magC has no inventoried entries — it must stay absent from the map
+    // rather than picking up another parent's max.
+
+    const result = await loadLastInventoriedBatch(db, "magazine", [
+      magA.id,
+      magB.id,
+      magC.id,
+    ]);
+
+    expect(result.get(magA.id)?.toISOString()).toBe("2026-01-10T00:00:00.000Z");
+    expect(result.get(magB.id)?.toISOString()).toBe("2026-05-01T00:00:00.000Z");
+    expect(result.has(magC.id)).toBe(false);
+    expect(result.size).toBe(2);
+  });
 });

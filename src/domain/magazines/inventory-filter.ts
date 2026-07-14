@@ -13,13 +13,20 @@ export type InventoryPreset =
   | "d365"
   | "custom";
 
-export interface InventoryFilter {
-  preset: InventoryPreset;
-  /** Day-precision `YYYY-MM-DD` lower bound, inclusive from the start of that local day. Only meaningful for `custom`. */
-  after?: string;
-  /** Day-precision `YYYY-MM-DD` upper bound, inclusive through the end of that local day. Only meaningful for `custom`. */
-  before?: string;
-}
+/**
+ * Discriminated on `preset`: only the `"custom"` branch carries the
+ * day-precision `after`/`before` range bounds, so a non-custom filter can't
+ * even shape-wise carry stray bounds left over from a prior custom selection.
+ */
+export type InventoryFilter =
+  | { preset: Exclude<InventoryPreset, "custom"> }
+  | {
+      preset: "custom";
+      /** Day-precision `YYYY-MM-DD` lower bound, inclusive from the start of that local day. */
+      after?: string;
+      /** Day-precision `YYYY-MM-DD` upper bound, inclusive through the end of that local day. */
+      before?: string;
+    };
 
 /** Preset labels for the filter `<Select>` — one source shared by the view and its tests. */
 export const INVENTORY_PRESET_OPTIONS: ReadonlyArray<{
@@ -93,9 +100,11 @@ function dayBoundaryMs(value: string, endOfDay: boolean): number | null {
  * - `d30`/`d90`/`d365`: never-inventoried is maximally stale (`true`).
  *   Otherwise strictly more than the threshold's elapsed whole days
  *   (`Math.floor` on UTC epoch-ms difference — exactly N days is `false`).
+ *   An unparsable `lastInventoriedAt` (`NaN` epoch) never matches.
  * - `custom`: never-inventoried can't fall in a range (`false`). `after` is
  *   an inclusive start-of-day lower bound, `before` an inclusive end-of-day
- *   upper bound; a missing bound is open on that side.
+ *   upper bound; a missing bound is open on that side. An unparsable
+ *   `lastInventoriedAt` never matches.
  */
 export function matchesInventoryFilter(
   lastInventoriedAt: string | null,
@@ -107,15 +116,20 @@ export function matchesInventoryFilter(
 
   if (isThresholdPreset(filter.preset)) {
     if (lastInventoriedAt === null) return true;
-    const elapsedDays = Math.floor(
-      (now.getTime() - Date.parse(lastInventoriedAt)) / MS_PER_DAY,
-    );
+    const entryMs = Date.parse(lastInventoriedAt);
+    if (Number.isNaN(entryMs)) return false;
+    const elapsedDays = Math.floor((now.getTime() - entryMs) / MS_PER_DAY);
     return elapsedDays > PRESET_THRESHOLD_DAYS[filter.preset];
   }
 
-  // preset === "custom"
+  // The only remaining case, but narrow explicitly (rather than relying on
+  // `isThresholdPreset` having eliminated the others) so TypeScript narrows
+  // `filter` itself to the `"custom"` branch of the discriminated union and
+  // allows reading `.after`/`.before` below.
+  if (filter.preset !== "custom") return false;
   if (lastInventoriedAt === null) return false;
   const entryMs = Date.parse(lastInventoriedAt);
+  if (Number.isNaN(entryMs)) return false;
   const lowerBound = filter.after ? dayBoundaryMs(filter.after, false) : null;
   const upperBound = filter.before ? dayBoundaryMs(filter.before, true) : null;
   if (lowerBound !== null && entryMs < lowerBound) return false;
@@ -134,10 +148,14 @@ function isValidDayString(value: unknown): value is string {
 
 /**
  * Validate a persisted (or otherwise untrusted) `InventoryFilter` before it
- * reaches `matchesInventoryFilter`. An unrecognized `preset`, or an
- * unparsable `after`/`before`, falls back to `{ preset: "all" }` rather than
- * feeding `NaN` bounds into the predicate (mirrors the view's other
- * stale-filter guards, KTD-7).
+ * reaches `matchesInventoryFilter`. An unrecognized `preset`, an unparsable
+ * `after`/`before`, or an inverted range (`after` later than `before`) falls
+ * back to `{ preset: "all" }` rather than feeding `NaN` bounds or a
+ * can-never-match range into the predicate (mirrors the view's other
+ * stale-filter guards, KTD-7). A non-custom preset strips any stray
+ * `after`/`before` left over from a prior custom selection — the
+ * discriminated-union `InventoryFilter` shape only carries bounds under
+ * `preset: "custom"`.
  */
 export function sanitizeInventoryFilter(raw: unknown): InventoryFilter {
   if (typeof raw !== "object" || raw === null) {
@@ -148,17 +166,24 @@ export function sanitizeInventoryFilter(raw: unknown): InventoryFilter {
   if (typeof preset !== "string" || !isInventoryPreset(preset)) {
     return { preset: "all" };
   }
+  if (preset !== "custom") {
+    return { preset };
+  }
   if (after !== undefined && !isValidDayString(after)) {
     return { preset: "all" };
   }
   if (before !== undefined && !isValidDayString(before)) {
     return { preset: "all" };
   }
+  // Both bounds are valid day strings at this point (or absent); a `YYYY-MM-DD`
+  // string compares correctly with plain `>` (lexical order matches chronological
+  // order for that format), so this doesn't need `dayBoundaryMs`.
+  if (after !== undefined && before !== undefined && after > before) {
+    return { preset: "all" };
+  }
 
-  // The guards above already returned for any defined-but-invalid bound, so a
-  // plain `!== undefined` check here is sufficient (and avoids re-parsing).
   return {
-    preset,
+    preset: "custom",
     ...(after !== undefined ? { after } : {}),
     ...(before !== undefined ? { before } : {}),
   };

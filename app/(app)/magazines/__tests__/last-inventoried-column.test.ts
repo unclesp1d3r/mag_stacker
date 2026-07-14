@@ -25,4 +25,8 @@ describe("formatLastInventoried", () => {
   test("returns an em-dash for undefined", () => {
     expect(formatLastInventoried(undefined)).toBe("—");
   });
+
+  test("returns an em-dash for an unparsable date string", () => {
+    expect(formatLastInventoried("not-a-date")).toBe("—");
+  });
 });

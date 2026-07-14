@@ -30,9 +30,15 @@ function localDateTimeInput(date: Date): string {
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
-/** `YYYY-MM-DD` for a `<input type="date">` value, in UTC (matches the day-string contract of `InventoryFilter.after`/`before`). */
+/**
+ * `YYYY-MM-DD` for a `<input type="date">` value, in the browser's LOCAL day
+ * (matches `dayBoundaryMs` in `src/domain/magazines/inventory-filter.ts`,
+ * which resolves `InventoryFilter.after`/`before` against the viewer's local
+ * calendar day, not UTC).
+ */
 function dayInput(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  const offsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 10);
 }
 
 async function addMagazine(page: Page, brandModel: string, caliber: string) {
