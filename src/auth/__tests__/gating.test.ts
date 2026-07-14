@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { NextRequest } from "next/server";
 import { proxy } from "@/proxy";
 
@@ -43,6 +43,29 @@ liveAuth("Better Auth HTTP surface", () => {
 
   const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@example.com";
   const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "localadminpassword";
+
+  // Self-provision the seeded admin this suite documents it needs. bun runs a
+  // file's beforeAll + tests as one contiguous block, so re-creating the admin
+  // here makes these assertions robust to a sibling test file that deletes the
+  // shared ambient-DB admin — the source of the pre-existing full-suite flake.
+  // Idempotent, mirroring scripts/seed-admin.ts.
+  beforeAll(async () => {
+    const { auth } = await import("@/auth");
+    const { db } = await import("@/src/db/client");
+    const existing = await db.query.user.findFirst({
+      where: (u, { eq }) => eq(u.email, ADMIN_EMAIL),
+    });
+    if (!existing) {
+      await auth.api.createUser({
+        body: {
+          email: ADMIN_EMAIL,
+          password: ADMIN_PASSWORD,
+          name: "Administrator",
+          role: "admin",
+        },
+      });
+    }
+  });
 
   // A fresh client IP per test isolates each from the DB-backed rate-limit
   // buckets so a re-run within the 60s window does not interfere.

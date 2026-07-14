@@ -12,14 +12,27 @@
 #       docker compose up --build -d
 #     Builds the Dockerfile and tags it with the same image name.
 #
-# Secrets (POSTGRES_PASSWORD, BETTER_AUTH_SECRET, ...) are supplied at runtime
-# via a gitignored `.env` file or the host environment — never committed here
-# or baked into the image. Copy `.env.example` to `.env` and fill it in.
+# Secrets: the database password and the Better Auth signing secret are
+# supplied as Docker secrets — plaintext files under ./secrets/, mounted
+# read-only at /run/secrets/* inside the containers that need them, never as
+# plain environment variables and never baked into the image (R16). Create
+# them before first `up`:
+#   mkdir -p secrets
+#   openssl rand -hex 24 > secrets/postgres_password.txt
+#   openssl rand -hex 32 > secrets/better_auth_secret.txt
+# (hex, not base64 — the password is embedded unescaped in DATABASE_URL by
+# docker-entrypoint.sh, and base64's `/+=` characters break a connection URL.)
+# `secrets/` is gitignored — see secrets/README.md. `docker-entrypoint.sh`
+# resolves the `*_FILE` vars into the app/migrate process env at container
+# start; the official postgres image resolves POSTGRES_PASSWORD_FILE itself.
 #
-# Required variables — the stack refuses to start (a `${VAR:?...}` guard aborts
+# Everything else (POSTGRES_USER/DB, ADMIN_EMAIL/PASSWORD, ports, ...) stays a
+# plain env var via a gitignored `.env` file or the host environment. Copy
+# `.env.example` to `.env` and fill it in.
+#
+# Required — the stack refuses to start (a `${VAR:?...}` guard aborts
 # `docker compose` before anything runs) if these are unset or empty:
-#   • POSTGRES_PASSWORD   — database password
-#   • BETTER_AUTH_SECRET  — auth signing secret (openssl rand -base64 32)
+#   • secrets/postgres_password.txt, secrets/better_auth_secret.txt (files, not env vars)
 # Optional (sensible defaults): POSTGRES_USER/POSTGRES_DB (magstacker),
 #   BETTER_AUTH_URL (http://localhost:3000 — set to your real origin behind a
 #   proxy), APP_HOST_PORT/POSTGRES_HOST_PORT, MAGSTACKER_VERSION (latest), and
@@ -27,6 +40,23 @@
 #
 # Network exposure on a home network should sit behind a TLS-terminating
 # reverse proxy so session cookies and credentials are never sent in cleartext.
+#
+# Encrypted-volume-ready (R17): `magstacker-pgdata` (Postgres data) and
+# `magstacker-uploads` (document/photo blobs, UPLOAD_DIR) are the two named
+# volumes holding data at rest. Both are plain named volumes with no
+# host-path binding here, so the turnkey path to running them on an
+# encrypted host disk is: point Docker's data-root (or these volumes'
+# driver_opts, per-volume) at a directory that lives on a LUKS-encrypted (or
+# equivalent encrypted cloud) block device, then `docker compose up -d` as
+# normal — the app never has to know the underlying disk is encrypted. See
+# docs/deployment.md for the exact steps; that's a host/operator
+# responsibility the app cannot perform (R19, R20).
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  better_auth_secret:
+    file: ./secrets/better_auth_secret.txt
 
 services:
   db:
@@ -34,19 +64,46 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-magstacker}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_DB: ${POSTGRES_DB:-magstacker}
+    secrets:
+      - postgres_password
     volumes:
+      # Attach point for an encrypted host disk (R17) — see the note above.
       - magstacker-pgdata:/var/lib/postgresql/data
     ports:
       # Host port is configurable; defaults away from 5432 to avoid clashing
       # with a host Postgres. The app reaches the db by service name internally.
       - "${POSTGRES_HOST_PORT:-5544}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-magstacker} -d ${POSTGRES_DB:-magstacker}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-magstacker} -d ${POSTGRES_DB:-magstacker}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
+    # Hardening (R18): read-only rootfs, explicit writable tmpfs for the
+    # paths Postgres' entrypoint and runtime need (PGDATA itself is the
+    # writable named volume above, not part of the rootfs). Postgres'
+    # entrypoint runs as root first to chown PGDATA/socket dir, then drops to
+    # the `postgres` user — CHOWN/DAC_OVERRIDE/FOWNER/SETUID/SETGID cover
+    # that; every other capability is dropped.
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql:mode=1777
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
 
   # One-shot bootstrap: apply migrations, then seed the first admin. Both steps
   # are idempotent — already-applied migrations are skipped, and the seed no-ops
@@ -72,17 +129,36 @@ services:
           echo "ADMIN_EMAIL/ADMIN_PASSWORD unset — skipping first-admin seed."
         fi
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-magstacker}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-magstacker}
+      POSTGRES_USER: ${POSTGRES_USER:-magstacker}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: ${POSTGRES_DB:-magstacker}
+      DB_HOST: db
       # seed:admin imports `@/auth`, which needs the secret at module load.
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+      # docker-entrypoint.sh (the image's ENTRYPOINT) resolves this file into
+      # BETTER_AUTH_SECRET before `command` above runs.
+      BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
-      # Optional: when set, the first admin is created on an empty DB.
+      # Optional: when set, the first admin is created on an empty DB. Not a
+      # Docker secret — it's a one-time bootstrap value the operator already
+      # chose and typed into .env; only the long-lived DB/auth secrets are.
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    secrets:
+      - postgres_password
+      - better_auth_secret
     depends_on:
       db:
         condition: service_healthy
     restart: "no"
+    # Hardening (R18): no local files are written by migrate/seed — only a
+    # /tmp tmpfs for anything Bun/Node wants as scratch space.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   app:
     image: ghcr.io/unclesp1d3r/mag_stacker:${MAGSTACKER_VERSION:-latest}
@@ -91,17 +167,36 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-magstacker}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-magstacker}
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+      POSTGRES_USER: ${POSTGRES_USER:-magstacker}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: ${POSTGRES_DB:-magstacker}
+      DB_HOST: db
+      # docker-entrypoint.sh resolves this file into BETTER_AUTH_SECRET
+      # before `bun run start` runs.
+      BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
-      UPLOAD_DIR: /data/uploads
+      UPLOAD_DIR: ${UPLOAD_DIR:-/data/uploads}
+    secrets:
+      - postgres_password
+      - better_auth_secret
     volumes:
+      # Attach point for an encrypted host disk (R17) — see the note above.
       - magstacker-uploads:/data/uploads
     ports:
       - "${APP_HOST_PORT:-3000}:3000"
     depends_on:
       migrate:
         condition: service_completed_successfully
+    # Hardening (R18): read-only rootfs; /data/uploads is the writable named
+    # volume above (UPLOAD_DIR), /tmp covers Sharp's image-processing scratch
+    # files and any other transient writes `next start` wants.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   magstacker-pgdata:

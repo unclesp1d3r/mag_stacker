@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { assertWritesAllowed } from "@/src/backup/maintenance";
 import { type DbOrTx, db as defaultDb } from "@/src/db/client";
 import { grant } from "@/src/db/schema";
 import { NotAuthorizedError, NotFoundError } from "./errors";
@@ -21,6 +22,8 @@ export async function resolveCreateOwner(
   actorId: string,
   targetOwnerId?: string | null,
 ): Promise<string> {
+  await assertWritesAllowed(tx);
+
   if (!targetOwnerId || targetOwnerId === actorId) return actorId;
 
   const rows = await tx
@@ -54,6 +57,8 @@ export async function authorizeUpdate(
   parentType: ParentType,
   parentId: string,
 ): Promise<void> {
+  await assertWritesAllowed(tx);
+
   const perm = await resolvePermission(tx, actorId, parentType, parentId);
   if (perm === "owner" || perm === "edit") return;
   if (perm === "view") {
@@ -93,6 +98,7 @@ export async function authorizeOwnerOnlyUpdate(
   parentType: ParentType,
   parentId: string,
 ): Promise<void> {
+  await assertWritesAllowed(tx);
   return authorizeOwnerOnly(tx, actorId, parentType, parentId, "modify");
 }
 
@@ -106,6 +112,7 @@ export async function authorizeDelete(
   parentType: ParentType,
   parentId: string,
 ): Promise<void> {
+  await assertWritesAllowed(tx);
   return authorizeOwnerOnly(tx, actorId, parentType, parentId, "delete");
 }
 
@@ -152,6 +159,8 @@ export async function authorizeAndDeleteParent(
   database: DbOrTx = defaultDb,
   onBeforeDelete?: PreDeleteHook,
 ): Promise<void> {
+  await assertWritesAllowed(database);
+
   const runner = "transaction" in database ? database : null;
   const run = async (tx: DbOrTx) => {
     await authorizeDelete(tx, actorId, parentType, parentId);

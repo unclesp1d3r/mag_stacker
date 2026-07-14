@@ -5,15 +5,30 @@ control — a homelab server, a NAS, a small VPS behind your own network.
 
 ## First run
 
-1. Copy the env template and fill in **real** secrets (never commit `.env`):
+1. Copy the env template and fill in the non-secret values (never commit `.env`):
 
    ```bash
    cp .env.example .env
-   # set POSTGRES_PASSWORD, BETTER_AUTH_SECRET (openssl rand -base64 32),
-   # ADMIN_EMAIL, ADMIN_PASSWORD, and BETTER_AUTH_URL (your reverse-proxy URL)
+   # set ADMIN_EMAIL, ADMIN_PASSWORD, and BETTER_AUTH_URL (your reverse-proxy URL)
    ```
 
-2. Build and start the stack. The `migrate` service applies the database
+2. Create the two Docker secret files. The database password and the Better
+   Auth signing secret are **not** set in `.env` — they're Docker secrets,
+   plain files under `secrets/` that Compose mounts read-only into the
+   containers rather than plaintext environment variables (R16):
+
+   ```bash
+   mkdir -p secrets
+   openssl rand -hex 24 > secrets/postgres_password.txt
+   openssl rand -hex 32 > secrets/better_auth_secret.txt
+   ```
+
+   Use `-hex`, not `-base64` — the password is embedded unescaped in a
+   connection URL, and base64's `/+=` characters break it there. See
+   `secrets/README.md` for rotation notes. `docker compose up` refuses to
+   start until both files exist.
+
+3. Build and start the stack. The `migrate` service applies the database
    migrations and — when `ADMIN_EMAIL` / `ADMIN_PASSWORD` are set in `.env` —
    seeds the first operator account, both before the `app` service starts:
 
@@ -39,16 +54,29 @@ control — a homelab server, a NAS, a small VPS behind your own network.
 
 ## Secrets
 
-- `DATABASE_URL` and `BETTER_AUTH_SECRET` are supplied at runtime via `.env` /
-  the host environment — never baked into the image. `.dockerignore` excludes
-  `.env*` from the build context. The image build uses throwaway placeholder
-  values that never open a connection.
+- The Postgres password and the Better Auth signing secret are Docker
+  secrets — files under `secrets/` (see `secrets/README.md`), mounted
+  read-only at `/run/secrets/*` inside the containers that need them, never
+  a plaintext environment variable (R16). `docker-entrypoint.sh` resolves
+  them into `DATABASE_URL`/`BETTER_AUTH_SECRET` at container start; the
+  official `postgres` image resolves `POSTGRES_PASSWORD_FILE` itself.
+  `.dockerignore`/`.gitignore` exclude both `.env*` and `secrets/*` (except
+  `secrets/README.md`) from the build context and git. The image build uses
+  throwaway placeholder values that never open a connection.
 - Back up Postgres with the standard tooling; a `pg_dump` / `pg_restore`
   round-trip reproduces inventory, ownership, and grant state exactly.
 
   ```bash
   docker compose exec db pg_dump -U "$POSTGRES_USER" -Fc -d "$POSTGRES_DB" > magstacker.dump
   ```
+
+- The `magstacker-pgdata` and `magstacker-uploads` volumes above hold
+  everything sensitive this stack stores — putting them on an encrypted host
+  disk is on you, the operator; see
+  [`docs/operations/encryption-at-rest.md`](operations/encryption-at-rest.md)
+  for the LUKS and encrypted-cloud-volume how-to and a threat-coverage matrix
+  covering what disk encryption defends against versus an encrypted in-app
+  backup.
 
 ## TLS / network exposure (important)
 

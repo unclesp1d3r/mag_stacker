@@ -1,0 +1,472 @@
+import { randomBytes, randomUUID } from "node:crypto";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
+
+// `storage` is a lazily-constructed singleton shared across the whole test
+// process (module state, not per-file): whichever test file's `storage`/
+// `activeStorageRoot()` access happens first "wins" `UPLOAD_DIR` for every
+// file in the run, so this only takes effect when this file is the first to
+// touch storage (mirrors `src/domain/firearm-documents/__tests__/serving.test.ts`).
+// Every test below therefore resolves the *actual* active root via
+// `activeStorageRoot()` rather than trusting this constant, so the suite is
+// correct regardless of file execution order.
+process.env.UPLOAD_DIR = mkdtempSync(join(tmpdir(), "export-service-uploads-"));
+
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
+import {
+  PostgreSqlContainer,
+  type StartedPostgreSqlContainer,
+} from "@testcontainers/postgresql";
+import { eq } from "drizzle-orm";
+import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { Pool } from "pg";
+import { NotAuthorizedError } from "@/src/auth/errors";
+import { activeStorageRoot } from "@/src/storage/index";
+import { expectRejects } from "@/src/test-support/assertions";
+import * as schema from "../../db/schema";
+import { firearm, user } from "../../db/schema";
+import type { BundleEvent } from "../bundle";
+import { readBundle } from "../bundle";
+import {
+  createDecryptStream,
+  deriveKey,
+  HEADER_BYTE_LENGTH,
+  readHeader,
+} from "../crypto";
+import { type ExportedRow, exportDatabase } from "../db-export";
+import { wipeDatabase } from "../db-import";
+import { createBackup } from "../export-service";
+import {
+  BACKUP_FORMAT_VERSION,
+  type BackupManifest,
+  latestMigrationTag,
+} from "../manifest";
+
+/**
+ * Controls the mocked `isAdmin()` result for the "non-admin caller" test —
+ * a mutable holder lets each test drive the outcome without re-registering
+ * the module mock (mirrors `serving.test.ts`'s `currentUserId` pattern).
+ */
+let currentIsAdmin = true;
+mock.module("@/src/auth/session", () => ({
+  isAdmin: async () => currentIsAdmin,
+}));
+
+const PASSWORD = "correct horse battery staple";
+
+// Same pinned image as `db-roundtrip.test.ts` / `e2e/start-test-server.ts`
+// (AWS ECR Public mirror — avoids Docker Hub's unauthenticated per-IP pull
+// limit on shared runners).
+const POSTGRES_IMAGE =
+  "public.ecr.aws/docker/library/postgres:17@sha256:5c855ad7b85e68e48a62f34662853f38b57c1c1d80f3a927ab58034fd6d31c5e";
+
+type Db = NodePgDatabase<typeof schema>;
+
+/** Drains a Readable into one Buffer, tracking chunking behavior along the way (R13 evidence). */
+async function collectWithStats(stream: Readable): Promise<{
+  buffer: Buffer;
+  maxChunkBytes: number;
+  chunkCount: number;
+}> {
+  const chunks: Buffer[] = [];
+  let maxChunkBytes = 0;
+  let chunkCount = 0;
+  for await (const chunk of stream) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    chunks.push(buf);
+    maxChunkBytes = Math.max(maxChunkBytes, buf.byteLength);
+    chunkCount += 1;
+  }
+  return { buffer: Buffer.concat(chunks), maxChunkBytes, chunkCount };
+}
+
+/** Drains a Readable into one Buffer (no stats needed). */
+async function collect(stream: NodeJS.ReadableStream): Promise<Buffer> {
+  const parts: Buffer[] = [];
+  for await (const chunk of stream) {
+    parts.push(chunk as Buffer);
+  }
+  return Buffer.concat(parts);
+}
+
+interface CapturedEvents {
+  manifest: BackupManifest | undefined;
+  dbLines: string[];
+  blobEvents: Array<{ storageKey: string; path: string; size: number }>;
+}
+
+/**
+ * The real restore-side read path: extract the salt from the bundle's own
+ * unencrypted header, derive the key from the operator's password, then
+ * decrypt and un-tar (U1/U2's read path) — exactly as a real restore would,
+ * since `createBackup` only takes a password, never handing the caller a
+ * salt/key directly.
+ */
+async function decryptAndCollect(
+  encrypted: Buffer,
+  password: string,
+  stagingDir: string,
+): Promise<CapturedEvents> {
+  const header = readHeader(encrypted.subarray(0, HEADER_BYTE_LENGTH));
+  const key = deriveKey(password, header.salt);
+  const decryptStream = createDecryptStream(key);
+  Readable.from([encrypted]).pipe(decryptStream);
+
+  const result: CapturedEvents = {
+    manifest: undefined,
+    dbLines: [],
+    blobEvents: [],
+  };
+  const generator = readBundle(decryptStream, { stagingDir });
+  for await (const event of generator as AsyncGenerator<
+    BundleEvent,
+    void,
+    void
+  >) {
+    if (event.kind === "manifest") {
+      result.manifest = event.manifest;
+    } else if (event.kind === "db") {
+      const buf = await collect(event.stream);
+      result.dbLines = buf
+        .toString("utf8")
+        .split("\n")
+        .filter((line) => line.trim() !== "");
+    } else {
+      result.blobEvents.push({
+        storageKey: event.storageKey,
+        path: event.path,
+        size: event.size,
+      });
+    }
+  }
+  return result;
+}
+
+/**
+ * Always resolves the singleton's *actual* root — see the top-of-file note on
+ * why this must not be assumed to equal the constant this file set
+ * `UPLOAD_DIR` to. Recreated on demand: whichever test file's directory won
+ * the singleton race may have already been torn down by that file's own
+ * `afterAll` by the time this file's tests run, so every access here is
+ * defensive about the directory having gone missing (mirrors
+ * `listUploadBlobs`'s own ENOENT tolerance in `export-service.ts`).
+ */
+function resolvedUploadDir(): string {
+  const dir = activeStorageRoot();
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function writeUploadBlob(name: string, content: Buffer): void {
+  writeFileSync(join(resolvedUploadDir(), name), content);
+}
+
+function listUploadFiles(): string[] {
+  return readdirSync(resolvedUploadDir());
+}
+
+function clearUploadDir(): void {
+  const dir = resolvedUploadDir();
+  for (const name of readdirSync(dir)) {
+    rmSync(join(dir, name), { force: true });
+  }
+}
+
+function makeStagingDir(): string {
+  return mkdtempSync(join(tmpdir(), "export-service-staging-"));
+}
+
+/**
+ * Temporarily wraps `targetPool.connect` so every query text issued by
+ * whichever client a transaction checks out gets captured — used to prove
+ * `createBackup` actually opens its DB-export transaction with the
+ * isolation level and access mode the snapshot-isolation fix mandates.
+ * Drizzle issues that as a single `begin isolation level ... <access mode>`
+ * statement (see `PgTransaction.getTransactionConfigSQL` /
+ * `NodePgSession.transaction` in `drizzle-orm/pg-core/session.js` and
+ * `drizzle-orm/node-postgres/session.js`), passed to `client.query` as a
+ * `{ text, ... }` config object rather than a bare string. Always call
+ * `restore()` (a `try/finally` around the exercised code) so the spy doesn't
+ * leak into other tests sharing the same pooled connections.
+ */
+function captureBeginStatements(targetPool: Pool): {
+  statements: string[];
+  restore: () => void;
+} {
+  const statements: string[] = [];
+  const originalConnect = targetPool.connect.bind(targetPool);
+  // biome-ignore lint/suspicious/noExplicitAny: instrumenting pg's own overloaded connect()/query() for a test-only spy.
+  (targetPool as any).connect = async (...args: unknown[]) => {
+    // biome-ignore lint/suspicious/noExplicitAny: see above.
+    const client = await (originalConnect as any)(...args);
+    const originalQuery = client.query.bind(client);
+    client.query = (...queryArgs: unknown[]) => {
+      const first = queryArgs[0];
+      const text =
+        typeof first === "string"
+          ? first
+          : (first as { text?: string } | undefined)?.text;
+      if (typeof text === "string") statements.push(text);
+      return originalQuery(...queryArgs);
+    };
+    return client;
+  };
+  return {
+    statements,
+    restore: () => {
+      targetPool.connect = originalConnect;
+    },
+  };
+}
+
+describe("backup export service (U4)", () => {
+  let container: StartedPostgreSqlContainer;
+  let pool: Pool;
+  let db: Db;
+
+  beforeAll(async () => {
+    container = await new PostgreSqlContainer(POSTGRES_IMAGE)
+      .withDatabase("magstacker_export_service_test")
+      .start();
+    pool = new Pool({ connectionString: container.getConnectionUri() });
+    db = drizzle(pool, { schema });
+    await migrate(db, { migrationsFolder: "./src/db/migrations" });
+  }, 120_000);
+
+  afterAll(async () => {
+    await pool?.end();
+    await container?.stop();
+  });
+
+  beforeEach(async () => {
+    await wipeDatabase(db);
+    clearUploadDir();
+  });
+
+  afterEach(() => {
+    currentIsAdmin = true;
+  });
+
+  test("exports a bundle that decrypts to the manifest, all rows, and all blobs (AE5 round trip)", async () => {
+    const ownerId = `owner-${randomUUID()}`;
+    await db
+      .insert(user)
+      .values({ id: ownerId, name: "Owner", email: `${ownerId}@example.test` });
+    const [firearmRow] = await db
+      .insert(firearm)
+      .values({ ownerId, name: "Export Test FA", caliber: "9mm" })
+      .returning();
+
+    const blobs = [
+      { key: `${randomUUID()}.bin`, content: randomBytes(1024) },
+      { key: `${randomUUID()}.bin`, content: randomBytes(2048) },
+      { key: `${randomUUID()}.bin`, content: Buffer.alloc(0) },
+    ];
+    for (const blob of blobs) {
+      writeUploadBlob(blob.key, blob.content);
+    }
+
+    const stream = await createBackup(PASSWORD, { db });
+    const { buffer } = await collectWithStats(stream);
+
+    const stagingDir = makeStagingDir();
+    try {
+      const events = await decryptAndCollect(buffer, PASSWORD, stagingDir);
+
+      expect(events.manifest).toBeDefined();
+      expect(events.manifest?.backupFormatVersion).toBe(BACKUP_FORMAT_VERSION);
+      expect(events.manifest?.migrationTag).toBe(latestMigrationTag());
+      expect(events.manifest?.counts.rows).toBe(events.dbLines.length);
+      expect(events.manifest?.counts.blobs).toBe(blobs.length);
+
+      const parsedRows = events.dbLines.map((line) => JSON.parse(line));
+      const exportedFirearmRow = parsedRows.find(
+        (row) => row.table === "firearm" && row.row.id === firearmRow.id,
+      );
+      expect(exportedFirearmRow).toBeDefined();
+
+      expect(events.blobEvents).toHaveLength(blobs.length);
+      const blobsByKey = new Map(blobs.map((b) => [b.key, b.content]));
+      for (const blobEvent of events.blobEvents) {
+        const expectedContent = blobsByKey.get(blobEvent.storageKey);
+        expect(expectedContent).toBeDefined();
+        if (!expectedContent) continue;
+        expect(blobEvent.size).toBe(expectedContent.byteLength);
+        const written = await Bun.file(blobEvent.path).arrayBuffer();
+        expect(Buffer.from(written).equals(expectedContent)).toBe(true);
+      }
+    } finally {
+      rmSync(stagingDir, { recursive: true, force: true });
+    }
+  });
+
+  test("a large blob set streams without buffering the whole bundle in memory (R13)", async () => {
+    const blobCount = 4;
+    const blobSize = 1_500_000; // 1.5 MiB each, ~6 MiB total
+    for (let i = 0; i < blobCount; i++) {
+      writeUploadBlob(`${randomUUID()}.bin`, randomBytes(blobSize));
+    }
+    const totalPlaintextBytes = blobCount * blobSize;
+
+    const stream = await createBackup(PASSWORD, { db });
+    const { buffer, maxChunkBytes, chunkCount } =
+      await collectWithStats(stream);
+
+    // The encrypted output is at least as large as the plaintext blobs (plus
+    // headers/tar framing/auth tags) — sanity check we actually captured the
+    // whole bundle before asserting on how it arrived.
+    expect(buffer.byteLength).toBeGreaterThan(totalPlaintextBytes);
+
+    // Chunked delivery, not one whole-bundle buffer: many chunks arrived, and
+    // no single chunk carried anywhere near the full blob set (which a
+    // whole-buffer implementation would produce as one multi-megabyte chunk).
+    expect(chunkCount).toBeGreaterThan(20);
+    expect(maxChunkBytes).toBeLessThan(totalPlaintextBytes / 4);
+  });
+
+  test("the returned stream is consumable once and no bundle file remains on disk afterward", async () => {
+    writeUploadBlob(`${randomUUID()}.bin`, randomBytes(512));
+    const beforeFiles = new Set(listUploadFiles());
+
+    const stream = await createBackup(PASSWORD, { db });
+    await collectWithStats(stream);
+
+    expect(stream.readableEnded).toBe(true);
+
+    // Re-draining an already-ended Readable yields nothing further — proves
+    // the stream isn't secretly re-derivable/replayable.
+    let extraChunks = 0;
+    for await (const _chunk of stream) {
+      extraChunks += 1;
+    }
+    expect(extraChunks).toBe(0);
+
+    // No bundle (or any other) file was left behind under UPLOAD_DIR — the
+    // only files there are the ones the test itself wrote (KTD8: nothing is
+    // retained server-side).
+    const afterFiles = new Set(listUploadFiles());
+    expect(afterFiles).toEqual(beforeFiles);
+  });
+
+  test("the DB export runs inside a repeatable-read, read-only snapshot transaction (torn-bundle guard)", async () => {
+    const ownerId = `owner-${randomUUID()}`;
+    await db.insert(user).values({
+      id: ownerId,
+      name: "Snapshot Owner",
+      email: `${ownerId}@example.test`,
+    });
+
+    const capture = captureBeginStatements(pool);
+    try {
+      const stream = await createBackup(PASSWORD, { db });
+      await collectWithStats(stream);
+    } finally {
+      capture.restore();
+    }
+
+    const beginStatements = capture.statements.filter((statement) =>
+      statement.trim().toLowerCase().startsWith("begin"),
+    );
+    expect(beginStatements.length).toBeGreaterThan(0);
+    expect(
+      beginStatements.some(
+        (statement) =>
+          statement.trim().toLowerCase() ===
+          "begin isolation level repeatable read read only",
+      ),
+    ).toBe(true);
+  });
+
+  test("the DB export's snapshot is behaviorally consistent: a row inserted by a second, concurrent connection while the export transaction is open never appears in the export (torn-bundle guard, behavioral)", async () => {
+    // The previous test only proves the mechanism — that `begin isolation
+    // level repeatable read read only` was issued. This test proves the
+    // outcome that mechanism is supposed to guarantee: once the transaction's
+    // snapshot is pinned, a write landing on a second, independent connection
+    // is invisible to a `SELECT` running inside it.
+    const ownerId = `owner-${randomUUID()}`;
+    await db.insert(user).values({
+      id: ownerId,
+      name: "Snapshot Before",
+      email: `${ownerId}@example.test`,
+    });
+
+    const concurrentOwnerId = `owner-${randomUUID()}`;
+    let dbText = "";
+
+    await db.transaction(
+      async (tx) => {
+        // Repeatable read's MVCC snapshot is pinned at the transaction's
+        // first statement, so issue one here — before the concurrent write
+        // below — to make the snapshot boundary deterministic instead of
+        // racing it.
+        await tx.select().from(user).where(eq(user.id, ownerId));
+
+        // A second, fully independent connection writes a brand-new row into
+        // an exported table WHILE this transaction's snapshot is already
+        // pinned open.
+        const otherPool = new Pool({
+          connectionString: container.getConnectionUri(),
+        });
+        try {
+          const otherDb = drizzle(otherPool, { schema });
+          await otherDb.insert(user).values({
+            id: concurrentOwnerId,
+            name: "Snapshot After (must not appear in export)",
+            email: `${concurrentOwnerId}@example.test`,
+          });
+        } finally {
+          await otherPool.end();
+        }
+
+        // exportDatabase reads through tx's pinned snapshot — the concurrent
+        // insert above must be invisible to it.
+        const { buffer } = await collectWithStats(exportDatabase(tx));
+        dbText = buffer.toString("utf8");
+      },
+      { isolationLevel: "repeatable read", accessMode: "read only" },
+    );
+
+    const exportedUserIds = new Set(
+      dbText
+        .split("\n")
+        .filter((line) => line.trim() !== "")
+        .map((line) => JSON.parse(line) as ExportedRow)
+        .filter((entry) => entry.table === "user")
+        .map((entry) => entry.row.id),
+    );
+
+    expect(exportedUserIds.has(ownerId)).toBe(true);
+    expect(exportedUserIds.has(concurrentOwnerId)).toBe(false);
+  });
+
+  test("a non-admin caller is rejected", async () => {
+    currentIsAdmin = false;
+
+    await expectRejects(() => createBackup(PASSWORD, { db }));
+
+    try {
+      await createBackup(PASSWORD, { db });
+      throw new Error("expected createBackup to reject for a non-admin caller");
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotAuthorizedError);
+    }
+  });
+});

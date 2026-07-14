@@ -137,6 +137,11 @@ alias t := test
 [group('test')]
 test:
     {{ mise_exec }} bun run test
+    # Root-level tests that must run in their own process (e.g. instrumentation
+    # tests use process-global `mock.module`, which would bleed into `src`).
+    # Target the exact file — a bare `__tests__` arg is a substring filter that
+    # would re-collect every `src/**/__tests__` file into one poisoned process.
+    {{ mise_exec }} bun test __tests__/instrumentation.test.ts
 
 # Install Playwright browsers (run once; idempotent)
 [group('test')]

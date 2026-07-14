@@ -7,6 +7,7 @@ import {
 import { authorizeUpdate, resolveCreateOwner } from "@/src/auth/authorize";
 import { NotAuthorizedError, NotFoundError } from "@/src/auth/errors";
 import type { Permission } from "@/src/auth/visibility";
+import { assertWritesAllowed } from "@/src/backup/maintenance";
 import { type DbOrTx, db } from "@/src/db/client";
 import { accessory, firearm } from "@/src/db/schema";
 import { ValidationError } from "../errors";
@@ -112,6 +113,11 @@ async function requireEditPermission(
   actorId: string,
   id: string,
 ): Promise<Permission> {
+  // Bespoke write gate (accessories aren't a grant `ParentType`, so this
+  // doesn't route through `authorize.ts`'s helpers) — guard it directly so
+  // `updateAccessory`/`deleteAccessory` are blocked during maintenance too.
+  await assertWritesAllowed(tx);
+
   const permission = await resolveAccessoryPermission(tx, actorId, id);
   if (permission === "owner" || permission === "edit") return permission;
   if (permission === "view") {

@@ -3,6 +3,7 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/src/auth/session";
+import { assertWritesAllowed } from "@/src/backup/maintenance";
 import { db } from "@/src/db/client";
 import { user as userTable } from "@/src/db/schema";
 import { type ActionResult, toActionError } from "@/src/domain/action-result";
@@ -30,6 +31,7 @@ export async function updateMagpulModeAction(
       return { ok: false, error: "Invalid setting value." };
     }
     const userId = await requireUserId();
+    await assertWritesAllowed(db);
     const [updated] = await db
       .update(userTable)
       .set({ magpulMode: enabled })

@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { auth } from "@/auth";
 import { getCurrentUser } from "@/src/auth/session";
+import { assertWritesAllowed } from "@/src/backup/maintenance";
+import { db } from "@/src/db/client";
 
 /**
  * Operator account-management actions (U13, R7). Each re-resolves the session
@@ -37,6 +39,7 @@ export async function createAccountAction(
     };
   }
   try {
+    await assertWritesAllowed(db);
     await auth.api.createUser({
       body: { email, password, name, role: "user" },
       headers: await headers(),
@@ -58,6 +61,7 @@ export async function setAccountDisabledAction(
 ): Promise<ActionResult> {
   await requireAdmin();
   try {
+    await assertWritesAllowed(db);
     const h = await headers();
     if (disabled) {
       await auth.api.banUser({ body: { userId }, headers: h });

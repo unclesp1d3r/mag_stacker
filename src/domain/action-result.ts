@@ -1,5 +1,6 @@
 import { NotAuthorizedError, NotFoundError } from "@/src/auth/errors";
 import { RateLimitError } from "@/src/auth/rate-limit";
+import { MaintenanceModeError } from "@/src/backup/maintenance";
 import { DatabaseUnavailableError } from "@/src/db/health";
 import { ValidationError } from "./errors";
 
@@ -23,6 +24,8 @@ export function toActionError(error: unknown): ActionResult<never> {
     return { ok: false, error: "You are not allowed to do that." };
   }
   if (error instanceof DatabaseUnavailableError)
+    return { ok: false, error: error.message };
+  if (error instanceof MaintenanceModeError)
     return { ok: false, error: error.message };
   // Anything that reaches here is unmapped — a bug, a DB deadlock, an unexpected
   // storage failure. The user gets a generic message; log the real error so

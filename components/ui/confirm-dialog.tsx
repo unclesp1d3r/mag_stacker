@@ -20,6 +20,13 @@ interface ConfirmDialogProps {
   cancelLabel?: string;
   pending?: boolean;
   pendingLabel?: string;
+  /**
+   * Disables the confirm control independent of `pending` — for a type-to-confirm
+   * guard (e.g. the backup force-replace phrase, R7) where confirmation should stay
+   * unavailable until the operator has proven intent, not just while an operation
+   * is in flight.
+   */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -35,6 +42,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   pending = false,
   pendingLabel = "Deleting…",
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -118,7 +126,11 @@ export function ConfirmDialog({
           >
             {cancelLabel}
           </Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={pending}>
+          <Button
+            variant="destructive"
+            onClick={onConfirm}
+            disabled={pending || confirmDisabled}
+          >
             {pending ? pendingLabel : confirmLabel}
           </Button>
         </div>

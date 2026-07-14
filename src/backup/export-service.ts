@@ -1,0 +1,190 @@
+/**
+ * Backup export service (plan Unit U4, R1/R2/R3/R4/R11/R13).
+ *
+ * Orchestrates a full instance export: an admin-authorized caller supplies a
+ * password, and this module streams the entire database (U3's NDJSON export)
+ * plus every document blob under `UPLOAD_DIR` into one authenticated,
+ * password-encrypted, version-stamped bundle (U2's tar format, piped through
+ * U1's crypto stream). The route that eventually serves this pipes the
+ * returned stream straight to the operator's browser download — no bundle is
+ * ever written to disk here (KTD8): `createBackup` only builds and returns a
+ * `Readable`.
+ */
+
+import { createReadStream } from "node:fs";
+import { readdir, stat } from "node:fs/promises";
+import { join } from "node:path";
+import { Readable } from "node:stream";
+import { NotAuthorizedError } from "@/src/auth/errors";
+import { isAdmin } from "@/src/auth/session";
+import type { Database } from "@/src/db/client";
+import { activeStorageRoot } from "@/src/storage/index";
+import { type BundleBlobEntry, writeBundle } from "./bundle";
+import { createEncryptStream, deriveKey, generateSalt } from "./crypto";
+import { exportDatabase } from "./db-export";
+import { buildManifest } from "./manifest";
+
+/**
+ * Re-asserts the admin role inside the service itself — the future admin
+ * route (U6) also gates, but a backup export's blast radius (the whole
+ * instance, in the clear once decrypted) warrants defense-in-depth here too.
+ * Delegates to `isAdmin()` (`src/auth/session.ts`) rather than duplicating
+ * the role check.
+ */
+async function requireAdmin(): Promise<void> {
+  if (!(await isAdmin())) {
+    throw new NotAuthorizedError("Only admins can export a backup");
+  }
+}
+
+/** One blob file discovered under `UPLOAD_DIR`, before it is streamed. */
+interface BlobFileInfo {
+  readonly storageKey: string;
+  readonly size: number;
+}
+
+/**
+ * Lists every blob file directly under the upload root, mirroring the
+ * non-recursive, `node:fs`-direct scan `orphanSweep` uses
+ * (`src/storage/orphan-sweep.ts`) rather than going through the
+ * `StorageService` interface, which intentionally has no `list()` method
+ * (YAGNI — see that module's doc comment). A missing `UPLOAD_DIR` (fresh
+ * install, nothing uploaded yet) is not an error: there is simply nothing to
+ * bundle.
+ */
+async function listUploadBlobs(): Promise<BlobFileInfo[]> {
+  const uploadDir = activeStorageRoot();
+  const entries = await readdir(uploadDir, { withFileTypes: true }).catch(
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    },
+  );
+  const fileNames = entries.filter((entry) => entry.isFile());
+
+  return Promise.all(
+    fileNames.map(async (entry) => ({
+      storageKey: entry.name,
+      size: (await stat(join(uploadDir, entry.name))).size,
+    })),
+  );
+}
+
+/**
+ * Lazily streams each listed blob's content from disk as the bundle writer
+ * consumes it — one file open/read at a time, never all of them buffered
+ * together (R13, KTD3). Sizes are the `stat` results already gathered by
+ * `listUploadBlobs`, matching what `writeBundle` requires up front per tar
+ * entry.
+ */
+async function* blobEntriesFor(
+  infos: readonly BlobFileInfo[],
+): AsyncGenerator<BundleBlobEntry> {
+  const uploadDir = activeStorageRoot();
+  for (const info of infos) {
+    yield {
+      storageKey: info.storageKey,
+      size: info.size,
+      stream: createReadStream(join(uploadDir, info.storageKey)),
+    };
+  }
+}
+
+/**
+ * Buffers `exportDatabase`'s NDJSON output once so the row count is known
+ * before the manifest is built (the manifest must exist before `writeBundle`
+ * starts streaming — it is the bundle's first tar entry). This mirrors
+ * `bundle.ts`'s own documented exception: `db.ndjson` is JSON-per-row text,
+ * not the binary attachments R13/KTD3 are actually concerned with, and
+ * `writeBundle` buffers it internally regardless (it needs an exact byte
+ * length up front for the tar header); the double-buffer cost is a small
+ * NDJSON payload, not the large blob set R13 is about.
+ *
+ * `exportDatabase` yields exactly one NDJSON line per row, so the row count is
+ * tallied in the same pass that buffers the bytes — no second scan of the
+ * payload. The `Buffer` is returned as-is (no `toString`/re-encode round trip).
+ *
+ * Runs the whole export inside one `repeatable read`, `read only` snapshot
+ * transaction: every per-table `SELECT` `exportDatabase` issues then shares
+ * a single MVCC snapshot taken at the transaction's first statement. Without
+ * this, `exportDatabase`'s per-table `SELECT`s ran unscoped against
+ * whatever the table looked like at the moment each one executed — a write
+ * landing mid-export (e.g. a new `firearm_document` row FK'ing to a
+ * `firearm` the export already read) could produce a torn bundle mixing
+ * pre- and post-write rows, potentially violating referential integrity
+ * within the bundle itself. `read only` is an extra guarantee that this
+ * transaction can never itself write, matching what it's actually doing.
+ */
+async function bufferDbExport(
+  db: Database,
+): Promise<{ buffer: Buffer; rowCount: number }> {
+  return db.transaction(
+    async (tx) => {
+      const chunks: Buffer[] = [];
+      let rowCount = 0;
+      for await (const chunk of exportDatabase(tx)) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        rowCount += 1;
+      }
+      return { buffer: Buffer.concat(chunks), rowCount };
+    },
+    { isolationLevel: "repeatable read", accessMode: "read only" },
+  );
+}
+
+export interface CreateBackupOptions {
+  /** Drizzle handle to export from. Production callers pass the shared `db`
+   * from `@/src/db/client`; tests pass a handle bound to their own instance
+   * (e.g. a Testcontainers Postgres). Must be a top-level `Database`, not an
+   * already-open `Transaction` — `bufferDbExport` opens its own
+   * repeatable-read, read-only snapshot transaction around the whole export
+   * to keep the bundle internally consistent even if writes land mid-export. */
+  readonly db: Database;
+}
+
+/**
+ * Exports the full instance as one password-encrypted backup stream (F1).
+ *
+ * 1. Re-asserts the caller is an admin (defense-in-depth, R14).
+ * 2. Builds the manifest — row/blob counts, `BACKUP_FORMAT_VERSION`, app
+ *    version, and the latest migration tag (R4).
+ * 3. Derives a fresh-salt key from `password` (R3, R11).
+ * 4. Composes U3's NDJSON export and a lazy blob stream over `UPLOAD_DIR`
+ *    into U2's tar bundle writer, piped through U1's encrypt stream.
+ *
+ * Returns the encrypted bundle stream; the caller (an admin route, U6) pipes
+ * it straight to the operator's download. Nothing is written server-side —
+ * no bundle file, no plaintext (KTD8, R13).
+ */
+export async function createBackup(
+  password: string,
+  options: CreateBackupOptions,
+): Promise<Readable> {
+  await requireAdmin();
+
+  const [{ buffer: dbBuffer, rowCount }, blobInfos] = await Promise.all([
+    bufferDbExport(options.db),
+    listUploadBlobs(),
+  ]);
+  const totalBlobBytes = blobInfos.reduce((sum, blob) => sum + blob.size, 0);
+
+  const manifest = buildManifest({
+    counts: {
+      rows: rowCount,
+      blobs: blobInfos.length,
+      totalBlobBytes,
+    },
+  });
+
+  const salt = generateSalt();
+  const key = deriveKey(password, salt);
+
+  return writeBundle(
+    {
+      manifest,
+      dbStream: Readable.from([dbBuffer]),
+      blobEntries: blobEntriesFor(blobInfos),
+    },
+    createEncryptStream(key, salt),
+  );
+}
