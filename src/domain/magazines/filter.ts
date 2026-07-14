@@ -2,8 +2,14 @@ import { and, asc, eq, inArray, type SQL, sql } from "drizzle-orm";
 import { getVisibleIds } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
 import { magazine, magazineFirearm } from "@/src/db/schema";
+import { loadLastInventoriedBatch } from "@/src/domain/inventory-log/last-inventoried";
 import { loadCompatibilityBatch } from "./compatibility";
 import type { MagazineWithCompatibility } from "./service";
+
+/** A filtered-list row with last-inventoried date attached (U2, #70). */
+export type MagazineListRow = MagazineWithCompatibility & {
+  lastInventoriedAt: Date | null;
+};
 
 /**
  * Magazine search/filter (U9, parity §8). Three optional, AND-combined filters
@@ -27,7 +33,7 @@ export function escapeLike(value: string): string {
 export async function listMagazinesFiltered(
   actorId: string,
   filter: MagazineFilter,
-): Promise<MagazineWithCompatibility[]> {
+): Promise<MagazineListRow[]> {
   const visibleMagazines = await getVisibleIds(db, actorId, "magazine");
   if (visibleMagazines.size === 0) return [];
 
@@ -60,8 +66,18 @@ export async function listMagazinesFiltered(
     visibleFirearms,
     rows.map((r) => r.id),
   );
+  // R8 enforcement point: `rows` is already visibility-scoped to `actorId`
+  // (constrained to `visibleMagazines` above), so passing its ids straight
+  // into the loader — which trusts its input and does no visibility check
+  // of its own — is safe here.
+  const byLastInventoried = await loadLastInventoriedBatch(
+    db,
+    "magazine",
+    rows.map((r) => r.id),
+  );
   return rows.map((r) => ({
     ...r,
     compatibleFirearmIds: byMag.get(r.id) ?? [],
+    lastInventoriedAt: byLastInventoried.get(r.id) ?? null,
   }));
 }
