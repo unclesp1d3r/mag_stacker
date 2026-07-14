@@ -32,6 +32,13 @@ import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import { useRowFlash } from "@/hooks/use-row-flash";
 import { useTableViewState } from "@/hooks/use-table-view-state";
 import {
+  INVENTORY_PRESET_OPTIONS,
+  type InventoryFilter,
+  type InventoryPreset,
+  matchesInventoryFilter,
+  sanitizeInventoryFilter,
+} from "@/src/domain/magazines/inventory-filter";
+import {
   magazineByPrefixKey,
   magazineByTypeKey,
   magazineCapacityAggregate,
@@ -82,6 +89,8 @@ interface MagazineFilters {
   query: string;
   caliber: string;
   firearm: string;
+  /** Preset-or-custom-range inventory-date filter (U4, #70). */
+  inventory: InventoryFilter;
 }
 
 interface MagazineViewState extends TableViewState {
@@ -262,7 +271,12 @@ export function MagazinesView({
     useTableViewState<MagazineViewState>("magazines", {
       ...createDefaultTableViewState(columns),
       grouping: "none",
-      filters: { query: "", caliber: "", firearm: "" },
+      filters: {
+        query: "",
+        caliber: "",
+        firearm: "",
+        inventory: { preset: "all" },
+      },
     });
 
   const tableViewState: TableViewState = {
@@ -281,6 +295,9 @@ export function MagazinesView({
   const searchId = useId();
   const caliberId = useId();
   const firearmId = useId();
+  const inventoryPresetId = useId();
+  const inventoryAfterId = useId();
+  const inventoryBeforeId = useId();
   const groupingId = useId();
 
   // `viewStateRef` mirrors `viewState` on every render so the debounced commit
@@ -340,9 +357,24 @@ export function MagazinesView({
   )
     ? viewState.filters.firearm
     : "";
+  // A persisted inventory filter can be malformed (stale localStorage shape,
+  // an unrecognized preset, an unparsable custom-range date) — sanitize it
+  // before it ever reaches the predicate, so a bad value degrades to "all"
+  // instead of silently matching nothing or throwing on `NaN` bounds.
+  // `sanitizeInventoryFilter` returns a fresh object every call, so this is
+  // memoized on the (referentially-stable-until-changed) source object —
+  // otherwise `effectiveInventoryFilter` would get a new identity on every
+  // unrelated re-render, and with it in `filtered`'s deps below, `filtered`
+  // would too (the known TanStack autoreset render-loop trigger, see
+  // docs/solutions/runtime-errors/tanstack-autoreset-render-loop-unstable-data.md).
+  const effectiveInventoryFilter = useMemo(
+    () => sanitizeInventoryFilter(viewState.filters.inventory),
+    [viewState.filters.inventory],
+  );
 
   const filtered = useMemo(() => {
     const q = viewState.filters.query.trim().toLowerCase();
+    const now = new Date();
     return magazines.filter((m) => {
       if (q && !m.brandModel.toLowerCase().includes(q)) return false;
       if (effectiveCaliberFilter && m.caliber !== effectiveCaliberFilter)
@@ -352,6 +384,14 @@ export function MagazinesView({
         !m.compatibleFirearmIds.includes(effectiveFirearmFilter)
       )
         return false;
+      if (
+        !matchesInventoryFilter(
+          m.lastInventoriedAt,
+          effectiveInventoryFilter,
+          now,
+        )
+      )
+        return false;
       return true;
     });
   }, [
@@ -359,6 +399,7 @@ export function MagazinesView({
     viewState.filters.query,
     effectiveCaliberFilter,
     effectiveFirearmFilter,
+    effectiveInventoryFilter,
   ]);
 
   function refresh(touchedId?: string) {
@@ -369,6 +410,18 @@ export function MagazinesView({
 
   function openCreate() {
     setForm({ open: true, magpulMode });
+  }
+
+  // The control displays the sanitized value (mirroring
+  // effectiveCaliberFilter/effectiveFirearmFilter above) so a stale/invalid
+  // persisted value — a removed preset, a corrupted custom range — falls
+  // back to a visible, selectable "All" rather than a blank-looking control.
+  const inventoryFilter = effectiveInventoryFilter;
+  function setInventoryFilter(next: InventoryFilter) {
+    setViewState({
+      ...viewState,
+      filters: { ...viewState.filters, inventory: next },
+    });
   }
 
   const filterSlot = (
@@ -441,6 +494,74 @@ export function MagazinesView({
           ))}
         </Select>
       </div>
+      <div className="w-44">
+        <label
+          htmlFor={inventoryPresetId}
+          className="mb-1 block text-xs font-medium text-ink-soft"
+        >
+          Last inventoried
+        </label>
+        <Select
+          id={inventoryPresetId}
+          value={inventoryFilter.preset}
+          onChange={(e) => {
+            const preset = e.target.value as InventoryPreset;
+            // Presets and a custom range are mutually exclusive: choosing a
+            // non-custom preset clears any persisted after/before bounds.
+            setInventoryFilter({ preset });
+          }}
+        >
+          {INVENTORY_PRESET_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      </div>
+      {inventoryFilter.preset === "custom" ? (
+        <>
+          <div className="w-40">
+            <label
+              htmlFor={inventoryAfterId}
+              className="mb-1 block text-xs font-medium text-ink-soft"
+            >
+              After
+            </label>
+            <Input
+              id={inventoryAfterId}
+              type="date"
+              value={inventoryFilter.after ?? ""}
+              onChange={(e) =>
+                setInventoryFilter({
+                  ...inventoryFilter,
+                  preset: "custom",
+                  after: e.target.value || undefined,
+                })
+              }
+            />
+          </div>
+          <div className="w-40">
+            <label
+              htmlFor={inventoryBeforeId}
+              className="mb-1 block text-xs font-medium text-ink-soft"
+            >
+              Before
+            </label>
+            <Input
+              id={inventoryBeforeId}
+              type="date"
+              value={inventoryFilter.before ?? ""}
+              onChange={(e) =>
+                setInventoryFilter({
+                  ...inventoryFilter,
+                  preset: "custom",
+                  before: e.target.value || undefined,
+                })
+              }
+            />
+          </div>
+        </>
+      ) : null}
     </div>
   );
 
