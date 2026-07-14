@@ -60,21 +60,17 @@ export async function listMagazinesFiltered(
     .where(and(...conditions))
     .orderBy(asc(magazine.brandModel));
 
+  const magazineIds = rows.map((r) => r.id);
   const visibleFirearms = await getVisibleIds(db, actorId, "firearm");
-  const byMag = await loadCompatibilityBatch(
-    db,
-    visibleFirearms,
-    rows.map((r) => r.id),
-  );
   // R8 enforcement point: `rows` is already visibility-scoped to `actorId`
   // (constrained to `visibleMagazines` above), so passing its ids straight
-  // into the loader — which trusts its input and does no visibility check
-  // of its own — is safe here.
-  const byLastInventoried = await loadLastInventoriedBatch(
-    db,
-    "magazine",
-    rows.map((r) => r.id),
-  );
+  // into the loaders — which trust their input and do no visibility check
+  // of their own — is safe here. The two batch loads are independent, so
+  // run them concurrently on the shared pool.
+  const [byMag, byLastInventoried] = await Promise.all([
+    loadCompatibilityBatch(db, visibleFirearms, magazineIds),
+    loadLastInventoriedBatch(db, "magazine", magazineIds),
+  ]);
   return rows.map((r) => ({
     ...r,
     compatibleFirearmIds: byMag.get(r.id) ?? [],

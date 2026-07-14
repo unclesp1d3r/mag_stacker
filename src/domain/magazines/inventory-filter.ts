@@ -15,9 +15,9 @@ export type InventoryPreset =
 
 export interface InventoryFilter {
   preset: InventoryPreset;
-  /** Day-precision `YYYY-MM-DD` lower bound, inclusive from start-of-day (UTC). Only meaningful for `custom`. */
+  /** Day-precision `YYYY-MM-DD` lower bound, inclusive from the start of that local day. Only meaningful for `custom`. */
   after?: string;
-  /** Day-precision `YYYY-MM-DD` upper bound, inclusive through end-of-day (UTC). Only meaningful for `custom`. */
+  /** Day-precision `YYYY-MM-DD` upper bound, inclusive through the end of that local day. Only meaningful for `custom`. */
   before?: string;
 }
 
@@ -53,11 +53,36 @@ function isThresholdPreset(
   return preset === "d30" || preset === "d90" || preset === "d365";
 }
 
-/** Epoch ms for a `YYYY-MM-DD` day string at its start (00:00:00.000) or end (23:59:59.999) of day, UTC. `null` if unparsable. */
+/**
+ * Epoch ms for a `YYYY-MM-DD` day string at the start (00:00:00.000) or end
+ * (23:59:59.999) of that day in the *viewer's local* timezone. `null` for an
+ * unparsable or invalid calendar date (e.g. `2026-02-31`).
+ *
+ * Local — not UTC — so the custom range matches the same calendar day the
+ * column renders (`formatLastInventoried` uses `toLocaleDateString`) and the
+ * day the user picked in the `<input type="date">`. The "over N days" presets
+ * deliberately use absolute epoch-ms elapsed time instead (KTD-3), so those
+ * stay timezone-independent; this local boundary applies only to `custom`.
+ */
 function dayBoundaryMs(value: string, endOfDay: boolean): number | null {
-  const suffix = endOfDay ? "T23:59:59.999Z" : "T00:00:00.000Z";
-  const ms = Date.parse(`${value}${suffix}`);
-  return Number.isNaN(ms) ? null : ms;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = endOfDay
+    ? new Date(year, month - 1, day, 23, 59, 59, 999)
+    : new Date(year, month - 1, day, 0, 0, 0, 0);
+  // Reject overflowed dates (e.g. 2026-02-31), which the Date constructor would
+  // otherwise silently roll forward into the next month.
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  return date.getTime();
 }
 
 /**
@@ -130,9 +155,11 @@ export function sanitizeInventoryFilter(raw: unknown): InventoryFilter {
     return { preset: "all" };
   }
 
+  // The guards above already returned for any defined-but-invalid bound, so a
+  // plain `!== undefined` check here is sufficient (and avoids re-parsing).
   return {
     preset,
-    ...(isValidDayString(after) ? { after } : {}),
-    ...(isValidDayString(before) ? { before } : {}),
+    ...(after !== undefined ? { after } : {}),
+    ...(before !== undefined ? { before } : {}),
   };
 }
