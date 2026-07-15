@@ -33,7 +33,7 @@ import { useRowFlash } from "@/hooks/use-row-flash";
 import { useTableViewState } from "@/hooks/use-table-view-state";
 import {
   INVENTORY_PRESET_OPTIONS,
-  type InventoryFilter,
+  type InventoryFilterInput,
   type InventoryPreset,
   matchesInventoryFilter,
   sanitizeInventoryFilter,
@@ -44,7 +44,10 @@ import {
   magazineCapacityAggregate,
 } from "@/src/domain/tables/magazine-groups";
 import { deleteMagazineAction } from "./actions";
-import { formatLastInventoried } from "./last-inventoried";
+import {
+  formatLastInventoried,
+  lastInventoriedSortValue,
+} from "./last-inventoried";
 import { type FirearmOption, MagazineForm } from "./magazine-form";
 
 export interface MagazineListItem {
@@ -89,8 +92,12 @@ interface MagazineFilters {
   query: string;
   caliber: string;
   firearm: string;
-  /** Preset-or-custom-range inventory-date filter (U4, #70). */
-  inventory: InventoryFilter;
+  /**
+   * Preset-or-custom-range inventory-date filter (U4, #70). Kept as the loose
+   * `InventoryFilterInput` (not the sanitized `InventoryFilter`) because this is
+   * the RAW form value — see `inventoryFilter`/`effectiveInventoryFilter` below.
+   */
+  inventory: InventoryFilterInput;
 }
 
 interface MagazineViewState extends TableViewState {
@@ -231,10 +238,7 @@ export function MagazinesView({
         // the top regardless of sort direction.) The `cell` below still reads
         // the real value off `row.original`, not this numeric accessor.
         id: "lastInventoried",
-        accessorFn: (m) =>
-          m.lastInventoriedAt
-            ? Date.parse(m.lastInventoriedAt)
-            : Number.NEGATIVE_INFINITY,
+        accessorFn: (m) => lastInventoriedSortValue(m.lastInventoriedAt),
         sortingFn: "basic",
         header: "Last inventoried",
         meta: { label: "Last inventoried" },
@@ -418,12 +422,18 @@ export function MagazinesView({
     setForm({ open: true, magpulMode });
   }
 
-  // The control displays the sanitized value (mirroring
-  // effectiveCaliberFilter/effectiveFirearmFilter above) so a stale/invalid
-  // persisted value — a removed preset, a corrupted custom range — falls
-  // back to a visible, selectable "All" rather than a blank-looking control.
-  const inventoryFilter = effectiveInventoryFilter;
-  function setInventoryFilter(next: InventoryFilter) {
+  // Unlike effectiveCaliberFilter/effectiveFirearmFilter, the control displays
+  // the RAW form value (`viewState.filters.inventory`), not the sanitized one.
+  // The sanitized `effectiveInventoryFilter` above feeds ONLY the `filtered`
+  // predicate. If the control were driven by the sanitized value instead, a
+  // transient invalid state mid-edit — e.g. typing an `after` date later than
+  // `before` — would sanitize to `{ preset: "all" }`, which would hide the
+  // custom-range panel below (`inventoryFilter.preset === "custom" ? ... :
+  // null`) and silently discard both typed dates. Showing the raw input keeps
+  // whatever the user actually entered on screen; the predicate still treats
+  // an invalid range as "all" until it's corrected.
+  const inventoryFilter = viewState.filters.inventory;
+  function setInventoryFilter(next: InventoryFilterInput) {
     setViewState({
       ...viewState,
       filters: { ...viewState.filters, inventory: next },
@@ -512,24 +522,14 @@ export function MagazinesView({
           value={inventoryFilter.preset}
           onChange={(e) => {
             const preset = e.target.value as InventoryPreset;
-            // Switching to a non-custom preset clears any after/before bounds
-            // (they're mutually exclusive with a preset). Re-selecting
-            // "Custom range…" instead preserves whatever bounds were already
-            // entered, so toggling the preset select back and forth doesn't
-            // silently wipe the user's range.
-            setInventoryFilter(
-              preset === "custom"
-                ? {
-                    preset: "custom",
-                    ...(inventoryFilter.preset === "custom"
-                      ? {
-                          after: inventoryFilter.after,
-                          before: inventoryFilter.before,
-                        }
-                      : {}),
-                  }
-                : { preset },
-            );
+            // `InventoryFilterInput` allows `after`/`before` alongside any
+            // preset, so switching the preset never has to drop them: they
+            // stay on the form state (hidden while the panel below isn't
+            // shown for a non-custom preset) and reappear as-is when the user
+            // re-selects "Custom range…". The predicate ignores them for
+            // non-custom presets via `sanitizeInventoryFilter`, so this is
+            // purely a form-display concern.
+            setInventoryFilter({ ...inventoryFilter, preset });
           }}
         >
           {INVENTORY_PRESET_OPTIONS.map((option) => (

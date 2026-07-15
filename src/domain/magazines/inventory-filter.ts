@@ -28,6 +28,18 @@ export type InventoryFilter =
       before?: string;
     };
 
+/**
+ * Raw (untrusted / form) inventory-filter shape before sanitization. Unlike the
+ * sanitized discriminated-union `InventoryFilter`, `after`/`before` may be present
+ * on any preset — the form keeps them across preset switches so re-selecting
+ * "Custom range…" restores them. Sanitized into an `InventoryFilter` for the predicate.
+ */
+export interface InventoryFilterInput {
+  preset: InventoryPreset;
+  after?: string;
+  before?: string;
+}
+
 /** Preset labels for the filter `<Select>` — one source shared by the view and its tests. */
 export const INVENTORY_PRESET_OPTIONS: ReadonlyArray<{
   value: InventoryPreset;

@@ -22,3 +22,14 @@ export function formatLastInventoried(
   if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString(undefined, { dateStyle: "medium" });
 }
+
+/**
+ * Sort key for the "Last inventoried" column: epoch ms, or -Infinity for
+ * never-inventoried (or an unparsable value) so those rows sort as maximally
+ * stale and follow the sort direction (top ascending, bottom descending).
+ */
+export function lastInventoriedSortValue(value: string | null): number {
+  if (!value) return Number.NEGATIVE_INFINITY;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? Number.NEGATIVE_INFINITY : ms;
+}

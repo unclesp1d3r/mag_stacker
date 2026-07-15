@@ -163,4 +163,33 @@ test("Last inventoried column, presets, and caliber intersection", async ({
     await expect(rowFor(page, "Filter Mag Gamma")).toHaveCount(0); // outside the window
     await expect(rowFor(page, "Filter Mag Delta")).toHaveCount(0); // outside the window
   });
+
+  await test.step("PR #72 regression: a transient inverted range (After later than Before) keeps both dates visible instead of wiping the panel", async () => {
+    // The custom-range panel from the previous step is still open with valid,
+    // non-inverted After/Before values. Driving the form controls off the
+    // SANITIZED filter (the PR #72 regression) collapses an inverted range to
+    // `{ preset: "all" }`, which hides this panel entirely (`inventoryFilter.preset
+    // === "custom" ? ... : null`) and discards both typed dates. The fix
+    // displays the RAW form value instead, so the panel and both dates must
+    // survive a transient invalid edit.
+    const after = page.getByLabel("After");
+    const before = page.getByLabel("Before");
+    const beforeValue = await before.inputValue();
+    const invertedAfter = dayInput(
+      new Date(new Date(beforeValue).getTime() + 30 * DAY_MS),
+    );
+
+    await after.fill(invertedAfter);
+
+    await expect(after).toBeVisible();
+    await expect(before).toBeVisible();
+    await expect(after).toHaveValue(invertedAfter);
+    await expect(before).toHaveValue(beforeValue);
+
+    // The table itself must still render normally — the transient invalid
+    // range reaches the predicate (which treats it as "all"), not a crash.
+    await expect(
+      page.getByRole("columnheader", { name: "Last inventoried" }),
+    ).toBeVisible();
+  });
 });
