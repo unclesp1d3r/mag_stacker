@@ -25,6 +25,7 @@ export const SPEC_USER_KEYS = [
   "detail-view-viewer",
   "table-grouping",
   "magazine-inventory-filter",
+  "magazine-inventory-filter-corrupt",
   "inventory-log",
   "inventory-log-share",
   "inventory-log-viewer",

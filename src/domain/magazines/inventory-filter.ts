@@ -153,6 +153,25 @@ function isInventoryPreset(value: string): value is InventoryPreset {
   return INVENTORY_PRESET_VALUES.has(value);
 }
 
+/**
+ * Shape guard for a raw/persisted `InventoryFilterInput`: an object with a
+ * recognized `preset`. It does NOT validate range semantics (an inverted or
+ * unparsable range is still "well-shaped" and must stay visible in the form —
+ * that's `sanitizeInventoryFilter`'s job for the predicate). Its only purpose is
+ * to keep a structurally-broken persisted value (null, non-object, unknown
+ * preset) from reaching the form controls and throwing on a `.preset` read.
+ */
+export function isInventoryFilterInputShape(
+  value: unknown,
+): value is InventoryFilterInput {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { preset?: unknown }).preset === "string" &&
+    isInventoryPreset((value as { preset: string }).preset)
+  );
+}
+
 /** Is `value` a `YYYY-MM-DD` (or otherwise `Date.parse`-able) day string? */
 function isValidDayString(value: unknown): value is string {
   return typeof value === "string" && dayBoundaryMs(value, false) !== null;

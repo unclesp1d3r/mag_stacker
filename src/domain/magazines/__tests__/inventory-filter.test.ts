@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   type InventoryFilter,
+  isInventoryFilterInputShape,
   matchesInventoryFilter,
   sanitizeInventoryFilter,
 } from "../inventory-filter";
@@ -224,6 +225,43 @@ describe("sanitizeInventoryFilter", () => {
     expect(sanitizeInventoryFilter({ preset: "custom" })).toEqual({
       preset: "custom",
     });
+  });
+});
+
+describe("isInventoryFilterInputShape", () => {
+  // Shape-only guard for the persisted/raw value on the display path
+  // (`app/(app)/magazines/magazines-view.tsx`): a corrupted persisted
+  // `viewState.filters.inventory` (KTD-7, PR #72 re-review) must not reach a
+  // `.preset` read and throw. It deliberately does NOT judge range semantics —
+  // that's `sanitizeInventoryFilter`'s job for the predicate.
+
+  test("null is not well-shaped", () => {
+    expect(isInventoryFilterInputShape(null)).toBe(false);
+  });
+
+  test("a non-object value is not well-shaped", () => {
+    expect(isInventoryFilterInputShape("x")).toBe(false);
+    expect(isInventoryFilterInputShape(42)).toBe(false);
+  });
+
+  test("an unrecognized preset is not well-shaped", () => {
+    expect(isInventoryFilterInputShape({ preset: "nonsense" })).toBe(false);
+  });
+
+  test("a recognized preset-only value is well-shaped", () => {
+    expect(isInventoryFilterInputShape({ preset: "all" })).toBe(true);
+  });
+
+  test("a custom preset with semantically-invalid bounds is still well-shaped", () => {
+    // Well-shaped even though the bounds are garbage — those get sanitized
+    // later (by `sanitizeInventoryFilter`, for the predicate only), not here.
+    expect(
+      isInventoryFilterInputShape({
+        preset: "custom",
+        after: "garbage",
+        before: "x",
+      }),
+    ).toBe(true);
   });
 });
 

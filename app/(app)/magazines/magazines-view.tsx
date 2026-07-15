@@ -35,6 +35,7 @@ import {
   INVENTORY_PRESET_OPTIONS,
   type InventoryFilterInput,
   type InventoryPreset,
+  isInventoryFilterInputShape,
   matchesInventoryFilter,
   sanitizeInventoryFilter,
 } from "@/src/domain/magazines/inventory-filter";
@@ -430,9 +431,27 @@ export function MagazinesView({
   // `before` — would sanitize to `{ preset: "all" }`, which would hide the
   // custom-range panel below (`inventoryFilter.preset === "custom" ? ... :
   // null`) and silently discard both typed dates. Showing the raw input keeps
-  // whatever the user actually entered on screen; the predicate still treats
-  // an invalid range as "all" until it's corrected.
-  const inventoryFilter = viewState.filters.inventory;
+  // whatever the user actually entered on screen — a semantically-invalid but
+  // well-shaped value (e.g. an inverted range) stays visible and editable; the
+  // predicate still treats it as "all" until it's corrected.
+  //
+  // `viewState.filters.inventory` still needs a SHAPE guard, though: it comes
+  // from localStorage via `mergeOverDefaults` (`view-state-storage.ts`), which
+  // merges `filters` only one level deep with no validation of the nested
+  // `inventory` object. A structurally-broken persisted value (`null`, a
+  // non-object, an unrecognized `preset`) would otherwise reach `.preset`
+  // below and throw, crashing the whole page (KTD-7). `sanitizeInventoryFilter`
+  // can't be reused here — it also normalizes semantically-invalid-but-
+  // well-shaped values (like an inverted range) to `{ preset: "all" }`, which
+  // is exactly the data loss this raw-display path exists to avoid. So this
+  // falls back to `{ preset: "all" }` only when the value isn't even
+  // well-shaped, matching the fail-safe the caliber/firearm filters already
+  // get from their sanitized string values.
+  const inventoryFilter: InventoryFilterInput = isInventoryFilterInputShape(
+    viewState.filters.inventory,
+  )
+    ? viewState.filters.inventory
+    : { preset: "all" };
   function setInventoryFilter(next: InventoryFilterInput) {
     setViewState({
       ...viewState,

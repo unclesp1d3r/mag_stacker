@@ -193,3 +193,52 @@ test("Last inventoried column, presets, and caliber intersection", async ({
     ).toBeVisible();
   });
 });
+
+/**
+ * KTD-7 regression (PR #72 re-review): `viewState.filters.inventory` is
+ * restored from localStorage via `mergeOverDefaults`
+ * (`src/domain/tables/view-state-storage.ts`), which merges `filters` only
+ * ONE level deep with no validation of the nested `inventory` object. A
+ * structurally-broken persisted value (`null`, a non-object, an unrecognized
+ * `preset`) used to reach an unconditional `.preset` read on the raw-display
+ * path in `magazines-view.tsx` and throw, crashing the whole page. A separate,
+ * fresh user (rather than reusing "magazine-inventory-filter") keeps this
+ * localStorage-corruption scenario isolated from that spec's stateful,
+ * multi-step flow.
+ */
+const corruptTest = authTest("magazine-inventory-filter-corrupt");
+
+corruptTest.describe.configure({ retries: 0 });
+
+corruptTest(
+  "a structurally corrupt persisted inventory filter falls back to All instead of crashing the page",
+  async ({ page }) => {
+    await page.goto("/magazines");
+    await page.getByRole("button", { name: "Start with a magazine" }).click();
+    await addMagazine(page, "Corrupt State Mag", "9mm");
+
+    // Directly overwrite the table's persisted view-state envelope with a
+    // structurally-broken `inventory` filter. Key/version/envelope shape
+    // mirror `viewStateStorageKey("magazines")` and `VIEW_STATE_VERSION` in
+    // `src/domain/tables/view-state-storage.ts`.
+    await page.evaluate(() => {
+      window.localStorage.setItem(
+        "magstacker:table:magazines:v1",
+        JSON.stringify({
+          version: 1,
+          state: { filters: { inventory: null } },
+        }),
+      );
+    });
+    await page.reload();
+
+    // No crash: the page renders normally, the seeded magazine is still
+    // there, and the filter control falls back to "All" rather than throwing
+    // on `null.preset`.
+    await expect(
+      page.getByRole("columnheader", { name: "Last inventoried" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Last inventoried")).toHaveValue("all");
+    await expect(rowFor(page, "Corrupt State Mag")).toHaveCount(1);
+  },
+);
