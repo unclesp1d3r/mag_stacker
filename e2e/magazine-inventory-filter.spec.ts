@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { differenceInCalendarMonths, format } from "date-fns";
 import { authTest, expect } from "./fixtures/auth";
 
 /**
@@ -31,14 +32,48 @@ function localDateTimeInput(date: Date): string {
 }
 
 /**
- * `YYYY-MM-DD` for a `<input type="date">` value, in the browser's LOCAL day
- * (matches `dayBoundaryMs` in `src/domain/magazines/inventory-filter.ts`,
- * which resolves `InventoryFilter.after`/`before` against the viewer's local
- * calendar day, not UTC).
+ * Move the open date-range popover's visible month(s) by `delta` months
+ * (positive = forward, negative = back) via the shadcn `Calendar`'s (
+ * react-day-picker) month-nav buttons, whose accessible names are fixed
+ * regardless of which month is showing.
  */
-function dayInput(date: Date): string {
-  const offsetMs = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 10);
+async function navigateCalendarMonths(page: Page, delta: number) {
+  if (delta === 0) return;
+  const button = page.getByRole("button", {
+    name: delta > 0 ? "Go to the Next Month" : "Go to the Previous Month",
+  });
+  for (let i = 0; i < Math.abs(delta); i++) {
+    await button.click();
+  }
+}
+
+/**
+ * Click the day cell for `date` in the currently-visible calendar month(s).
+ * react-day-picker labels each day button with the full formatted date
+ * (`"PPPP"`, e.g. "Wednesday, June 3rd, 2026" — see `labelDayButton` in
+ * react-day-picker), so that's the accessible name to target; the caller is
+ * responsible for the month already being in view (`navigateCalendarMonths`).
+ */
+async function selectCalendarDay(page: Page, date: Date) {
+  await page
+    .getByRole("button", { name: format(date, "PPPP"), exact: true })
+    .click();
+}
+
+/**
+ * Select a `from`..`to` range in the shadcn `Calendar` date-range picker
+ * (react-day-picker), given the popover is already open on today's month.
+ * Navigates to `from`'s month, clicks it, then navigates on to `to`'s month
+ * (0 or a small forward hop for a tight window like the seeded ranges below)
+ * and clicks that day — mirroring how a user would page the calendar rather
+ * than typing into a raw `<input type="date">` (replaced by U4's picker).
+ */
+async function selectCalendarRange(page: Page, from: Date, to: Date) {
+  const now = new Date();
+  await navigateCalendarMonths(page, differenceInCalendarMonths(from, now));
+  await selectCalendarDay(page, from);
+  await navigateCalendarMonths(page, differenceInCalendarMonths(to, from));
+  await selectCalendarDay(page, to);
 }
 
 async function addMagazine(page: Page, brandModel: string, caliber: string) {
@@ -142,21 +177,24 @@ test("Last inventoried column, presets, and caliber intersection", async ({
     await expect(rowFor(page, "Filter Mag Delta")).toHaveCount(0);
   });
 
-  await test.step("Custom range reveals After/Before and narrows to that window", async () => {
+  await test.step("Custom range opens a date-range picker and narrows to that window", async () => {
     await page.getByLabel("Caliber").selectOption("");
     await page.getByLabel("Last inventoried").selectOption("custom");
 
-    const after = page.getByLabel("After");
-    const before = page.getByLabel("Before");
-    await expect(after).toBeVisible();
-    await expect(before).toBeVisible();
+    const trigger = page.getByRole("button", {
+      name: "Last inventoried date range",
+    });
+    await expect(trigger).toBeVisible();
+    await expect(trigger).toHaveText("Pick a date range");
+    await trigger.click();
 
     // Beta was backdated ~100 days ago; bound the range tightly around it —
     // wide enough to absorb clock drift between seeding and this assertion,
     // narrow enough to exclude Gamma's ~120-day-old entry.
     const center = new Date(Date.now() - 100 * DAY_MS);
-    await after.fill(dayInput(new Date(center.getTime() - 3 * DAY_MS)));
-    await before.fill(dayInput(new Date(center.getTime() + 3 * DAY_MS)));
+    const from = new Date(center.getTime() - 3 * DAY_MS);
+    const to = new Date(center.getTime() + 3 * DAY_MS);
+    await selectCalendarRange(page, from, to);
 
     await expect(rowFor(page, "Filter Mag Beta")).toHaveCount(1);
     await expect(rowFor(page, "Filter Mag Alpha")).toHaveCount(0); // never -> no custom-range match
@@ -164,34 +202,14 @@ test("Last inventoried column, presets, and caliber intersection", async ({
     await expect(rowFor(page, "Filter Mag Delta")).toHaveCount(0); // outside the window
   });
 
-  await test.step("PR #72 regression: a transient inverted range (After later than Before) keeps both dates visible instead of wiping the panel", async () => {
-    // The custom-range panel from the previous step is still open with valid,
-    // non-inverted After/Before values. Driving the form controls off the
-    // SANITIZED filter (the PR #72 regression) collapses an inverted range to
-    // `{ preset: "all" }`, which hides this panel entirely (`inventoryFilter.preset
-    // === "custom" ? ... : null`) and discards both typed dates. The fix
-    // displays the RAW form value instead, so the panel and both dates must
-    // survive a transient invalid edit.
-    const after = page.getByLabel("After");
-    const before = page.getByLabel("Before");
-    const beforeValue = await before.inputValue();
-    const invertedAfter = dayInput(
-      new Date(new Date(beforeValue).getTime() + 30 * DAY_MS),
-    );
-
-    await after.fill(invertedAfter);
-
-    await expect(after).toBeVisible();
-    await expect(before).toBeVisible();
-    await expect(after).toHaveValue(invertedAfter);
-    await expect(before).toHaveValue(beforeValue);
-
-    // The table itself must still render normally — the transient invalid
-    // range reaches the predicate (which treats it as "all"), not a crash.
-    await expect(
-      page.getByRole("columnheader", { name: "Last inventoried" }),
-    ).toBeVisible();
-  });
+  // PR #72's "transient inverted range" regression (After later than Before
+  // silently wiping the custom-range panel) no longer applies: the range
+  // picker's own two-endpoint selection can't produce an inverted `after` >
+  // `before` pair in the first place, so there's nothing to reach the UI in
+  // an invalid shape. The underlying guard — `sanitizeInventoryFilter`
+  // falling back to `{ preset: "all" }` for a persisted/raw inverted range —
+  // is still covered at the domain level in
+  // `src/domain/magazines/__tests__/inventory-filter.test.ts`.
 });
 
 /**

@@ -1,5 +1,6 @@
 "use client";
 
+import { format, parseISO } from "date-fns";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -10,8 +11,10 @@ import {
   useRef,
   useState,
 } from "react";
+import type { DateRange } from "react-day-picker";
 import { ShareControl } from "@/app/(app)/grants/share-control";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   DataTable,
@@ -26,6 +29,11 @@ import {
 } from "@/components/ui/data-table/types";
 import { Badge, EmptyState } from "@/components/ui/feedback";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Select } from "@/components/ui/select";
 import { Card } from "@/components/ui/surface";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
@@ -307,8 +315,7 @@ export function MagazinesView({
   const caliberId = useId();
   const firearmId = useId();
   const inventoryPresetId = useId();
-  const inventoryAfterId = useId();
-  const inventoryBeforeId = useId();
+  const inventoryRangeId = useId();
   const groupingId = useId();
 
   // `viewStateRef` mirrors `viewState` on every render so the debounced commit
@@ -459,6 +466,40 @@ export function MagazinesView({
     });
   }
 
+  // The custom-range widget (shadcn's `Calendar` + `Popover`, backed by
+  // react-day-picker) works in `DateRange` objects, not the persisted
+  // `yyyy-MM-dd` strings — `range` derives one from the raw form value on
+  // every render, and `onRangeSelect` converts a selection straight back to
+  // those strings via date-fns `format`. Neither the persisted shape nor
+  // `matchesInventoryFilter`'s semantics change: this only swaps the widget
+  // and its date math (two `<input type="date">` + hand-rolled day-boundary
+  // math) for the maintained picker.
+  const inventoryRange: DateRange | undefined =
+    inventoryFilter.after || inventoryFilter.before
+      ? {
+          from: inventoryFilter.after
+            ? parseISO(inventoryFilter.after)
+            : undefined,
+          to: inventoryFilter.before
+            ? parseISO(inventoryFilter.before)
+            : undefined,
+        }
+      : undefined;
+  function onInventoryRangeSelect(next: DateRange | undefined) {
+    setInventoryFilter({
+      preset: "custom",
+      after: next?.from ? format(next.from, "yyyy-MM-dd") : undefined,
+      before: next?.to ? format(next.to, "yyyy-MM-dd") : undefined,
+    });
+  }
+  const inventoryRangeLabel = inventoryRange?.from
+    ? inventoryRange.to
+      ? `${format(inventoryRange.from, "MMM d, yyyy")} – ${format(inventoryRange.to, "MMM d, yyyy")}`
+      : `From ${format(inventoryRange.from, "MMM d, yyyy")}`
+    : inventoryRange?.to
+      ? `Until ${format(inventoryRange.to, "MMM d, yyyy")}`
+      : "Pick a date range";
+
   const filterSlot = (
     <div className="flex flex-wrap items-end gap-3">
       <div className="min-w-48">
@@ -559,50 +600,38 @@ export function MagazinesView({
         </Select>
       </div>
       {inventoryFilter.preset === "custom" ? (
-        <>
-          <div className="w-40">
-            <label
-              htmlFor={inventoryAfterId}
-              className="mb-1 block text-xs font-medium text-ink-soft"
-            >
-              After
-            </label>
-            <Input
-              id={inventoryAfterId}
-              type="date"
-              value={inventoryFilter.after ?? ""}
-              max={inventoryFilter.before}
-              onChange={(e) =>
-                setInventoryFilter({
-                  ...inventoryFilter,
-                  preset: "custom",
-                  after: e.target.value || undefined,
-                })
-              }
-            />
-          </div>
-          <div className="w-40">
-            <label
-              htmlFor={inventoryBeforeId}
-              className="mb-1 block text-xs font-medium text-ink-soft"
-            >
-              Before
-            </label>
-            <Input
-              id={inventoryBeforeId}
-              type="date"
-              value={inventoryFilter.before ?? ""}
-              min={inventoryFilter.after}
-              onChange={(e) =>
-                setInventoryFilter({
-                  ...inventoryFilter,
-                  preset: "custom",
-                  before: e.target.value || undefined,
-                })
-              }
-            />
-          </div>
-        </>
+        <div className="w-64">
+          <label
+            htmlFor={inventoryRangeId}
+            className="mb-1 block text-xs font-medium text-ink-soft"
+          >
+            Date range
+          </label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                id={inventoryRangeId}
+                variant="outline"
+                // A stable accessible name — unlike the visible label below,
+                // which changes with the selection — so the trigger stays
+                // reliably targetable (by role + name) regardless of state.
+                aria-label="Last inventoried date range"
+                className="w-full justify-start font-normal"
+              >
+                {inventoryRangeLabel}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="range"
+                selected={inventoryRange}
+                onSelect={onInventoryRangeSelect}
+                defaultMonth={inventoryRange?.from ?? inventoryRange?.to}
+                numberOfMonths={2}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
       ) : null}
     </div>
   );

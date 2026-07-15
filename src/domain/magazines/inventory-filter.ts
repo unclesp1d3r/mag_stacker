@@ -2,8 +2,18 @@
  * Pure predicate + validation for the magazines list's inventory-date filter
  * (U4, #70): preset buckets ("never inventoried", "over N days") plus a
  * custom after/before range, AND-combined with the view's other filters.
- * Kept dependency-free (no React/TanStack) so it's directly unit-testable.
+ * Kept dependency-free of React/TanStack (date-fns is a plain date-math
+ * utility, not a UI dependency) so it's directly unit-testable.
  */
+
+import {
+  endOfDay,
+  isAfter,
+  isBefore,
+  isValid,
+  parseISO,
+  startOfDay,
+} from "date-fns";
 
 export type InventoryPreset =
   | "all"
@@ -73,38 +83,6 @@ function isThresholdPreset(
 }
 
 /**
- * Epoch ms for a `YYYY-MM-DD` day string at the start (00:00:00.000) or end
- * (23:59:59.999) of that day in the *viewer's local* timezone. `null` for an
- * unparsable or invalid calendar date (e.g. `2026-02-31`).
- *
- * Local — not UTC — so the custom range matches the same calendar day the
- * column renders (`formatLastInventoried` uses `toLocaleDateString`) and the
- * day the user picked in the `<input type="date">`. The "over N days" presets
- * deliberately use absolute epoch-ms elapsed time instead (KTD-3), so those
- * stay timezone-independent; this local boundary applies only to `custom`.
- */
-function dayBoundaryMs(value: string, endOfDay: boolean): number | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = endOfDay
-    ? new Date(year, month - 1, day, 23, 59, 59, 999)
-    : new Date(year, month - 1, day, 0, 0, 0, 0);
-  // Reject overflowed dates (e.g. 2026-02-31), which the Date constructor would
-  // otherwise silently roll forward into the next month.
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return null;
-  }
-  return date.getTime();
-}
-
-/**
  * Does `lastInventoriedAt` satisfy `filter`, evaluated relative to `now`?
  *
  * - `all`: always true.
@@ -140,12 +118,12 @@ export function matchesInventoryFilter(
   // allows reading `.after`/`.before` below.
   if (filter.preset !== "custom") return false;
   if (lastInventoriedAt === null) return false;
-  const entryMs = Date.parse(lastInventoriedAt);
-  if (Number.isNaN(entryMs)) return false;
-  const lowerBound = filter.after ? dayBoundaryMs(filter.after, false) : null;
-  const upperBound = filter.before ? dayBoundaryMs(filter.before, true) : null;
-  if (lowerBound !== null && entryMs < lowerBound) return false;
-  if (upperBound !== null && entryMs > upperBound) return false;
+  const entry = parseISO(lastInventoriedAt);
+  if (!isValid(entry)) return false;
+  if (filter.after && isBefore(entry, startOfDay(parseISO(filter.after))))
+    return false;
+  if (filter.before && isAfter(entry, endOfDay(parseISO(filter.before))))
+    return false;
   return true;
 }
 
@@ -172,9 +150,18 @@ export function isInventoryFilterInputShape(
   );
 }
 
-/** Is `value` a `YYYY-MM-DD` (or otherwise `Date.parse`-able) day string? */
+/**
+ * Is `value` a well-formed `YYYY-MM-DD` day string for a real calendar date?
+ * `parseISO` rejects overflowed dates (e.g. `2026-02-31` returns `Invalid
+ * Date`) rather than silently rolling them into the next month, so this
+ * still catches what the old hand-rolled `dayBoundaryMs` check did.
+ */
 function isValidDayString(value: unknown): value is string {
-  return typeof value === "string" && dayBoundaryMs(value, false) !== null;
+  return (
+    typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    isValid(parseISO(value))
+  );
 }
 
 /**
@@ -208,7 +195,7 @@ export function sanitizeInventoryFilter(raw: unknown): InventoryFilter {
   }
   // Both bounds are valid day strings at this point (or absent); a `YYYY-MM-DD`
   // string compares correctly with plain `>` (lexical order matches chronological
-  // order for that format), so this doesn't need `dayBoundaryMs`.
+  // order for that format), so this doesn't need to parse either bound.
   if (after !== undefined && before !== undefined && after > before) {
     return { preset: "all" };
   }
