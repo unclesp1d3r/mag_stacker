@@ -1,5 +1,9 @@
 import type { Page } from "@playwright/test";
 import { differenceInCalendarMonths, format } from "date-fns";
+import {
+  VIEW_STATE_VERSION,
+  viewStateStorageKey,
+} from "../src/domain/tables/view-state-storage";
 import { authTest, expect } from "./fixtures/auth";
 
 /**
@@ -236,18 +240,25 @@ corruptTest(
     await addMagazine(page, "Corrupt State Mag", "9mm");
 
     // Directly overwrite the table's persisted view-state envelope with a
-    // structurally-broken `inventory` filter. Key/version/envelope shape
-    // mirror `viewStateStorageKey("magazines")` and `VIEW_STATE_VERSION` in
-    // `src/domain/tables/view-state-storage.ts`.
-    await page.evaluate(() => {
-      window.localStorage.setItem(
-        "magstacker:table:magazines:v1",
-        JSON.stringify({
-          version: 1,
-          state: { filters: { inventory: null } },
-        }),
-      );
-    });
+    // structurally-broken `inventory` filter. The storage key and version come
+    // from the production contract (`viewStateStorageKey`/`VIEW_STATE_VERSION`)
+    // so this regression can't silently pass by writing to a stale key the app
+    // would ignore — only the `inventory` payload is deliberately malformed.
+    await page.evaluate(
+      ({ storageKey, version }) => {
+        window.localStorage.setItem(
+          storageKey,
+          JSON.stringify({
+            version,
+            state: { filters: { inventory: null } },
+          }),
+        );
+      },
+      {
+        storageKey: viewStateStorageKey("magazines"),
+        version: VIEW_STATE_VERSION,
+      },
+    );
     await page.reload();
 
     // No crash: the page renders normally, the seeded magazine is still

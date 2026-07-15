@@ -43,7 +43,7 @@ export function buttonVariants({
 }: ButtonVariantOptions = {}): string {
   return cn(
     "inline-flex items-center justify-center rounded-md border font-medium",
-    "transition-[filter,background-color,color,transform] duration-150",
+    "transition-[filter,background-color,color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none",
     // Tactile press — the control settles under your finger, then releases.
     "active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0",
     VARIANTS[variant],

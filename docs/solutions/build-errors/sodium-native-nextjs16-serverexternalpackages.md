@@ -44,7 +44,7 @@ const nextConfig = {
 };
 ```
 
-And — because this repo uses Bun — add the same package to `trustedDependencies` in `package.json` so Bun actually runs its native build step on install:
+And — because this repo uses Bun — add the same package to `trustedDependencies` in `package.json` so Bun runs its install script (which resolves the package's prebuilt native binary) instead of skipping it:
 
 ```jsonc
 // package.json
@@ -59,6 +59,6 @@ Native addons resolve their compiled `.node` binary via a runtime **relative** p
 
 ## Prevention
 
-- **When adding any native (`.node`) addon consumed server-side, in the same change:** (1) add it to `serverExternalPackages` in `next.config.ts`, and (2) add it to `package.json` `trustedDependencies` (Bun).
+- **When adding any native (`.node`) addon consumed server-side, in the same change:** (1) add it to `serverExternalPackages` in `next.config.ts`, and (2) if it ships an install/build script (Bun skips those by default), add it to `package.json` `trustedDependencies` so Bun runs it.
 - **Don't trust the unit/type/lint gate for this class of bug** — it can't see it. Ensure CI runs a real `next build` (this repo's `ci`/`e2e` GitHub Actions jobs do), so an addon-tracing regression fails loudly in CI rather than at deploy time.
 - Quick smell test when a server dependency ships a `binding.js` / `prebuilds/` / `build/Release/*.node`: it's a native addon, so it likely needs the `serverExternalPackages` treatment.

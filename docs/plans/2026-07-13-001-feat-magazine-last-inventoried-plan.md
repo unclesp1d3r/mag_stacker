@@ -27,7 +27,7 @@ execution: code
 ### Summary
 
 Add a **Last Inventoried** column to the magazines list plus an inventory-date filter.
-The column shows the most recent `inventoried` inventory-log entry's date, blank when a magazine has never been inventoried.
+The column shows the most recent `inventoried` inventory-log entry's date, an em-dash when a magazine has never been inventoried.
 The filter offers staleness presets (All / Never / 30+ / 90+ / 1yr+ days) with a custom date-range escape hatch, combinable with the existing filters.
 The server derives the per-magazine date in one batched query; the view filters client-side alongside today's filters.
 
@@ -48,8 +48,8 @@ The value already exists in the log data — the gap is purely surfacing and fil
 
 **Last Inventoried column**
 
-- R1. The magazines list shows a "Last Inventoried" column whose value is the `occurredAt` of the most recent `inventoried` inventory-log entry for that magazine; it renders blank when the magazine has no `inventoried` entries.
-- R2. The column renders an absolute date (same format as the "Acquired" column). For the never-inventoried/blank case it uses an `orDash()`-style em-dash treatment (a per-view local helper, as in the magazine detail view and the accessories/ammo lists), rather than the true-empty cell the magazines "Acquired" column renders. It ships visible by default and is sortable.
+- R1. The magazines list shows a "Last Inventoried" column whose value is the `occurredAt` of the most recent `inventoried` inventory-log entry for that magazine; it renders an em-dash when the magazine has no `inventoried` entries.
+- R2. The column renders an absolute date (same format as the "Acquired" column). For the never-inventoried case it uses an `orDash()`-style em-dash treatment (a per-view local helper, as in the magazine detail view and the accessories/ammo lists), rather than the true-empty cell the magazines "Acquired" column renders. It ships visible by default and is sortable.
 
 **Inventory-date filter**
 
@@ -72,7 +72,7 @@ The value already exists in the log data — the gap is purely surfacing and fil
 
 - AE1. Never inventoried.
   - **Given:** a magazine with no `inventoried` entries.
-  - **Then:** the column is blank; the "over N days" presets include it (never counted is maximally stale); a custom range never includes it; the "Never inventoried" preset (and "All") include it.
+  - **Then:** the column shows an em-dash; the "over N days" presets include it (never counted is maximally stale); a custom range never includes it; the "Never inventoried" preset (and "All") include it.
   - **Covers:** R1, R2, R3, R4, R6.
 - AE2. Multiple entries.
   - **Given:** a magazine with several `inventoried` entries on different dates.
@@ -154,7 +154,7 @@ Prose is authoritative where the diagram is terse: the derivation is a single gr
 - **Requirements:** R1, R7, R8 (trust model).
 - **Dependencies:** none.
 - **Files:** `src/domain/inventory-log/last-inventoried.ts` (new); `src/domain/inventory-log/__tests__/last-inventoried.test.ts` (new).
-- **Approach:** Drizzle `select({ parentId, last: max(occurredAt) }).from(inventoryLog).where(and(eq(parentType, parentType), eq(eventType, "inventoried"), inArray(parentId, parentIds))).groupBy(inventoryLog.parentId)`. Return an empty `Map` immediately when `parentIds` is empty. The `inventory_log_parent_idx` on `(parent_type, parent_id, occurred_at)` supports the grouped max. Mirror `loadCompatibilityBatch`'s trust model: the loader takes ids as given and performs no visibility check (KTD-2).
+- **Approach:** Drizzle `select({ parentId: inventoryLog.parentId, last: max(inventoryLog.occurredAt) }).from(inventoryLog).where(and(eq(inventoryLog.parentType, parentType), eq(inventoryLog.eventType, "inventoried"), inArray(inventoryLog.parentId, parentIds))).groupBy(inventoryLog.parentId)`. Return an empty `Map` immediately when `parentIds` is empty. The `inventory_log_parent_idx` on `(parent_type, parent_id, occurred_at)` supports the grouped max. Mirror `loadCompatibilityBatch`'s trust model: the loader takes ids as given and performs no visibility check (KTD-2).
 - **Execution note:** Start with a failing integration test for the max-per-parent contract, then implement (test-first for new domain behavior).
 - **Patterns to follow:** `src/domain/magazines/compatibility.ts` `loadCompatibilityBatch` (batched Map-returning loader).
 - **Test scenarios** (integration, Testcontainers, gated on `DATABASE_URL`, reuse `src/test-support/factories.ts`):

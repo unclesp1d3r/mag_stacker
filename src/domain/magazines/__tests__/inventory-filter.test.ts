@@ -118,14 +118,26 @@ describe("matchesInventoryFilter", () => {
     });
 
     test("`before` is inclusive through end-of-day, not just midnight", () => {
+      // Build the instant in local time — the production predicate resolves
+      // `after`/`before` day bounds in the viewer's local zone, so a UTC
+      // literal here would drift across the day boundary and flip this
+      // assertion on non-UTC runners.
       expect(
-        matchesInventoryFilter("2026-01-31T23:30:00.000Z", range, NOW),
+        matchesInventoryFilter(
+          new Date(2026, 0, 31, 23, 30).toISOString(),
+          range,
+          NOW,
+        ),
       ).toBe(true);
     });
 
     test("`after` is inclusive from start-of-day", () => {
       expect(
-        matchesInventoryFilter("2026-01-01T00:00:00.000Z", range, NOW),
+        matchesInventoryFilter(
+          new Date(2026, 0, 1, 0, 0).toISOString(),
+          range,
+          NOW,
+        ),
       ).toBe(true);
     });
 
