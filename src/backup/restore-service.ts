@@ -640,10 +640,18 @@ async function promote(ctx: {
         // Leave the snapshot and the maintenance flag in place (see
         // `rollbackFailed` above) and let this propagate as a generic error.
         rollbackFailed = true;
+        // Both errors matter in this manual-intervention scenario. `err` (the
+        // original promote failure) can't share the `err` serializer key with
+        // `rollbackErr`, so serialize its message AND stack under its own key
+        // rather than dropping the stack.
+        const promoteError = toError(err);
         log.error(
           {
             err: rollbackErr,
-            promoteErrorMessage: toError(err).message,
+            promoteError: {
+              message: promoteError.message,
+              stack: promoteError.stack,
+            },
             snapshotSchema: ctx.snapshotSchema,
             uploadDir: ctx.uploadDir,
           },

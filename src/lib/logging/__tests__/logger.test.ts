@@ -108,6 +108,30 @@ describe("buildLoggerOptions — redaction (AE2)", () => {
     const record = stream.parsed()[0] as { session_token: string };
     expect(record.session_token).toBe("[REDACTED]");
   });
+
+  test("redacts a one-level-nested accessToken", () => {
+    const stream = new CaptureStream();
+    const log = pino(buildLoggerOptions(testEnv()), stream);
+
+    log.info({ account: { accessToken: "secret-oauth-token" } });
+
+    const record = stream.parsed()[0] as {
+      account: { accessToken: string };
+    };
+    expect(record.account.accessToken).toBe("[REDACTED]");
+  });
+
+  test("redacts a one-level-nested authorization", () => {
+    const stream = new CaptureStream();
+    const log = pino(buildLoggerOptions(testEnv()), stream);
+
+    log.info({ req2: { authorization: "Bearer x" } });
+
+    const record = stream.parsed()[0] as {
+      req2: { authorization: string };
+    };
+    expect(record.req2.authorization).toBe("[REDACTED]");
+  });
 });
 
 describe("buildLoggerOptions — mixin (correlation context)", () => {

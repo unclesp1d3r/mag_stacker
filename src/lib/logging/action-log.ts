@@ -15,7 +15,11 @@ import { childLogger } from "./logger";
  * sensitive field like a serial number (R9, R18).
  */
 
-/** Message-string label length bound (R20) — longer labels are truncated for the message. */
+/**
+ * Object-label length bound (R20). Applied uniformly to BOTH the human-readable
+ * message string and the structured `action.objectLabel` field, so the two
+ * never disagree — a label longer than this is truncated everywhere.
+ */
 export const ACTION_LABEL_MAX = 64;
 
 export type ActionVerb = "created" | "deleted";
@@ -42,23 +46,32 @@ export function logAction(
   input: ActionLogInput,
   log: pino.Logger = childLogger(input.objectType),
 ): void {
-  const ctx = getContext();
-  const actorName = ctx?.actorName;
-  const actorId = ctx?.actorId;
-  const actor = actorName ?? actorId ?? "unknown";
-  const truncatedLabel = truncateLabel(input.objectLabel, ACTION_LABEL_MAX);
-  const message = `${actor} ${input.verb} ${input.objectType} "${truncatedLabel}"`;
+  // logAction runs AFTER the create/delete transaction has already committed
+  // (KTD-5). It must never throw: a logging failure here must not turn a
+  // successful mutation into a `toActionError` failure reported to the user.
+  try {
+    const ctx = getContext();
+    const actorName = ctx?.actorName;
+    const actorId = ctx?.actorId;
+    const actor = actorName ?? actorId ?? "unknown";
+    const truncatedLabel = truncateLabel(input.objectLabel, ACTION_LABEL_MAX);
+    const message = `${actor} ${input.verb} ${input.objectType} "${truncatedLabel}"`;
 
-  log.info(
-    {
-      action: {
-        verb: input.verb,
-        actor: actorName,
-        actorId,
-        objectType: input.objectType,
-        objectLabel: truncatedLabel,
+    log.info(
+      {
+        action: {
+          verb: input.verb,
+          actor: actorName,
+          actorId,
+          objectType: input.objectType,
+          objectLabel: truncatedLabel,
+        },
       },
-    },
-    message,
-  );
+      message,
+    );
+  } catch (err) {
+    const detail =
+      err instanceof Error ? (err.stack ?? err.message) : String(err);
+    process.stderr.write(`[logging] logAction failed: ${detail}\n`);
+  }
 }

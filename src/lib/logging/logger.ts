@@ -43,7 +43,6 @@ function mixin(): Record<string, string> {
   if (ctx.entrypoint !== undefined) fields.entrypoint = ctx.entrypoint;
   if (ctx.actorId !== undefined) fields.actorId = ctx.actorId;
   if (ctx.actorName !== undefined) fields.actorName = ctx.actorName;
-  if (ctx.ownerId !== undefined) fields.ownerId = ctx.ownerId;
   return fields;
 }
 
@@ -91,10 +90,18 @@ export function buildTransportTargets(
 
 function buildLogger(): pino.Logger {
   const env = resolveLogEnv();
-  return pino(
-    buildLoggerOptions(env),
-    pino.transport({ targets: buildTransportTargets(env) }),
-  );
+  const transport = pino.transport({ targets: buildTransportTargets(env) });
+  // A transport-worker failure (an unwritable LOG_FILE path, a transport
+  // module that fails to load in the production image) emits 'error' on this
+  // stream; left unhandled, that crashes the whole process — the opposite of
+  // what a logger must do. Surface it raw on stderr (deliberately NOT through
+  // the logger — the logger is what just failed) and keep the app running.
+  transport.on("error", (err: unknown) => {
+    const detail =
+      err instanceof Error ? (err.stack ?? err.message) : String(err);
+    process.stderr.write(`[logging] transport error: ${detail}\n`);
+  });
+  return pino(buildLoggerOptions(env), transport);
 }
 
 /** Lazy proxy: forwards to the real logger built on first property access. */

@@ -6,7 +6,10 @@ import { auth } from "@/auth";
 import { getCurrentUser } from "@/src/auth/session";
 import { assertWritesAllowed } from "@/src/backup/maintenance";
 import { db } from "@/src/db/client";
+import { childLogger } from "@/src/lib/logging";
 import { withAdminActionContext } from "@/src/lib/logging/entry-context";
+
+const log = childLogger("users");
 
 /**
  * Operator account-management actions (U13, R7). Each re-resolves the session
@@ -49,6 +52,11 @@ export async function createAccountAction(
       revalidatePath("/users");
       return { ok: true };
     } catch (error) {
+      // These admin actions use a bespoke ActionResult and do not funnel
+      // through toActionError, so log the failure explicitly — otherwise a
+      // failed account create leaves no server-side trail (the correlation id
+      // + actor are already seeded by withAdminActionContext).
+      log.error({ err: error }, "createAccount failed");
       return {
         ok: false,
         error:
@@ -75,6 +83,7 @@ export async function setAccountDisabledAction(
       revalidatePath("/users");
       return { ok: true };
     } catch (error) {
+      log.error({ err: error, userId, disabled }, "setAccountDisabled failed");
       return {
         ok: false,
         error:

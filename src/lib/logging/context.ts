@@ -18,7 +18,14 @@ export interface LogContext {
   entrypoint?: string;
   actorId?: string;
   actorName?: string;
-  ownerId?: string;
+  /**
+   * NOTE: there is deliberately no `ownerId` here. The true owner of a write is
+   * resolved only inside the service transaction (create-on-behalf / grants
+   * make `actorId !== ownerId` a real case), and one ALS scope can span
+   * operations against different owners — so an ambient `ownerId` would
+   * misattribute lines (KTD-4). Attach `ownerId` as a per-line field on the
+   * individual log call where it has actually been resolved.
+   */
 }
 
 /** The single ALS store for the whole app's request/action context. */

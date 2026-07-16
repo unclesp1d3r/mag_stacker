@@ -65,9 +65,24 @@ function resolveFile(env: NodeJS.ProcessEnv): string | undefined {
   return raw && raw.trim() !== "" ? raw : undefined;
 }
 
+/** A `pino-roll` size threshold (`10M`, `500k`, `1024`) or a frequency keyword. */
+const ROTATION_SIZE_PATTERN = /^\d+[bkmg]?$/i;
+const ROTATION_FREQUENCIES = new Set(["daily", "hourly"]);
+
+function isValidRotation(value: string): boolean {
+  return (
+    ROTATION_SIZE_PATTERN.test(value) ||
+    ROTATION_FREQUENCIES.has(value.toLowerCase())
+  );
+}
+
 function resolveRotation(env: NodeJS.ProcessEnv): string {
-  const raw = env.LOG_FILE_ROTATION;
-  return raw && raw.trim() !== "" ? raw : LOG_FILE_ROTATION_DEFAULT;
+  const raw = env.LOG_FILE_ROTATION?.trim();
+  // Validate SHAPE at the boundary, not just presence: an unrecognized value
+  // (`banana`) would otherwise be handed verbatim to `pino-roll` inside a
+  // worker thread, where the failure is invisible to the app's config layer.
+  // Fall back to the default rather than throwing (config must never block boot).
+  return raw && isValidRotation(raw) ? raw : LOG_FILE_ROTATION_DEFAULT;
 }
 
 /**

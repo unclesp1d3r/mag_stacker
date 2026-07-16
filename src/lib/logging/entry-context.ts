@@ -68,14 +68,19 @@ export async function withAdminActionContext<T>(
  * dynamic-segment route handlers, whose second parameter carries
  * `{ params: Promise<...> }` — `(req, ctx) => Promise<Response>` — as well as
  * plain `(req) => Promise<Response>` handlers.
+ *
+ * The generic is bounded to `[Request, ...unknown[]]` so the first argument is
+ * guaranteed to be the `Request` — Next.js always invokes route handlers with
+ * one — which keeps the inbound-`x-request-id` read sound without a cast. A
+ * handler that ignores the request must still declare it (`(_req) => ...`).
  */
-export function withRequestContext<A extends unknown[]>(
+export function withRequestContext<A extends [Request, ...unknown[]]>(
   entrypoint: string,
   handler: (...args: A) => Promise<Response>,
 ): (...args: A) => Promise<Response> {
   return (...args: A) => {
-    const req = args[0] as Request | undefined;
-    const inbound = req?.headers?.get?.("x-request-id")?.trim();
+    const [req] = args;
+    const inbound = req.headers.get("x-request-id")?.trim();
     const correlationId = inbound ? inbound : mintCorrelationId();
     return runWithContext({ correlationId, entrypoint }, () =>
       handler(...args),

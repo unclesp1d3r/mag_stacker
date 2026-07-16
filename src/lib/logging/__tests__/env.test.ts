@@ -71,3 +71,20 @@ describe("resolveLogEnv — overrides", () => {
     expect(env.rotation).toBe("daily");
   });
 });
+
+describe("resolveLogEnv — rotation shape validation", () => {
+  test("an invalid LOG_FILE_ROTATION falls back to the default", () => {
+    const env = resolveLogEnv(envRecord({ LOG_FILE_ROTATION: "banana" }));
+    expect(env.rotation).toBe("10M");
+  });
+
+  test("a valid size threshold (500k) is kept", () => {
+    const env = resolveLogEnv(envRecord({ LOG_FILE_ROTATION: "500k" }));
+    expect(env.rotation).toBe("500k");
+  });
+
+  test("a valid frequency keyword (daily) is kept", () => {
+    const env = resolveLogEnv(envRecord({ LOG_FILE_ROTATION: "daily" }));
+    expect(env.rotation).toBe("daily");
+  });
+});

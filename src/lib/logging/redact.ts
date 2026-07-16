@@ -31,7 +31,10 @@ export const REDACT_PATHS: string[] = [
   "*.session_token",
   "accessToken",
   "access_token",
+  "*.accessToken",
+  "*.access_token",
   "authorization",
+  "*.authorization",
   "req.headers.authorization",
   "req.headers.cookie",
 ];
