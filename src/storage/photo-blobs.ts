@@ -1,5 +1,8 @@
+import { childLogger } from "@/src/lib/logging";
 import { deriveKey, storage } from "./index";
 import type { StorageKey } from "./service";
+
+const log = childLogger("storage");
 
 /**
  * Deletes a photo's original + derivative blobs, best-effort (R8/R19): a
@@ -27,7 +30,7 @@ export async function deletePhotoBlobs(storageKey: StorageKey): Promise<void> {
       try {
         await storage.delete(key);
       } catch (error) {
-        console.error(`storage: failed to delete photo blob ${key}`, error);
+        log.error({ err: error, key }, "failed to delete photo blob");
       }
     }),
   );

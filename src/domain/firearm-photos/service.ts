@@ -4,6 +4,7 @@ import { NotFoundError } from "@/src/auth/errors";
 import { getVisibleIds, resolvePermission } from "@/src/auth/visibility";
 import { type DbOrTx, db } from "@/src/db/client";
 import { firearm, firearmPhoto } from "@/src/db/schema";
+import { childLogger } from "@/src/lib/logging";
 import {
   deletePhotoBlobs,
   deriveKey,
@@ -35,6 +36,8 @@ import {
  * leak that would reveal a photo (or its parent) exists (R70-style
  * existence-hiding).
  */
+
+const log = childLogger("firearm-photos");
 
 export type FirearmPhoto = typeof firearmPhoto.$inferSelect;
 
@@ -181,12 +184,11 @@ export async function createPhotos(
       processed = await processImage(input.bytes, input.mimeType);
     } catch (error) {
       // Dynamic values (incl. the user-controlled mimeType) go as structured
-      // args, never in the format-string position (js/tainted-format-string).
-      console.error("firearm-photos: processImage failed", {
-        firearmId,
-        mimeType: input.mimeType,
-        error,
-      });
+      // fields, never in the message string (js/tainted-format-string).
+      log.error(
+        { err: error, firearmId, mimeType: input.mimeType },
+        "processImage failed",
+      );
       results[index] = { ok: false, codes: ["processingFailed"] };
       continue;
     }
@@ -200,10 +202,7 @@ export async function createPhotos(
       // A partial write can leave 0-3 blobs behind for this key; delete them
       // best-effort so a storage failure doesn't leak, and report this file as
       // failed without touching the others.
-      console.error("firearm-photos: storage.save failed", {
-        firearmId,
-        error,
-      });
+      log.error({ err: error, firearmId }, "storage.save failed");
       await deletePhotoBlobs(key);
       results[index] = { ok: false, codes: ["processingFailed"] };
       continue;

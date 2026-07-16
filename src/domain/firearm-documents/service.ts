@@ -8,6 +8,7 @@ import {
 import { NotFoundError } from "@/src/auth/errors";
 import { type DbOrTx, db } from "@/src/db/client";
 import { firearm, firearmDocument } from "@/src/db/schema";
+import { childLogger } from "@/src/lib/logging";
 import { deleteDocumentBlob, generateKey, storage } from "@/src/storage";
 import { ValidationError } from "../errors";
 import {
@@ -40,6 +41,8 @@ import {
  * content sniff (KTD3) so the stored MIME reflects the real bytes, not the
  * client-declared type.
  */
+
+const log = childLogger("firearm-documents");
 
 export type FirearmDocument = typeof firearmDocument.$inferSelect;
 
@@ -143,10 +146,7 @@ async function sniffAllowedMime(
   try {
     sniffed = await fileTypeFromBuffer(buffer);
   } catch (error) {
-    console.error("firearm-documents: fileTypeFromBuffer threw", {
-      firearmId,
-      error,
-    });
+    log.error({ err: error, firearmId }, "fileTypeFromBuffer threw");
     return null;
   }
   return sniffed !== undefined && isAllowedMimeType(sniffed.mime)
@@ -249,10 +249,7 @@ export async function createDocuments(
     try {
       await storage.save(key, file.buffer);
     } catch (error) {
-      console.error("firearm-documents: storage.save failed", {
-        firearmId,
-        error,
-      });
+      log.error({ err: error, firearmId }, "storage.save failed");
       await deleteDocumentBlob(key);
       results[file.index] = { ok: false, codes: ["uploadFailed"] };
       continue;
@@ -405,12 +402,15 @@ export async function getServableDocument(
   // before rethrowing so the broken document is findable, then let the route
   // surface it (a 500, distinct from the owner-only 404 collapse).
   const bytes = await storage.read(row.storageKey).catch((error: unknown) => {
-    console.error("firearm-documents: storage.read failed", {
-      documentId,
-      firearmId: row.firearmId,
-      storageKey: row.storageKey,
-      error,
-    });
+    log.error(
+      {
+        err: error,
+        documentId,
+        firearmId: row.firearmId,
+        storageKey: row.storageKey,
+      },
+      "storage.read failed",
+    );
     throw error;
   });
   return { bytes, mimeType: row.mimeType, filename: row.filename };

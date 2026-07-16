@@ -2,7 +2,10 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { db } from "@/src/db/client";
 import { firearmDocument, firearmPhoto } from "@/src/db/schema";
+import { childLogger } from "@/src/lib/logging";
 import { activeStorageRoot, deriveKey, storage } from "./index";
+
+const log = childLogger("storage");
 
 /**
  * Minimum age a blob must reach before the sweep will reclaim it. Guards
@@ -66,9 +69,9 @@ export async function orphanSweep(
       // sweep, not an error. Any other failure (permissions, I/O) is a real
       // problem and must not be swallowed silently.
       if (error.code === "ENOENT") return [];
-      console.error(
-        `storage: orphanSweep failed to read UPLOAD_DIR (${uploadDir})`,
-        error,
+      log.error(
+        { err: error, uploadDir },
+        "orphanSweep failed to read UPLOAD_DIR",
       );
       throw error;
     },
@@ -125,7 +128,7 @@ export async function orphanSweep(
         await storage.delete(key);
         deletedKeys.push(key);
       } catch (error) {
-        console.error(`storage: orphanSweep failed to delete ${key}`, error);
+        log.error({ err: error, key }, "orphanSweep failed to delete key");
       }
     }),
   );
