@@ -1,5 +1,6 @@
 "use client";
 
+import { format, parseISO } from "date-fns";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -10,8 +11,10 @@ import {
   useRef,
   useState,
 } from "react";
+import type { DateRange } from "react-day-picker";
 import { ShareControl } from "@/app/(app)/grants/share-control";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   DataTable,
@@ -26,17 +29,34 @@ import {
 } from "@/components/ui/data-table/types";
 import { Badge, EmptyState } from "@/components/ui/feedback";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Select } from "@/components/ui/select";
 import { Card } from "@/components/ui/surface";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import { useRowFlash } from "@/hooks/use-row-flash";
 import { useTableViewState } from "@/hooks/use-table-view-state";
 import {
+  INVENTORY_PRESET_OPTIONS,
+  type InventoryFilterInput,
+  type InventoryPreset,
+  isInventoryFilterInputShape,
+  matchesInventoryFilter,
+  sanitizeInventoryFilter,
+} from "@/src/domain/magazines/inventory-filter";
+import {
   magazineByPrefixKey,
   magazineByTypeKey,
   magazineCapacityAggregate,
 } from "@/src/domain/tables/magazine-groups";
 import { deleteMagazineAction } from "./actions";
+import {
+  formatLastInventoried,
+  lastInventoriedSortValue,
+} from "./last-inventoried";
 import { type FirearmOption, MagazineForm } from "./magazine-form";
 
 export interface MagazineListItem {
@@ -49,6 +69,8 @@ export interface MagazineListItem {
   label: string;
   acquiredDate: string | null;
   notes: string;
+  /** ISO datetime of the most recent "inventoried" log entry; null when never inventoried (U2/U3, #70). */
+  lastInventoriedAt: string | null;
   compatibleFirearmIds: string[];
   compatibleFirearmNames: string[];
 }
@@ -79,6 +101,12 @@ interface MagazineFilters {
   query: string;
   caliber: string;
   firearm: string;
+  /**
+   * Preset-or-custom-range inventory-date filter (U4, #70). Kept as the loose
+   * `InventoryFilterInput` (not the sanitized `InventoryFilter`) because this is
+   * the RAW form value — see `inventoryFilter`/`effectiveInventoryFilter` below.
+   */
+  inventory: InventoryFilterInput;
 }
 
 interface MagazineViewState extends TableViewState {
@@ -207,6 +235,29 @@ export function MagazinesView({
         optIn: true,
       },
       {
+        // Default-visible counterpart to the opt-in "Acquired" column above
+        // (#70): surfaces inventory staleness without an extra click.
+        // Never-inventoried must sort as if *infinitely old* — top when
+        // ascending (oldest-first), bottom when descending (newest-first) —
+        // so the accessor returns a NUMBER (`-Infinity` for never) and lets
+        // the built-in `"basic"` comparator handle it: TanStack negates a
+        // comparator's result for `desc`, so `-Infinity` naturally flips ends
+        // with direction. (`sortUndefined: "first"` would NOT do this — it
+        // returns before that `desc` inversion, so it pins undefined rows to
+        // the top regardless of sort direction.) The `cell` below still reads
+        // the real value off `row.original`, not this numeric accessor.
+        id: "lastInventoried",
+        accessorFn: (m) => lastInventoriedSortValue(m.lastInventoriedAt),
+        sortingFn: "basic",
+        header: "Last inventoried",
+        meta: { label: "Last inventoried" },
+        cell: ({ row }) => (
+          <span className="tabular">
+            {formatLastInventoried(row.original.lastInventoriedAt)}
+          </span>
+        ),
+      },
+      {
         id: ACTIONS_COLUMN_ID,
         header: () => <span className="sr-only">Actions</span>,
         enableSorting: false,
@@ -239,7 +290,12 @@ export function MagazinesView({
     useTableViewState<MagazineViewState>("magazines", {
       ...createDefaultTableViewState(columns),
       grouping: "none",
-      filters: { query: "", caliber: "", firearm: "" },
+      filters: {
+        query: "",
+        caliber: "",
+        firearm: "",
+        inventory: { preset: "all" },
+      },
     });
 
   const tableViewState: TableViewState = {
@@ -258,6 +314,8 @@ export function MagazinesView({
   const searchId = useId();
   const caliberId = useId();
   const firearmId = useId();
+  const inventoryPresetId = useId();
+  const inventoryRangeId = useId();
   const groupingId = useId();
 
   // `viewStateRef` mirrors `viewState` on every render so the debounced commit
@@ -317,9 +375,24 @@ export function MagazinesView({
   )
     ? viewState.filters.firearm
     : "";
+  // A persisted inventory filter can be malformed (stale localStorage shape,
+  // an unrecognized preset, an unparsable custom-range date) — sanitize it
+  // before it ever reaches the predicate, so a bad value degrades to "all"
+  // instead of silently matching nothing or throwing on `NaN` bounds.
+  // `sanitizeInventoryFilter` returns a fresh object every call, so this is
+  // memoized on the (referentially-stable-until-changed) source object —
+  // otherwise `effectiveInventoryFilter` would get a new identity on every
+  // unrelated re-render, and with it in `filtered`'s deps below, `filtered`
+  // would too (the known TanStack autoreset render-loop trigger, see
+  // docs/solutions/runtime-errors/tanstack-autoreset-render-loop-unstable-data.md).
+  const effectiveInventoryFilter = useMemo(
+    () => sanitizeInventoryFilter(viewState.filters.inventory),
+    [viewState.filters.inventory],
+  );
 
   const filtered = useMemo(() => {
     const q = viewState.filters.query.trim().toLowerCase();
+    const now = new Date();
     return magazines.filter((m) => {
       if (q && !m.brandModel.toLowerCase().includes(q)) return false;
       if (effectiveCaliberFilter && m.caliber !== effectiveCaliberFilter)
@@ -329,6 +402,14 @@ export function MagazinesView({
         !m.compatibleFirearmIds.includes(effectiveFirearmFilter)
       )
         return false;
+      if (
+        !matchesInventoryFilter(
+          m.lastInventoriedAt,
+          effectiveInventoryFilter,
+          now,
+        )
+      )
+        return false;
       return true;
     });
   }, [
@@ -336,6 +417,7 @@ export function MagazinesView({
     viewState.filters.query,
     effectiveCaliberFilter,
     effectiveFirearmFilter,
+    effectiveInventoryFilter,
   ]);
 
   function refresh(touchedId?: string) {
@@ -347,6 +429,76 @@ export function MagazinesView({
   function openCreate() {
     setForm({ open: true, magpulMode });
   }
+
+  // Unlike effectiveCaliberFilter/effectiveFirearmFilter, the control displays
+  // the RAW form value (`viewState.filters.inventory`), not the sanitized one.
+  // The sanitized `effectiveInventoryFilter` above feeds ONLY the `filtered`
+  // predicate. If the control were driven by the sanitized value instead, a
+  // transient invalid state mid-edit — e.g. typing an `after` date later than
+  // `before` — would sanitize to `{ preset: "all" }`, which would hide the
+  // custom-range panel below (`inventoryFilter.preset === "custom" ? ... :
+  // null`) and silently discard both typed dates. Showing the raw input keeps
+  // whatever the user actually entered on screen — a semantically-invalid but
+  // well-shaped value (e.g. an inverted range) stays visible and editable; the
+  // predicate still treats it as "all" until it's corrected.
+  //
+  // `viewState.filters.inventory` still needs a SHAPE guard, though: it comes
+  // from localStorage via `mergeOverDefaults` (`view-state-storage.ts`), which
+  // merges `filters` only one level deep with no validation of the nested
+  // `inventory` object. A structurally-broken persisted value (`null`, a
+  // non-object, an unrecognized `preset`) would otherwise reach `.preset`
+  // below and throw, crashing the whole page (KTD-7). `sanitizeInventoryFilter`
+  // can't be reused here — it also normalizes semantically-invalid-but-
+  // well-shaped values (like an inverted range) to `{ preset: "all" }`, which
+  // is exactly the data loss this raw-display path exists to avoid. So this
+  // falls back to `{ preset: "all" }` only when the value isn't even
+  // well-shaped, matching the fail-safe the caliber/firearm filters already
+  // get from their sanitized string values.
+  const inventoryFilter: InventoryFilterInput = isInventoryFilterInputShape(
+    viewState.filters.inventory,
+  )
+    ? viewState.filters.inventory
+    : { preset: "all" };
+  function setInventoryFilter(next: InventoryFilterInput) {
+    setViewState({
+      ...viewState,
+      filters: { ...viewState.filters, inventory: next },
+    });
+  }
+
+  // The custom-range widget (shadcn's `Calendar` + `Popover`, backed by
+  // react-day-picker) works in `DateRange` objects, not the persisted
+  // `yyyy-MM-dd` strings — `range` derives one from the raw form value on
+  // every render, and `onRangeSelect` converts a selection straight back to
+  // those strings via date-fns `format`. Neither the persisted shape nor
+  // `matchesInventoryFilter`'s semantics change: this only swaps the widget
+  // and its date math (two `<input type="date">` + hand-rolled day-boundary
+  // math) for the maintained picker.
+  const inventoryRange: DateRange | undefined =
+    inventoryFilter.after || inventoryFilter.before
+      ? {
+          from: inventoryFilter.after
+            ? parseISO(inventoryFilter.after)
+            : undefined,
+          to: inventoryFilter.before
+            ? parseISO(inventoryFilter.before)
+            : undefined,
+        }
+      : undefined;
+  function onInventoryRangeSelect(next: DateRange | undefined) {
+    setInventoryFilter({
+      preset: "custom",
+      after: next?.from ? format(next.from, "yyyy-MM-dd") : undefined,
+      before: next?.to ? format(next.to, "yyyy-MM-dd") : undefined,
+    });
+  }
+  const inventoryRangeLabel = inventoryRange?.from
+    ? inventoryRange.to
+      ? `${format(inventoryRange.from, "MMM d, yyyy")} – ${format(inventoryRange.to, "MMM d, yyyy")}`
+      : `From ${format(inventoryRange.from, "MMM d, yyyy")}`
+    : inventoryRange?.to
+      ? `Until ${format(inventoryRange.to, "MMM d, yyyy")}`
+      : "Pick a date range";
 
   const filterSlot = (
     <div className="flex flex-wrap items-end gap-3">
@@ -418,6 +570,69 @@ export function MagazinesView({
           ))}
         </Select>
       </div>
+      <div className="w-44">
+        <label
+          htmlFor={inventoryPresetId}
+          className="mb-1 block text-xs font-medium text-ink-soft"
+        >
+          Last inventoried
+        </label>
+        <Select
+          id={inventoryPresetId}
+          value={inventoryFilter.preset}
+          onChange={(e) => {
+            const preset = e.target.value as InventoryPreset;
+            // `InventoryFilterInput` allows `after`/`before` alongside any
+            // preset, so switching the preset never has to drop them: they
+            // stay on the form state (hidden while the panel below isn't
+            // shown for a non-custom preset) and reappear as-is when the user
+            // re-selects "Custom range…". The predicate ignores them for
+            // non-custom presets via `sanitizeInventoryFilter`, so this is
+            // purely a form-display concern.
+            setInventoryFilter({ ...inventoryFilter, preset });
+          }}
+        >
+          {INVENTORY_PRESET_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      </div>
+      {inventoryFilter.preset === "custom" ? (
+        <div className="w-64">
+          <label
+            htmlFor={inventoryRangeId}
+            className="mb-1 block text-xs font-medium text-ink-soft"
+          >
+            Date range
+          </label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                id={inventoryRangeId}
+                variant="outline"
+                // A stable accessible name — unlike the visible label below,
+                // which changes with the selection — so the trigger stays
+                // reliably targetable (by role + name) regardless of state.
+                aria-label="Last inventoried date range"
+                className="w-full justify-start font-normal"
+              >
+                {inventoryRangeLabel}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="range"
+                selected={inventoryRange}
+                onSelect={onInventoryRangeSelect}
+                defaultMonth={inventoryRange?.from ?? inventoryRange?.to}
+                numberOfMonths={2}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+      ) : null}
     </div>
   );
 

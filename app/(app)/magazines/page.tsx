@@ -47,6 +47,9 @@ export default async function MagazinesPage() {
     label: m.label,
     acquiredDate: m.acquiredDate,
     notes: m.notes,
+    lastInventoriedAt: m.lastInventoriedAt
+      ? m.lastInventoriedAt.toISOString()
+      : null,
     compatibleFirearmIds: m.compatibleFirearmIds,
     compatibleFirearmNames: m.compatibleFirearmIds
       .map((id) => nameById.get(id))
