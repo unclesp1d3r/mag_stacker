@@ -8,7 +8,14 @@ import { randomUUID } from "node:crypto";
  */
 export interface LogContext {
   correlationId: string;
-  module?: string;
+  /**
+   * The entry point that started this unit of work — the server action group,
+   * route, boot hook, or CLI (e.g. `"firearms"`, `"backup-export"`). Emitted
+   * under the `entrypoint` key, deliberately distinct from a `childLogger`'s
+   * `module` binding (the specific code area emitting a given line) so the two
+   * never collide on one JSON key.
+   */
+  entrypoint?: string;
   actorId?: string;
   actorName?: string;
   ownerId?: string;

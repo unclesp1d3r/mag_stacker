@@ -62,7 +62,7 @@ const correlationId = mintCorrelationId();
  * unreachable `DATABASE_URL` it prints the error line and exits 1).
  */
 async function main(): Promise<void> {
-  await runWithContext({ correlationId, module: "migrate" }, async () => {
+  await runWithContext({ correlationId, entrypoint: "migrate" }, async () => {
     const pool = new Pool({ connectionString: requireDatabaseUrl() });
     const db = drizzle(pool);
     try {

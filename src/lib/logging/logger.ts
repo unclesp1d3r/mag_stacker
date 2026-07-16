@@ -40,7 +40,7 @@ function mixin(): Record<string, string> {
   if (!ctx) return {};
 
   const fields: Record<string, string> = { correlationId: ctx.correlationId };
-  if (ctx.module !== undefined) fields.module = ctx.module;
+  if (ctx.entrypoint !== undefined) fields.entrypoint = ctx.entrypoint;
   if (ctx.actorId !== undefined) fields.actorId = ctx.actorId;
   if (ctx.actorName !== undefined) fields.actorName = ctx.actorName;
   if (ctx.ownerId !== undefined) fields.ownerId = ctx.ownerId;

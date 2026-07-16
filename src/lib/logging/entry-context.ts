@@ -5,7 +5,7 @@ import { mintCorrelationId, runWithContext } from "@/src/lib/logging";
 /**
  * Single entry-point wrapper for `"use server"` actions (R10, R19, KTD-4).
  * Resolves the session, mints a correlation id, seeds the ALS context with
- * the fields known at entry (`correlationId`, `module`, actor id + display
+ * the fields known at entry (`correlationId`, `entrypoint`, actor id + display
  * name), runs `handler`, and funnels any thrown error through the shared
  * `toActionError` chokepoint (KTD-7). This *replaces* the previous per-file
  * `requireUserId()` + `try/catch/toActionError` boilerplate.
@@ -16,7 +16,7 @@ import { mintCorrelationId, runWithContext } from "@/src/lib/logging";
  * it as a per-line field at that point instead.
  */
 export async function withActionContext<T>(
-  module: string,
+  entrypoint: string,
   handler: (userId: string) => Promise<ActionResult<T>>,
 ): Promise<ActionResult<T>> {
   const user = await getCurrentUser();
@@ -24,7 +24,7 @@ export async function withActionContext<T>(
 
   const correlationId = mintCorrelationId();
   return runWithContext(
-    { correlationId, module, actorId: user.id, actorName: user.name },
+    { correlationId, entrypoint, actorId: user.id, actorName: user.name },
     async () => {
       try {
         return await handler(user.id);
@@ -46,13 +46,13 @@ export async function withActionContext<T>(
  * correlation id and the acting user, when one is resolved.
  */
 export async function withAdminActionContext<T>(
-  module: string,
+  entrypoint: string,
   handler: (user: SessionUser | null) => Promise<T>,
 ): Promise<T> {
   const user = await getCurrentUser();
   const correlationId = mintCorrelationId();
   return runWithContext(
-    { correlationId, module, actorId: user?.id, actorName: user?.name },
+    { correlationId, entrypoint, actorId: user?.id, actorName: user?.name },
     () => handler(user),
   );
 }
@@ -70,13 +70,15 @@ export async function withAdminActionContext<T>(
  * plain `(req) => Promise<Response>` handlers.
  */
 export function withRequestContext<A extends unknown[]>(
-  module: string,
+  entrypoint: string,
   handler: (...args: A) => Promise<Response>,
 ): (...args: A) => Promise<Response> {
   return (...args: A) => {
     const req = args[0] as Request | undefined;
     const inbound = req?.headers?.get?.("x-request-id")?.trim();
     const correlationId = inbound ? inbound : mintCorrelationId();
-    return runWithContext({ correlationId, module }, () => handler(...args));
+    return runWithContext({ correlationId, entrypoint }, () =>
+      handler(...args),
+    );
   };
 }

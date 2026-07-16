@@ -111,20 +111,20 @@ describe("buildLoggerOptions — redaction (AE2)", () => {
 });
 
 describe("buildLoggerOptions — mixin (correlation context)", () => {
-  test("a line emitted inside runWithContext carries correlationId and module", () => {
+  test("a line emitted inside runWithContext carries correlationId and entrypoint", () => {
     const stream = new CaptureStream();
     const log = pino(buildLoggerOptions(testEnv()), stream);
 
-    runWithContext({ correlationId: "abc", module: "m" }, () => {
+    runWithContext({ correlationId: "abc", entrypoint: "m" }, () => {
       log.info("with context");
     });
 
     const record = stream.parsed()[0] as {
       correlationId: string;
-      module: string;
+      entrypoint: string;
     };
     expect(record.correlationId).toBe("abc");
-    expect(record.module).toBe("m");
+    expect(record.entrypoint).toBe("m");
   });
 
   test("a line emitted outside runWithContext carries no correlationId", () => {

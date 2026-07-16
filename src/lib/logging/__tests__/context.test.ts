@@ -4,11 +4,11 @@ import { getContext, mintCorrelationId, runWithContext } from "../context";
 describe("runWithContext / getContext", () => {
   test("getContext returns the seeded fields inside the callback", () => {
     runWithContext(
-      { correlationId: "cid-1", module: "firearms", actorId: "u1" },
+      { correlationId: "cid-1", entrypoint: "firearms", actorId: "u1" },
       () => {
         const ctx = getContext();
         expect(ctx?.correlationId).toBe("cid-1");
-        expect(ctx?.module).toBe("firearms");
+        expect(ctx?.entrypoint).toBe("firearms");
         expect(ctx?.actorId).toBe("u1");
       },
     );

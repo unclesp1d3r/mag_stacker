@@ -57,7 +57,7 @@ describe("logAction — create/delete lines (AE6)", () => {
     runWithContext(
       {
         correlationId: "cid1",
-        module: "firearms",
+        entrypoint: "firearms",
         actorId: "u1",
         actorName: "alice",
       },
@@ -87,7 +87,7 @@ describe("logAction — create/delete lines (AE6)", () => {
     runWithContext(
       {
         correlationId: "cid2",
-        module: "magazines",
+        entrypoint: "magazines",
         actorId: "u2",
         actorName: "bob",
       },

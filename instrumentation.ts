@@ -38,7 +38,7 @@ export async function register(): Promise<void> {
   );
 
   await runWithContext(
-    { correlationId: mintCorrelationId(), module: "instrumentation" },
+    { correlationId: mintCorrelationId(), entrypoint: "instrumentation" },
     async () => {
       try {
         const [{ db }, { activeStorageRoot }, { recoverInterruptedRestore }] =
