@@ -2,17 +2,11 @@
 
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { getCurrentUser } from "@/src/auth/session";
 import { assertWritesAllowed } from "@/src/backup/maintenance";
 import { db } from "@/src/db/client";
 import { user as userTable } from "@/src/db/schema";
-import { type ActionResult, toActionError } from "@/src/domain/action-result";
-
-async function requireUserId(): Promise<string> {
-  const currentUser = await getCurrentUser();
-  if (!currentUser) throw new Error("Unauthenticated");
-  return currentUser.id;
-}
+import type { ActionResult } from "@/src/domain/action-result";
+import { withActionContext } from "@/src/lib/logging/entry-context";
 
 /**
  * Toggle the caller's Magpul mode preference.
@@ -26,11 +20,10 @@ async function requireUserId(): Promise<string> {
 export async function updateMagpulModeAction(
   enabled: boolean,
 ): Promise<ActionResult> {
-  try {
+  return withActionContext("settings", async (userId) => {
     if (typeof enabled !== "boolean") {
       return { ok: false, error: "Invalid setting value." };
     }
-    const userId = await requireUserId();
     await assertWritesAllowed(db);
     const [updated] = await db
       .update(userTable)
@@ -46,7 +39,5 @@ export async function updateMagpulModeAction(
     revalidatePath("/settings");
     revalidatePath("/magazines");
     return { ok: true };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }

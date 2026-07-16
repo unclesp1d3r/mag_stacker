@@ -1,10 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentUser } from "@/src/auth/session";
 import { namesByIds } from "@/src/auth/users";
 import type { ParentType } from "@/src/auth/visibility";
-import { type ActionResult, toActionError } from "@/src/domain/action-result";
+import type { ActionResult } from "@/src/domain/action-result";
 import {
   createLogEntry,
   type LogEntry,
@@ -12,6 +11,7 @@ import {
   listLogForParent,
   markInventoried,
 } from "@/src/domain/inventory-log/service";
+import { withActionContext } from "@/src/lib/logging/entry-context";
 
 /** A log entry with its actor's display name attached for the UI (R9). */
 export interface LogEntryWithActor extends LogEntry {
@@ -25,41 +25,28 @@ export interface LogEntryWithActor extends LogEntry {
  */
 const UNKNOWN_ACTOR_LABEL = "Unknown";
 
-/** Mutations resolve the session themselves (R66) before touching the domain. */
-async function requireUserId(): Promise<string> {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthenticated");
-  return user.id;
-}
-
 /** Shared across the firearm and magazine detail views (one action, one authorization path). */
 export async function logEventAction(
   input: LogEntryCreateInput,
 ): Promise<ActionResult<{ id: string }>> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("inventory-log", async (userId) => {
     const created = await createLogEntry(userId, input);
     revalidatePath("/firearms");
     revalidatePath("/magazines");
     return { ok: true, data: { id: created.id } };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }
 
 export async function markInventoriedAction(
   parentType: ParentType,
   parentId: string,
 ): Promise<ActionResult<{ id: string }>> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("inventory-log", async (userId) => {
     const created = await markInventoried(userId, parentType, parentId);
     revalidatePath("/firearms");
     revalidatePath("/magazines");
     return { ok: true, data: { id: created.id } };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }
 
 /**
@@ -75,8 +62,7 @@ export async function listLogAction(
   parentType: ParentType,
   parentId: string,
 ): Promise<ActionResult<{ entries: LogEntryWithActor[] }>> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("inventory-log", async (userId) => {
     const entries = await listLogForParent(userId, parentType, parentId);
     const actorIds = entries
       .map((e) => e.actorId)
@@ -94,7 +80,5 @@ export async function listLogAction(
         })),
       },
     };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }

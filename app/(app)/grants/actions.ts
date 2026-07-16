@@ -7,17 +7,11 @@ import {
   listGrantsForItem,
   revokeGrant,
 } from "@/src/auth/grants";
-import { getCurrentUser } from "@/src/auth/session";
 import { listShareableUsers, type ShareableUser } from "@/src/auth/users";
 import { type ParentType, resolvePermission } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
-import { type ActionResult, toActionError } from "@/src/domain/action-result";
-
-async function requireUserId(): Promise<string> {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthenticated");
-  return user.id;
-}
+import type { ActionResult } from "@/src/domain/action-result";
+import { withActionContext } from "@/src/lib/logging/entry-context";
 
 export interface ShareGrant {
   granteeId: string;
@@ -36,8 +30,7 @@ export async function loadShareState(
   parentType: ParentType,
   parentId: string,
 ): Promise<ActionResult<ShareState>> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("grants", async (userId) => {
     if (
       (await resolvePermission(db, userId, parentType, parentId)) !== "owner"
     ) {
@@ -60,9 +53,7 @@ export async function loadShareState(
         })),
       },
     };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }
 
 export async function shareItemAction(
@@ -72,8 +63,7 @@ export async function shareItemAction(
   permission: GrantPermission,
   allowCreateOnBehalf: boolean,
 ): Promise<ActionResult> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("grants", async (userId) => {
     await createGrant(db, {
       actorId: userId,
       granteeId,
@@ -86,9 +76,7 @@ export async function shareItemAction(
     revalidatePath("/magazines");
     revalidatePath("/ammo");
     return { ok: true };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }
 
 export async function revokeGrantAction(
@@ -96,14 +84,11 @@ export async function revokeGrantAction(
   parentId: string,
   granteeId: string,
 ): Promise<ActionResult> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("grants", async (userId) => {
     await revokeGrant(db, { actorId: userId, granteeId, parentType, parentId });
     revalidatePath("/firearms");
     revalidatePath("/magazines");
     revalidatePath("/ammo");
     return { ok: true };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }
