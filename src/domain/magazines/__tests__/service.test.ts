@@ -1,10 +1,11 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { NotFoundError } from "@/src/auth/errors";
 import { createGrant } from "@/src/auth/grants";
 import { db } from "@/src/db/client";
 import { magazine, user } from "@/src/db/schema";
 import { ValidationError } from "@/src/domain/errors";
+import * as logging from "@/src/lib/logging";
 import {
   createUser,
   deleteUsers,
@@ -15,6 +16,7 @@ import {
 import { listPrefixes } from "../prefixes";
 import {
   createMagazine,
+  deleteMagazine,
   getMagazine,
   listMagazines,
   magazineCountForFirearm,
@@ -343,5 +345,90 @@ live("createMagazine — prefix recording (#22)", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
     expect(await listPrefixes(owner)).toEqual([]);
     await deleteUsers(owner, other);
+  });
+});
+
+// Action-log wiring at the create/delete seams (U6, R17, R18, KTD-5).
+live("magazines service — action-log wiring (U6)", () => {
+  test("creating a magazine inside runWithContext emits exactly one action line", async () => {
+    const owner = await createUser("al-create");
+    const spy = spyOn(logging, "logAction");
+
+    await logging.runWithContext(
+      { correlationId: "cid-mag-create", actorId: owner, actorName: "carol" },
+      async () => {
+        await createMagazine(owner, {
+          brandModel: "PMAG",
+          caliber: "9mm",
+          baseCapacity: 15,
+          extensionRounds: 0,
+          label: "AL01",
+        });
+      },
+    );
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith({
+      verb: "created",
+      objectType: "magazine",
+      objectLabel: "AL01",
+    });
+    spy.mockRestore();
+    await deleteUsers(owner);
+  });
+
+  test("a rolled-back create (unseeable compatible firearm) emits no action line", async () => {
+    const owner = await createUser("al-rollback");
+    const other = await createUser("al-other");
+    const unseen = await makeFirearm(other, { name: "private" });
+    const spy = spyOn(logging, "logAction");
+
+    await logging.runWithContext(
+      { correlationId: "cid-mag-rollback", actorId: owner },
+      async () => {
+        await expect(
+          createMagazine(owner, {
+            brandModel: "PMAG",
+            caliber: "9mm",
+            baseCapacity: 15,
+            extensionRounds: 0,
+            label: "AL02",
+            compatibleFirearmIds: [unseen.id],
+          }),
+        ).rejects.toBeInstanceOf(NotFoundError);
+      },
+    );
+
+    expect(spy).toHaveBeenCalledTimes(0);
+    spy.mockRestore();
+    await deleteUsers(owner, other);
+  });
+
+  test("deleting a magazine inside runWithContext emits exactly one action line", async () => {
+    const owner = await createUser("al-delete");
+    const mag = await createMagazine(owner, {
+      brandModel: "PMAG",
+      caliber: "9mm",
+      baseCapacity: 15,
+      extensionRounds: 0,
+      label: "AL03",
+    });
+
+    const spy = spyOn(logging, "logAction");
+    await logging.runWithContext(
+      { correlationId: "cid-mag-delete", actorId: owner, actorName: "carol" },
+      async () => {
+        await deleteMagazine(owner, mag.id);
+      },
+    );
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith({
+      verb: "deleted",
+      objectType: "magazine",
+      objectLabel: "AL03",
+    });
+    spy.mockRestore();
+    await deleteUsers(owner);
   });
 });

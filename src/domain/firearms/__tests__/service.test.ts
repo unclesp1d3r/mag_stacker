@@ -9,7 +9,7 @@ import { join } from "node:path";
 const uploadDir = mkdtempSync(join(tmpdir(), "firearms-photos-"));
 process.env.UPLOAD_DIR = uploadDir;
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { NotFoundError } from "@/src/auth/errors";
 import { createGrant } from "@/src/auth/grants";
@@ -24,6 +24,7 @@ import {
 import { deleteAmmo } from "@/src/domain/ammo/service";
 import { ValidationError } from "@/src/domain/errors";
 import { deleteMagazine } from "@/src/domain/magazines/service";
+import * as logging from "@/src/lib/logging";
 import { deriveKey, generateKey, storage } from "@/src/storage";
 import { orphanSweep } from "@/src/storage/orphan-sweep";
 import {
@@ -604,5 +605,88 @@ live("firearms service — photo blob cleanup on delete (U5)", () => {
 
     // Cleanup: reclaim it explicitly so it doesn't linger for other tests.
     await storage.delete(freshOrphan);
+  });
+});
+
+// Action-log wiring at the create/delete seams (U6, R17, R18, KTD-5).
+live("firearms service — action-log wiring (U6)", () => {
+  let userA = "";
+  let userB = "";
+
+  beforeAll(async () => {
+    userA = await createUser("ActionLog");
+    userB = await createUser("ActionLogOther");
+  });
+  afterAll(async () => {
+    await deleteUsers(userA, userB);
+  });
+
+  test("creating a firearm inside runWithContext emits exactly one action line", async () => {
+    const spy = spyOn(logging, "logAction");
+    let fa: Awaited<ReturnType<typeof createFirearm>> | undefined;
+    await logging.runWithContext(
+      { correlationId: "cid-create", actorId: userA, actorName: "alice" },
+      async () => {
+        fa = await createFirearm(userA, {
+          name: "Glock 19",
+          caliber: "9mm",
+          ...CLASS,
+        });
+      },
+    );
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith({
+      verb: "created",
+      objectType: "firearm",
+      objectLabel: "Glock 19",
+    });
+    spy.mockRestore();
+    if (fa) await deleteFirearm(userA, fa.id);
+  });
+
+  test("a rolled-back create (unauthorized create-on-behalf) emits no action line", async () => {
+    const spy = spyOn(logging, "logAction");
+
+    await logging.runWithContext(
+      { correlationId: "cid-rollback", actorId: userA, actorName: "alice" },
+      async () => {
+        await expectRejects(() =>
+          createFirearm(userA, {
+            name: "Should Not Persist",
+            caliber: "9mm",
+            ...CLASS,
+            ownerId: userB, // no grant from userB to userA — rolls back inside the tx
+          }),
+        );
+      },
+    );
+
+    expect(spy).toHaveBeenCalledTimes(0);
+    spy.mockRestore();
+  });
+
+  test("deleting a firearm inside runWithContext emits exactly one action line", async () => {
+    const fa = await createFirearm(userA, {
+      name: "Delete Me",
+      caliber: "9mm",
+      ...CLASS,
+    });
+
+    const spy = spyOn(logging, "logAction");
+    await logging.runWithContext(
+      { correlationId: "cid-delete", actorId: userA, actorName: "alice" },
+      async () => {
+        await deleteFirearm(userA, fa.id);
+      },
+    );
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith({
+      verb: "deleted",
+      objectType: "firearm",
+      objectLabel: "Delete Me",
+    });
+    spy.mockRestore();
   });
 });

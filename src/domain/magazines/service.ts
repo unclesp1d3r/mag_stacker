@@ -12,9 +12,11 @@ import {
 } from "@/src/auth/visibility";
 import { type DbOrTx, db } from "@/src/db/client";
 import { magazine, magazineFirearm, user } from "@/src/db/schema";
+import { logAction } from "@/src/lib/logging";
 import { ValidationError } from "../errors";
 import { loadCompatibilityBatch, replaceCompatibility } from "./compatibility";
 import { normalizeMagpulLabel } from "./constants";
+import { magazineDisplayName } from "./display";
 import { recordPrefix } from "./prefixes";
 import { type MagazineFields, validateMagazine } from "./validate";
 
@@ -147,6 +149,12 @@ export async function createMagazine(
     }
     return created;
   });
+  // Emitted AFTER the tx commits (KTD-5) — a rolled-back create logs nothing.
+  logAction({
+    verb: "created",
+    objectType: "magazine",
+    objectLabel: magazineDisplayName(row),
+  });
   const [withCompat] = await attachCompatibility(db, actorId, [row]);
   return withCompat;
 }
@@ -218,7 +226,30 @@ export async function deleteMagazine(
   actorId: string,
   id: string,
 ): Promise<void> {
-  await authorizeAndDeleteParent(actorId, "magazine", id);
+  let deletedName: { label: string; brandModel: string } | undefined;
+  await authorizeAndDeleteParent(
+    actorId,
+    "magazine",
+    id,
+    db,
+    async (tx, mid) => {
+      const [row] = await tx
+        .select({ label: magazine.label, brandModel: magazine.brandModel })
+        .from(magazine)
+        .where(eq(magazine.id, mid))
+        .limit(1);
+      deletedName = row;
+    },
+  );
+
+  // Emitted AFTER the tx commits (KTD-5) — a rolled-back delete logs nothing.
+  if (deletedName) {
+    logAction({
+      verb: "deleted",
+      objectType: "magazine",
+      objectLabel: magazineDisplayName(deletedName),
+    });
+  }
 }
 
 export async function getMagazine(
