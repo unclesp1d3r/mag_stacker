@@ -60,17 +60,23 @@ export async function withAdminActionContext<T>(
 /**
  * Entry-point wrapper for `Request → Response` route handlers. Mints a
  * correlation id — honoring an inbound `x-request-id` header when present,
- * so a caller-supplied trace id survives — and runs `handler(req)` inside
+ * so a caller-supplied trace id survives — and runs `handler(...args)` inside
  * that context. Does not resolve a user: route handlers vary widely in
  * whether/how they authenticate.
+ *
+ * Forwards ALL arguments (not just `req`) so it works for Next.js's
+ * dynamic-segment route handlers, whose second parameter carries
+ * `{ params: Promise<...> }` — `(req, ctx) => Promise<Response>` — as well as
+ * plain `(req) => Promise<Response>` handlers.
  */
-export function withRequestContext(
+export function withRequestContext<A extends unknown[]>(
   module: string,
-  handler: (req: Request) => Promise<Response>,
-): (req: Request) => Promise<Response> {
-  return (req: Request) => {
-    const inbound = req.headers.get("x-request-id")?.trim();
+  handler: (...args: A) => Promise<Response>,
+): (...args: A) => Promise<Response> {
+  return (...args: A) => {
+    const req = args[0] as Request | undefined;
+    const inbound = req?.headers?.get?.("x-request-id")?.trim();
     const correlationId = inbound ? inbound : mintCorrelationId();
-    return runWithContext({ correlationId, module }, () => handler(req));
+    return runWithContext({ correlationId, module }, () => handler(...args));
   };
 }

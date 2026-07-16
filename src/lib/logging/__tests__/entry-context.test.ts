@@ -134,7 +134,7 @@ describe("withAdminActionContext", () => {
 describe("withRequestContext", () => {
   test("the wrapped handler runs inside context and sees a minted correlationId", async () => {
     let seenId: string | undefined;
-    const wrapped = withRequestContext("routes", async () => {
+    const wrapped = withRequestContext("routes", async (_req: Request) => {
       seenId = getContext()?.correlationId;
       return new Response("ok");
     });
@@ -150,7 +150,10 @@ describe("withRequestContext", () => {
       status: 201,
       headers: { "x-test": "1" },
     });
-    const wrapped = withRequestContext("routes", async () => original);
+    const wrapped = withRequestContext(
+      "routes",
+      async (_req: Request) => original,
+    );
 
     const response = await wrapped(new Request("http://localhost/x"));
 
@@ -159,7 +162,7 @@ describe("withRequestContext", () => {
 
   test("honors an inbound x-request-id header instead of minting a new id", async () => {
     let seenId: string | undefined;
-    const wrapped = withRequestContext("routes", async () => {
+    const wrapped = withRequestContext("routes", async (_req: Request) => {
       seenId = getContext()?.correlationId;
       return new Response("ok");
     });
@@ -171,5 +174,20 @@ describe("withRequestContext", () => {
     );
 
     expect(seenId).toBe("inbound-123");
+  });
+
+  test("forwards additional arguments (e.g. Next.js's { params } route context) to the handler", async () => {
+    let seenParams: { id: string } | undefined;
+    const wrapped = withRequestContext(
+      "routes",
+      async (_req: Request, ctx: { params: { id: string } }) => {
+        seenParams = ctx.params;
+        return new Response("ok");
+      },
+    );
+
+    await wrapped(new Request("http://localhost/x"), { params: { id: "42" } });
+
+    expect(seenParams).toEqual({ id: "42" });
   });
 });

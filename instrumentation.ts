@@ -24,23 +24,36 @@
  *
  * A recovery failure is caught and logged, never thrown: this must never
  * prevent the server from starting.
+ *
+ * This is a no-ambient-context entry point (R11): there is no request or
+ * action already carrying a correlation id, so the whole body runs inside a
+ * freshly minted one via `runWithContext`.
  */
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   if (!process.env.DATABASE_URL) return;
 
-  try {
-    const [{ db }, { activeStorageRoot }, { recoverInterruptedRestore }] =
-      await Promise.all([
-        import("@/src/db/client"),
-        import("@/src/storage"),
-        import("@/src/backup/maintenance"),
-      ]);
-    await recoverInterruptedRestore(db, activeStorageRoot());
-  } catch (err) {
-    console.error(
-      "instrumentation: backup/restore crash-recovery sweep failed to run",
-      err,
-    );
-  }
+  const { childLogger, mintCorrelationId, runWithContext } = await import(
+    "@/src/lib/logging"
+  );
+
+  await runWithContext(
+    { correlationId: mintCorrelationId(), module: "instrumentation" },
+    async () => {
+      try {
+        const [{ db }, { activeStorageRoot }, { recoverInterruptedRestore }] =
+          await Promise.all([
+            import("@/src/db/client"),
+            import("@/src/storage"),
+            import("@/src/backup/maintenance"),
+          ]);
+        await recoverInterruptedRestore(db, activeStorageRoot());
+      } catch (err) {
+        childLogger("instrumentation").error(
+          { err },
+          "crash-recovery sweep failed",
+        );
+      }
+    },
+  );
 }
