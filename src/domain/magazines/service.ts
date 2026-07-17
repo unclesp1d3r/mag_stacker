@@ -154,6 +154,7 @@ export async function createMagazine(
     verb: "created",
     objectType: "magazine",
     objectLabel: magazineDisplayName(row),
+    ownerId: row.ownerId,
   });
   const [withCompat] = await attachCompatibility(db, actorId, [row]);
   return withCompat;
@@ -226,7 +227,9 @@ export async function deleteMagazine(
   actorId: string,
   id: string,
 ): Promise<void> {
-  let deletedName: { label: string; brandModel: string } | undefined;
+  let deletedName:
+    | { label: string; brandModel: string; ownerId: string }
+    | undefined;
   await authorizeAndDeleteParent(
     actorId,
     "magazine",
@@ -234,7 +237,11 @@ export async function deleteMagazine(
     db,
     async (tx, mid) => {
       const [row] = await tx
-        .select({ label: magazine.label, brandModel: magazine.brandModel })
+        .select({
+          label: magazine.label,
+          brandModel: magazine.brandModel,
+          ownerId: magazine.ownerId,
+        })
         .from(magazine)
         .where(eq(magazine.id, mid))
         .limit(1);
@@ -248,6 +255,7 @@ export async function deleteMagazine(
       verb: "deleted",
       objectType: "magazine",
       objectLabel: magazineDisplayName(deletedName),
+      ownerId: deletedName.ownerId,
     });
   }
 }

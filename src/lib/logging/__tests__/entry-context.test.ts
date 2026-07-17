@@ -12,8 +12,12 @@ let currentUser: { id: string; name: string } | null = {
   id: "u1",
   name: "Alice",
 };
+let sessionShouldThrow = false;
 mock.module("@/src/auth/session", () => ({
-  getCurrentUser: async () => currentUser,
+  getCurrentUser: async () => {
+    if (sessionShouldThrow) throw new Error("session backend down");
+    return currentUser;
+  },
 }));
 
 const { withActionContext, withAdminActionContext, withRequestContext } =
@@ -21,6 +25,7 @@ const { withActionContext, withAdminActionContext, withRequestContext } =
 
 beforeEach(() => {
   currentUser = { id: "u1", name: "Alice" };
+  sessionShouldThrow = false;
 });
 
 describe("withActionContext", () => {
@@ -54,6 +59,22 @@ describe("withActionContext", () => {
     });
     expect(seenActorId).toBe("u1");
     expect(seenActorName).toBe("Alice");
+  });
+
+  test("a session-resolution failure returns an error ActionResult instead of rejecting", async () => {
+    sessionShouldThrow = true;
+    let seenCorrelationId: string | undefined;
+
+    // Should resolve (not reject) to a toActionError-shaped result, and the
+    // base correlation context is established before session resolution.
+    const result = await withActionContext("test-module", async () => {
+      seenCorrelationId = getContext()?.correlationId;
+      return { ok: true };
+    });
+
+    expect(result.ok).toBe(false);
+    // Handler never ran, so it never read the context.
+    expect(seenCorrelationId).toBeUndefined();
   });
 
   test("drops an email-shaped actor name so it can't leak past key-based redaction", async () => {
@@ -189,6 +210,24 @@ describe("withRequestContext", () => {
     );
 
     expect(seenId).toBe("inbound-123");
+  });
+
+  test("rejects an unsafe inbound x-request-id (PII injection) and mints a fresh id", async () => {
+    let seenId: string | undefined;
+    const wrapped = withRequestContext("routes", async (_req: Request) => {
+      seenId = getContext()?.correlationId;
+      return new Response("ok");
+    });
+
+    // An email-shaped id would land in logs unredacted if honored verbatim.
+    await wrapped(
+      new Request("http://localhost/x", {
+        headers: { "x-request-id": "attacker@example.com" },
+      }),
+    );
+
+    expect(seenId).not.toBe("attacker@example.com");
+    expect(seenId).toBeDefined();
   });
 
   test("forwards additional arguments (e.g. Next.js's { params } route context) to the handler", async () => {

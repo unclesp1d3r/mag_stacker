@@ -81,6 +81,29 @@ describe("logAction — create/delete lines (AE6)", () => {
     });
   });
 
+  test("includes the resolved ownerId as a per-line field when provided", () => {
+    const { stream, log } = captureLogger();
+
+    runWithContext(
+      { correlationId: "cid1", entrypoint: "firearms", actorId: "u1" },
+      () => {
+        logAction(
+          {
+            verb: "created",
+            objectType: "firearm",
+            objectLabel: "Glock 19",
+            // create-on-behalf: the owner differs from the acting user (KTD-4).
+            ownerId: "owner-2",
+          },
+          log,
+        );
+      },
+    );
+
+    const record = stream.parsed()[0] as unknown as ActionRecord;
+    expect((record.action as { ownerId?: string }).ownerId).toBe("owner-2");
+  });
+
   test("magazine delete emits an equivalent line", () => {
     const { stream, log } = captureLogger();
 

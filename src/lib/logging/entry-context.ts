@@ -33,25 +33,29 @@ export async function withActionContext<T>(
   entrypoint: string,
   handler: (userId: string) => Promise<ActionResult<T>>,
 ): Promise<ActionResult<T>> {
-  const user = await getCurrentUser();
-  if (!user) return toActionError(new Error("Unauthenticated"));
-
   const correlationId = mintCorrelationId();
-  return runWithContext(
-    {
-      correlationId,
-      entrypoint,
-      actorId: user.id,
-      actorName: safeActorName(user.name),
-    },
-    async () => {
-      try {
-        return await handler(user.id);
-      } catch (error) {
-        return toActionError(error);
-      }
-    },
-  );
+  // Establish the base context (correlation id + entrypoint) BEFORE resolving
+  // the session, and resolve the user INSIDE the guarded try. A session/DB
+  // failure in getCurrentUser() then still returns a non-leaking ActionResult
+  // AND is logged with correlation context, instead of rejecting the action.
+  return runWithContext({ correlationId, entrypoint }, async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return toActionError(new Error("Unauthenticated"));
+      // Re-establish context with the resolved actor for the handler scope.
+      return await runWithContext(
+        {
+          correlationId,
+          entrypoint,
+          actorId: user.id,
+          actorName: safeActorName(user.name),
+        },
+        () => handler(user.id),
+      );
+    } catch (error) {
+      return toActionError(error);
+    }
+  });
 }
 
 /**
@@ -68,17 +72,23 @@ export async function withAdminActionContext<T>(
   entrypoint: string,
   handler: (user: SessionUser | null) => Promise<T>,
 ): Promise<T> {
-  const user = await getCurrentUser();
   const correlationId = mintCorrelationId();
-  return runWithContext(
-    {
-      correlationId,
-      entrypoint,
-      actorId: user?.id,
-      actorName: safeActorName(user?.name),
-    },
-    () => handler(user),
-  );
+  // Base context first (so even a session failure logs with correlation),
+  // then resolve the user and re-establish context with the actor. This
+  // wrapper deliberately does NOT catch — admin actions keep their own error
+  // mapping (see doc above).
+  return runWithContext({ correlationId, entrypoint }, async () => {
+    const user = await getCurrentUser();
+    return runWithContext(
+      {
+        correlationId,
+        entrypoint,
+        actorId: user?.id,
+        actorName: safeActorName(user?.name),
+      },
+      () => handler(user),
+    );
+  });
 }
 
 /**
@@ -97,7 +107,15 @@ export async function withAdminActionContext<T>(
  * guaranteed to be the `Request` — Next.js always invokes route handlers with
  * one — which keeps the inbound-`x-request-id` read sound without a cast. A
  * handler that ignores the request must still declare it (`(_req) => ...`).
+ *
+ * An inbound `x-request-id` is only honored when it matches a safe opaque
+ * shape (`SAFE_REQUEST_ID`). The header is client-controllable if a proxy
+ * doesn't strip it, so accepting it verbatim would let a caller inject PII
+ * (an email, a serial) as the `correlationId`, which lands in logs unredacted
+ * (key-based redaction doesn't cover it). Anything else mints a fresh UUID.
  */
+const SAFE_REQUEST_ID = /^[A-Za-z0-9._-]{1,128}$/;
+
 export function withRequestContext<A extends [Request, ...unknown[]]>(
   entrypoint: string,
   handler: (...args: A) => Promise<Response>,
@@ -105,7 +123,8 @@ export function withRequestContext<A extends [Request, ...unknown[]]>(
   return (...args: A) => {
     const [req] = args;
     const inbound = req.headers.get("x-request-id")?.trim();
-    const correlationId = inbound ? inbound : mintCorrelationId();
+    const correlationId =
+      inbound && SAFE_REQUEST_ID.test(inbound) ? inbound : mintCorrelationId();
     return runWithContext({ correlationId, entrypoint }, () =>
       handler(...args),
     );

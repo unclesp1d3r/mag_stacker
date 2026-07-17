@@ -640,6 +640,7 @@ live("firearms service — action-log wiring (U6)", () => {
       verb: "created",
       objectType: "firearm",
       objectLabel: "Glock 19",
+      ownerId: userA,
     });
     spy.mockRestore();
     if (fa) await deleteFirearm(userA, fa.id);
@@ -686,6 +687,7 @@ live("firearms service — action-log wiring (U6)", () => {
       verb: "deleted",
       objectType: "firearm",
       objectLabel: "Delete Me",
+      ownerId: userA,
     });
     spy.mockRestore();
   });

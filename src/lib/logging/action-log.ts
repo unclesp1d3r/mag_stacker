@@ -29,6 +29,13 @@ export interface ActionLogInput {
   verb: ActionVerb;
   objectType: ActionObjectType;
   objectLabel: string;
+  /**
+   * The resolved owner of the object (R10 "owner id where safe", KTD-4).
+   * Passed per-call by the service — which is the only layer that knows it —
+   * because create-on-behalf/grant flows make the owner differ from the actor.
+   * Optional so a call site without a resolved owner still logs.
+   */
+  ownerId?: string;
 }
 
 function truncateLabel(label: string, max: number): string {
@@ -36,20 +43,23 @@ function truncateLabel(label: string, max: number): string {
 }
 
 /**
- * Emit an action-log line. `log` defaults to a `childLogger` scoped to
- * `objectType` (module) — call sites use the 1-arg form. The optional second
- * parameter exists so tests can inject a logger built against an in-memory
- * capture stream (mirrors `logger.test.ts`'s pattern) instead of the real
- * lazy singleton, which spawns worker-thread transports.
+ * Emit an action-log line. Call sites use the 1-arg form; the logger then
+ * defaults to a `childLogger` scoped to `objectType`, resolved inside the try
+ * (below). The optional `injectedLog` exists so tests can inject a logger built
+ * against an in-memory capture stream (mirrors `logger.test.ts`'s pattern)
+ * instead of the real lazy singleton, which spawns worker-thread transports.
  */
 export function logAction(
   input: ActionLogInput,
-  log: pino.Logger = childLogger(input.objectType),
+  injectedLog?: pino.Logger,
 ): void {
   // logAction runs AFTER the create/delete transaction has already committed
   // (KTD-5). It must never throw: a logging failure here must not turn a
   // successful mutation into a `toActionError` failure reported to the user.
+  // The default logger is resolved INSIDE the try so a synchronous
+  // construction failure is caught too, not evaluated as a default param.
   try {
+    const log = injectedLog ?? childLogger(input.objectType);
     const ctx = getContext();
     const actorName = ctx?.actorName;
     const actorId = ctx?.actorId;
@@ -63,6 +73,7 @@ export function logAction(
           verb: input.verb,
           actor: actorName,
           actorId,
+          ownerId: input.ownerId,
           objectType: input.objectType,
           objectLabel: truncatedLabel,
         },

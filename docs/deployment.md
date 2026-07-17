@@ -110,11 +110,13 @@ instead. All logging is controlled by env vars — no code edits needed:
 
 Under the **operator-owned-logs** trust model, stdout and any file you enable
 belong to you, the operator — their confidentiality is a deployment concern, not
-an app-enforced control. The app still redacts secrets (session tokens,
-passwords, emails, serial numbers, auth headers) from structured log fields, and
-never writes those into log messages. If you enable `LOG_FILE`, point it at a
-path on a mounted volume and treat its permissions/retention like any other
-sensitive artifact.
+an app-enforced control. The app redacts secrets (session tokens, passwords,
+emails, serial numbers, auth headers) from **structured log fields** by key
+name — redaction does **not** scan free-text log messages, so app code must
+pass sensitive values as fields, never interpolate them into the message string
+(the action-log helper already keeps its message inputs non-sensitive). If you
+enable `LOG_FILE`, point it at a path on a mounted volume and treat its
+permissions/retention like any other sensitive artifact.
 
 Structured stdout is also the on-ramp to a hosted aggregator (Loki, ELK,
 Datadog): point your log driver or collector at the container's stdout — no

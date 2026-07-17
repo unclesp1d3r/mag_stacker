@@ -83,6 +83,7 @@ export async function createFirearm(
     verb: "created",
     objectType: "firearm",
     objectLabel: firearmDisplayName(row),
+    ownerId: row.ownerId,
   });
   return row;
 }
@@ -140,7 +141,9 @@ export async function deleteFirearm(
 ): Promise<void> {
   const photoKeys: string[] = [];
   const documentKeys: string[] = [];
-  let deletedName: { name: string; nickname: string } | undefined;
+  let deletedName:
+    | { name: string; nickname: string; ownerId: string }
+    | undefined;
   await authorizeAndDeleteParent(
     actorId,
     "firearm",
@@ -148,7 +151,11 @@ export async function deleteFirearm(
     db,
     async (tx, fid) => {
       const [row] = await tx
-        .select({ name: firearm.name, nickname: firearm.nickname })
+        .select({
+          name: firearm.name,
+          nickname: firearm.nickname,
+          ownerId: firearm.ownerId,
+        })
         .from(firearm)
         .where(eq(firearm.id, fid))
         .limit(1);
@@ -174,6 +181,7 @@ export async function deleteFirearm(
       verb: "deleted",
       objectType: "firearm",
       objectLabel: firearmDisplayName(deletedName),
+      ownerId: deletedName.ownerId,
     });
   }
 

@@ -42,6 +42,12 @@ async function runMigrate(
   return { exitCode, output: stdout + stderr };
 }
 
+// The container-backed success path is a Postgres integration test — gate it
+// on DATABASE_URL like the rest of the suite so environments without
+// integration infrastructure skip it cleanly. The failure path needs no DB
+// (it deliberately targets a closed port) and always runs.
+const live = process.env.DATABASE_URL ? test : test.skip;
+
 describe("migrate.ts — exit code (regression)", () => {
   test("a failed migration (unreachable DATABASE_URL) exits non-zero and logs the failure", async () => {
     // Syntactically valid but unreachable: a closed TCP port on loopback
@@ -59,22 +65,25 @@ describe("migrate.ts — exit code (regression)", () => {
     expect(output).toContain("migration failed");
   }, 15_000);
 
-  test("a successful migration against a fresh database exits 0", async () => {
-    const container: StartedPostgreSqlContainer = await new PostgreSqlContainer(
-      POSTGRES_IMAGE,
-    )
-      .withDatabase("magstacker_migrate_exit_test")
-      .start();
+  live(
+    "a successful migration against a fresh database exits 0",
+    async () => {
+      const container: StartedPostgreSqlContainer =
+        await new PostgreSqlContainer(POSTGRES_IMAGE)
+          .withDatabase("magstacker_migrate_exit_test")
+          .start();
 
-    try {
-      const { exitCode, output } = await runMigrate(
-        container.getConnectionUri(),
-      );
+      try {
+        const { exitCode, output } = await runMigrate(
+          container.getConnectionUri(),
+        );
 
-      expect(exitCode).toBe(0);
-      expect(output).toContain("migrations applied");
-    } finally {
-      await container.stop();
-    }
-  }, 120_000);
+        expect(exitCode).toBe(0);
+        expect(output).toContain("migrations applied");
+      } finally {
+        await container.stop();
+      }
+    },
+    120_000,
+  );
 });

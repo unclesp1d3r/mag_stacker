@@ -372,6 +372,7 @@ live("magazines service — action-log wiring (U6)", () => {
       verb: "created",
       objectType: "magazine",
       objectLabel: "AL01",
+      ownerId: owner,
     });
     spy.mockRestore();
     await deleteUsers(owner);
@@ -427,6 +428,7 @@ live("magazines service — action-log wiring (U6)", () => {
       verb: "deleted",
       objectType: "magazine",
       objectLabel: "AL03",
+      ownerId: owner,
     });
     spy.mockRestore();
     await deleteUsers(owner);

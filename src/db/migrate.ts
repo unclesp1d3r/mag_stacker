@@ -12,18 +12,20 @@ import { requireDatabaseUrl } from "./env";
  * the plan's original instruction, see the module doc comment on `main`
  * below for why).
  *
- * `pino({ level })` with no `transport`/`stream` option falls back to Pino's
- * default destination: a `SonicBoom` writing synchronously to fd 1. That
- * means every `log.info`/`log.error` call below has fully written its line
- * to stdout before the next statement runs — no worker thread, no async
- * flush to race against `process.exit()`. `level` still honors `LOG_LEVEL`
- * (via `resolveLogEnv`) for parity with the shared logger's level semantics;
- * `.child({ module: "migrate" })` matches the shared `childLogger`'s output
- * shape (a `module` field on every line).
+ * The destination is an explicitly SYNCHRONOUS `pino.destination({ dest: 1,
+ * sync: true })`. Pino's default destination is buffered (`sync: false`) for
+ * throughput, which for a one-shot CLI that calls `process.exit()` could drop
+ * the final success/failure line before it flushes. `sync: true` guarantees
+ * each `log.info`/`log.error` line is fully written to stdout before the next
+ * statement runs — no worker thread, no async flush to race against
+ * `process.exit()`. `level` still honors `LOG_LEVEL` (via `resolveLogEnv`) for
+ * parity with the shared logger; `.child({ module: "migrate" })` matches the
+ * shared `childLogger`'s output shape (a `module` field on every line).
  */
-const log = pino({ level: resolveLogEnv().level }).child({
-  module: "migrate",
-});
+const log = pino(
+  { level: resolveLogEnv().level },
+  pino.destination({ dest: 1, sync: true }),
+).child({ module: "migrate" });
 
 /** Minted once per invocation (R11) and reused on both the success and
  * failure log lines below, since a single CLI run is one unit of work
