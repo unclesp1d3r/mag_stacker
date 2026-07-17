@@ -2,6 +2,7 @@ import { NotAuthorizedError, NotFoundError } from "@/src/auth/errors";
 import { RateLimitError } from "@/src/auth/rate-limit";
 import { MaintenanceModeError } from "@/src/backup/maintenance";
 import { DatabaseUnavailableError } from "@/src/db/health";
+import { childLogger } from "@/src/lib/logging";
 import { ValidationError } from "./errors";
 
 /** Result envelope returned by Server Actions to the UI. */
@@ -31,6 +32,6 @@ export function toActionError(error: unknown): ActionResult<never> {
   // storage failure. The user gets a generic message; log the real error so
   // there is a server-side trail (every mapped case above is expected and
   // intentionally silent).
-  console.error("action: unhandled error", error);
+  childLogger("action").error({ err: error }, "unhandled action error");
   return { ok: false, error: "Something went wrong. Please try again." };
 }

@@ -1,8 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentUser } from "@/src/auth/session";
-import { type ActionResult, toActionError } from "@/src/domain/action-result";
+import type { ActionResult } from "@/src/domain/action-result";
 import {
   type BulkAddOptions,
   type BulkAddTemplate,
@@ -14,19 +13,13 @@ import {
   type MagazineInput,
   updateMagazine,
 } from "@/src/domain/magazines/service";
-
-async function requireUserId(): Promise<string> {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthenticated");
-  return user.id;
-}
+import { withActionContext } from "@/src/lib/logging/entry-context";
 
 export async function createMagazineAction(
   input: MagazineInput,
   labelPrefix?: string,
 ): Promise<ActionResult<{ id: string }>> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("magazines", async (userId) => {
     // Single add always creates for the acting user. Force `ownerId` undefined so
     // an injected `ownerId` on the submitted object can't ride into createMagazine's
     // create-on-behalf path — resolveCreateOwner would still gate it on a grant
@@ -39,34 +32,26 @@ export async function createMagazineAction(
     });
     revalidatePath("/magazines");
     return { ok: true, data: { id: created.id } };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }
 
 export async function updateMagazineAction(
   id: string,
   input: MagazineInput,
 ): Promise<ActionResult<{ id: string }>> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("magazines", async (userId) => {
     await updateMagazine(userId, id, input);
     revalidatePath("/magazines");
     return { ok: true, data: { id } };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }
 
 export async function deleteMagazineAction(id: string): Promise<ActionResult> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("magazines", async (userId) => {
     await deleteMagazine(userId, id);
     revalidatePath("/magazines");
     return { ok: true };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }
 
 export async function bulkAddMagazinesAction(
@@ -75,8 +60,7 @@ export async function bulkAddMagazinesAction(
   labelPrefix: string,
   options: BulkAddOptions = {},
 ): Promise<ActionResult<{ created: number }>> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("magazines", async (userId) => {
     const created = await bulkAddMagazines(
       userId,
       template,
@@ -86,7 +70,5 @@ export async function bulkAddMagazinesAction(
     );
     revalidatePath("/magazines");
     return { ok: true, data: { created: created.length } };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }

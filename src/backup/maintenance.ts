@@ -50,7 +50,10 @@ import { dirname, join } from "node:path";
 import { getTableName, sql } from "drizzle-orm";
 import type { Pool, PoolClient } from "pg";
 import type { DbOrTx } from "@/src/db/client";
+import { childLogger } from "@/src/lib/logging";
 import { EXPORT_TABLE_ORDER, WIPE_TABLE_ORDER } from "./table-order";
+
+const log = childLogger("backup");
 
 const MAINTENANCE_SCHEMA = "restore_ops";
 const MAINTENANCE_TABLE = "maintenance_flag";
@@ -101,7 +104,7 @@ function logRecoveryFailure(step: string, err: unknown): void {
   // Crash recovery must never throw out of `recoverInterruptedRestore` (it
   // runs from `instrumentation.ts`'s `register()`, and a thrown error there
   // would fail the whole server's boot) — every failure is logged instead.
-  console.error(`backup/maintenance: recovery step "${step}" failed`, err);
+  log.error({ err, step }, "recovery step failed");
 }
 
 /** Postgres SQLSTATE for "undefined_table" (a relation referenced in a query doesn't exist). */
@@ -556,14 +559,9 @@ export async function recoverInterruptedRestore(
         }
       } catch (err) {
         rollbackFailed = true;
-        console.error(
-          `backup/maintenance: MANUAL INTERVENTION REQUIRED — rolling back an ` +
-            `interrupted restore from snapshot "${snapshotSchema}" failed partway; ` +
-            "the live database may now be a mix of wiped and restored tables. " +
-            "The maintenance flag is being left ACTIVE (blocking ordinary writes) " +
-            "and the snapshot schema is being preserved so a retry or manual " +
-            "recovery can still use it.",
-          err,
+        log.error(
+          { err, snapshotSchema },
+          "MANUAL INTERVENTION REQUIRED — rolling back an interrupted restore failed partway; the live database may now be a mix of wiped and restored tables; the maintenance flag is being left ACTIVE (blocking ordinary writes) and the snapshot schema is being preserved so a retry or manual recovery can still use it",
         );
       }
     }

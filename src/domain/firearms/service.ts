@@ -12,8 +12,10 @@ import {
 } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
 import { firearm, firearmDocument, firearmPhoto } from "@/src/db/schema";
+import { logAction } from "@/src/lib/logging";
 import { deleteDocumentBlob, deletePhotoBlobs } from "@/src/storage";
 import { ValidationError } from "../errors";
+import { firearmDisplayName } from "./display";
 import { type FirearmInput, validateFirearm } from "./validate";
 
 /**
@@ -68,14 +70,22 @@ export async function createFirearm(
   const codes = validateFirearm(input);
   if (codes.length > 0) throw new ValidationError(codes);
 
-  return db.transaction(async (tx) => {
+  const row = await db.transaction(async (tx) => {
     const ownerId = await resolveCreateOwner(tx, actorId, input.ownerId);
-    const [row] = await tx
+    const [created] = await tx
       .insert(firearm)
       .values({ ownerId, ...persistableFields(input) })
       .returning();
-    return row;
+    return created;
   });
+  // Emitted AFTER the tx commits (KTD-5) — a rolled-back create logs nothing.
+  logAction({
+    verb: "created",
+    objectType: "firearm",
+    objectLabel: firearmDisplayName(row),
+    ownerId: row.ownerId,
+  });
+  return row;
 }
 
 export async function updateFirearm(
@@ -131,12 +141,26 @@ export async function deleteFirearm(
 ): Promise<void> {
   const photoKeys: string[] = [];
   const documentKeys: string[] = [];
+  let deletedName:
+    | { name: string; nickname: string; ownerId: string }
+    | undefined;
   await authorizeAndDeleteParent(
     actorId,
     "firearm",
     id,
     db,
     async (tx, fid) => {
+      const [row] = await tx
+        .select({
+          name: firearm.name,
+          nickname: firearm.nickname,
+          ownerId: firearm.ownerId,
+        })
+        .from(firearm)
+        .where(eq(firearm.id, fid))
+        .limit(1);
+      deletedName = row;
+
       const photos = await tx
         .select({ storageKey: firearmPhoto.storageKey })
         .from(firearmPhoto)
@@ -150,6 +174,16 @@ export async function deleteFirearm(
       documentKeys.push(...documents.map((doc) => doc.storageKey));
     },
   );
+
+  // Emitted AFTER the tx commits (KTD-5) — a rolled-back delete logs nothing.
+  if (deletedName) {
+    logAction({
+      verb: "deleted",
+      objectType: "firearm",
+      objectLabel: firearmDisplayName(deletedName),
+      ownerId: deletedName.ownerId,
+    });
+  }
 
   await Promise.all([
     ...photoKeys.map((key) => deletePhotoBlobs(key)),

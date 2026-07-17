@@ -92,3 +92,32 @@ credentials are never sent in cleartext, and set `BETTER_AUTH_URL` to the
 `POSTGRES_HOST_PORT` (default 5544) publishes Postgres for local tooling;
 `APP_HOST_PORT` (default 3000) publishes the app. Change `APP_HOST_PORT` if the
 default collides with another service on the host.
+
+## Logging
+
+The app logs as **structured JSON to stdout** by default, so `docker logs`
+(and anything that scrapes it — a collector, a log driver) gets machine-parsable
+lines with a `correlationId` tying together every line from one request, action,
+or job. In development the same logger prints human-readable, colorized output
+instead. All logging is controlled by env vars — no code edits needed:
+
+| Var | Default | Purpose |
+|-----|---------|---------|
+| `LOG_LEVEL` | `info` (prod), `debug` (dev) | Minimum level emitted: `fatal\|error\|warn\|info\|debug\|trace`. |
+| `LOG_FORMAT` | `json` (prod), `pretty` (dev) | `json` for raw structured output, `pretty` for colorized dev output. Overrides the `NODE_ENV`-derived default. |
+| `LOG_FILE` | _unset_ | Path to a rotating log file. **Unset ⇒ stdout only.** Set it to also write JSON to disk — for self-hosters without a log collector. |
+| `LOG_FILE_ROTATION` | `10M` | Rotation threshold for `LOG_FILE`: a size like `10M`/`500k`, or `daily`/`hourly`. Retains the 10 most recent files. |
+
+Under the **operator-owned-logs** trust model, stdout and any file you enable
+belong to you, the operator — their confidentiality is a deployment concern, not
+an app-enforced control. The app redacts secrets (session tokens, passwords,
+emails, serial numbers, auth headers) from **structured log fields** by key
+name — redaction does **not** scan free-text log messages, so app code must
+pass sensitive values as fields, never interpolate them into the message string
+(the action-log helper already keeps its message inputs non-sensitive). If you
+enable `LOG_FILE`, point it at a path on a mounted volume and treat its
+permissions/retention like any other sensitive artifact.
+
+Structured stdout is also the on-ramp to a hosted aggregator (Loki, ELK,
+Datadog): point your log driver or collector at the container's stdout — no
+app change required.

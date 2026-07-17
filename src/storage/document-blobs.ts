@@ -1,5 +1,8 @@
+import { childLogger } from "@/src/lib/logging";
 import { storage } from "./index";
 import type { StorageKey } from "./service";
+
+const log = childLogger("storage");
 
 /**
  * Deletes a firearm document's single blob, best-effort (R18/R19). Unlike
@@ -24,9 +27,6 @@ export async function deleteDocumentBlob(
   try {
     await storage.delete(storageKey);
   } catch (error) {
-    console.error(
-      `storage: failed to delete document blob ${storageKey}`,
-      error,
-    );
+    log.error({ err: error, storageKey }, "failed to delete document blob");
   }
 }

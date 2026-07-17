@@ -1,12 +1,13 @@
 import { getCurrentUser } from "@/src/auth/session";
 import { buildInventoryCsv } from "@/src/domain/csv/build";
+import { withRequestContext } from "@/src/lib/logging/entry-context";
 
 /**
  * CSV download (U8, ADR-0006, KTD-2). Sits at `/api/export` (covered by the
  * proxy matcher) and re-resolves the session in-handler — the real
  * authorization boundary (R66). Unauthenticated requests get 401 with no body.
  */
-export async function GET(): Promise<Response> {
+export const GET = withRequestContext("export", async (): Promise<Response> => {
   const user = await getCurrentUser();
   if (!user) {
     return new Response("Unauthorized", { status: 401 });
@@ -19,4 +20,4 @@ export async function GET(): Promise<Response> {
       "Content-Disposition": 'attachment; filename="magstacker-inventory.csv"',
     },
   });
-}
+});

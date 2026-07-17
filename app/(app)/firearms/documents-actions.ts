@@ -2,8 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createMutationLimiter } from "@/src/auth/rate-limit";
-import { getCurrentUser } from "@/src/auth/session";
-import { type ActionResult, toActionError } from "@/src/domain/action-result";
+import type { ActionResult } from "@/src/domain/action-result";
 import {
   type CreateDocumentClientResult,
   toFirearmDocumentRow,
@@ -13,13 +12,7 @@ import {
   createDocuments,
   deleteDocument,
 } from "@/src/domain/firearm-documents/service";
-
-/** Mutations resolve the session themselves (R66/mirrors photo-actions) before touching the domain. */
-async function requireUserId(): Promise<string> {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthenticated");
-  return user.id;
-}
+import { withActionContext } from "@/src/lib/logging/entry-context";
 
 /**
  * Dedicated upload rate limiter (mirrors photo-actions' `uploadLimiter`): a
@@ -47,8 +40,7 @@ export async function uploadDocumentsAction(
   firearmId: string,
   formData: FormData,
 ): Promise<ActionResult<{ results: CreateDocumentClientResult[] }>> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("firearm-documents", async (userId) => {
     const files = formData
       .getAll("files")
       .filter((entry): entry is File => entry instanceof File);
@@ -81,20 +73,15 @@ export async function uploadDocumentsAction(
     );
     revalidateFirearmPaths();
     return { ok: true, data: { results: clientResults } };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }
 
 export async function deleteDocumentAction(
   documentId: string,
 ): Promise<ActionResult> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("firearm-documents", async (userId) => {
     await deleteDocument(userId, documentId);
     revalidateFirearmPaths();
     return { ok: true };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }

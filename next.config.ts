@@ -10,7 +10,22 @@ const nextConfig: NextConfig = {
   // for every route that imports it (`ADDON_NOT_FOUND`) — both backup API
   // routes, transitively. Excluding it from bundling keeps it a normal
   // `require()` resolved from `node_modules` at runtime instead.
-  serverExternalPackages: ["sodium-native"],
+  // `pino` and its transports (`pino-pretty`, `pino-roll`) run in
+  // `thread-stream` worker threads spawned via a dynamic `new Worker(...)`.
+  // Turbopack can only statically trace worker entry points with literal module
+  // ids; Pino computes them dynamically, so bundling relocates the transport
+  // scripts and they fail to resolve at runtime in the production image
+  // (`next start` over `.next`). Excluding them — same rationale as
+  // `sodium-native` above — keeps them normal `require()`s resolved from
+  // `node_modules`. `thread-stream` is also pinned as a direct dependency so a
+  // transitive-only copy can't slip past this list (Next 16 Turbopack tracing).
+  serverExternalPackages: [
+    "sodium-native",
+    "pino",
+    "pino-pretty",
+    "pino-roll",
+    "thread-stream",
+  ],
   experimental: {
     serverActions: {
       // Photo AND document uploads go through Server Actions as multipart

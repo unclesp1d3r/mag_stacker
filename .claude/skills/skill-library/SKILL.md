@@ -16,10 +16,13 @@ from the codebase (see `/ecc:agent-sort`, which produced this).
 ## Stack (source of truth)
 
 TypeScript 5 · Next.js 16 (App Router, React Compiler) · React 19 · **Bun** · **Biome** (not
-ESLint/Prettier) · Tailwind v4 · **Motion** (design-system animation). **Shipped backend:**
-Postgres + Drizzle (pg Pool), Docker, Better Auth (email+password, owner-scoped inventory,
-per-item grant sharing), Testcontainers integration/E2E. **Planned:** Shadcn; org-plugin
-sharing is under evaluation (see the `sharing-architecture-org-plugin` memory), **not** shipped.
+ESLint/Prettier) · Tailwind v4 · **Motion** (design-system animation) · **Shadcn** (shipped —
+`components.json` "new-york" + RSC, `components/ui/*` incl. button/input/select/dropdown-menu,
+Radix + `class-variance-authority` + `lucide-react` + `tw-animate-css`; shadcn-first per the
+`shadcn-first-kiss` memory). **Shipped backend:** Postgres + Drizzle (pg Pool), Docker, Better
+Auth (email+password, owner-scoped inventory, per-item grant sharing), Testcontainers
+integration/E2E. **Under evaluation (not shipped):** org-plugin sharing (see the
+`sharing-architecture-org-plugin` memory).
 
 > The former `.cs` .NET snapshot has been removed. **C#/.NET tooling is LIBRARY, never DAILY.**
 
@@ -28,6 +31,7 @@ sharing is under evaluation (see the `sharing-architecture-org-plugin` memory), 
 | Area | Skills / agents | Why |
 | --- | --- | --- |
 | Next/React | `ecc:frontend-patterns`, `ecc:react-patterns`, `ecc:react-performance`, `ecc:nextjs-turbopack`, `frontend-design` | `next.config.ts`, React 19, app router |
+| Shadcn UI | `frontend-design`, `shadcn` MCP (`mcp__shadcn__*`) | `components.json` + `components/ui/*` shipped; shadcn-first UI direction |
 | Animation | `ecc:motion-foundations`, `ecc:motion-patterns`, `ecc:motion-ui` | `motion` dep wired into the design system (`globals.css`, `theme-provider`, `theme-toggle`, `toast`); memory prefers Motion |
 | Docs lookup | `ecc:docs-lookup` / `documentation-lookup` (Context7) | Next 16 / Tailwind 4 / Drizzle are post-cutoff; AGENTS.md says read the docs |
 | Runtime | `ecc:bun-runtime` | `bun.lock` |

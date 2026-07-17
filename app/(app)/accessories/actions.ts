@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentUser } from "@/src/auth/session";
 import {
   type AccessoryCreateInput,
   type AccessoryUpdateInput,
@@ -10,51 +9,36 @@ import {
   mountAccessory,
   updateAccessory,
 } from "@/src/domain/accessories/service";
-import { type ActionResult, toActionError } from "@/src/domain/action-result";
-
-/** Mutations resolve the session themselves (R66) before touching the domain. */
-async function requireUserId(): Promise<string> {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthenticated");
-  return user.id;
-}
+import type { ActionResult } from "@/src/domain/action-result";
+import { withActionContext } from "@/src/lib/logging/entry-context";
 
 export async function createAccessoryAction(
   input: AccessoryCreateInput,
 ): Promise<ActionResult<{ id: string }>> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("accessories", async (userId) => {
     const created = await createAccessory(userId, input);
     revalidatePath("/accessories");
     return { ok: true, data: { id: created.id } };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }
 
 export async function updateAccessoryAction(
   id: string,
   input: AccessoryUpdateInput,
 ): Promise<ActionResult<{ id: string }>> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("accessories", async (userId) => {
     await updateAccessory(userId, id, input);
     revalidatePath("/accessories");
     return { ok: true, data: { id } };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }
 
 export async function deleteAccessoryAction(id: string): Promise<ActionResult> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("accessories", async (userId) => {
     await deleteAccessory(userId, id);
     revalidatePath("/accessories");
     return { ok: true };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }
 
 /**
@@ -69,13 +53,10 @@ export async function mountAccessoryAction(
   id: string,
   firearmId: string | null,
 ): Promise<ActionResult<{ id: string }>> {
-  try {
-    const userId = await requireUserId();
+  return withActionContext("accessories", async (userId) => {
     await mountAccessory(userId, id, firearmId);
     revalidatePath("/accessories");
     revalidatePath("/firearms");
     return { ok: true, data: { id } };
-  } catch (error) {
-    return toActionError(error);
-  }
+  });
 }

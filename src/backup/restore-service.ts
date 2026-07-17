@@ -70,6 +70,7 @@ import {
 } from "@/src/db/client";
 import * as schema from "@/src/db/schema";
 import { accessory, ammo, firearm, magazine } from "@/src/db/schema";
+import { childLogger } from "@/src/lib/logging";
 import { activeStorageRoot } from "@/src/storage";
 import { readBundle } from "./bundle";
 import {
@@ -88,6 +89,8 @@ import {
 } from "./maintenance";
 import { BACKUP_FORMAT_VERSION, type BackupManifest } from "./manifest";
 import { EXPORT_TABLE_ORDER, WIPE_TABLE_ORDER } from "./table-order";
+
+const log = childLogger("backup");
 
 /** Discriminated outcome of a restore attempt. Every branch carries an operator-facing `message`; none of them throw for expected restore-flow refusals — only a genuine programming/authorization error (see `restore`'s admin check) or an unclassified staging failure (see the error-classification `catch` block inside `restore()`) throws. */
 export type RestoreOutcome =
@@ -139,7 +142,7 @@ function toError(err: unknown): Error {
 
 /** Logs a cleanup-step failure loudly instead of swallowing it — mirrors `maintenance.ts`'s `logRecoveryFailure` pattern for its boot-time sweep. Cleanup failures here are leaked staging artifacts, not correctness bugs (the risky section has already committed or rolled back by the time this runs), so they're logged rather than thrown. */
 function logCleanupFailure(step: string, err: unknown): void {
-  console.error(`backup/restore-service: cleanup step "${step}" failed`, err);
+  log.error({ err, step }, "cleanup step failed");
 }
 
 /** Exhaustiveness guard for `BundleEvent.kind`'s switch in `stageBundle`: if a new `BundleEvent` variant is ever added in `bundle.ts` without a corresponding `case` here, `event` fails to narrow to `never` and this file fails to typecheck — instead of the new event silently falling through a no-op default at runtime. */
@@ -486,11 +489,14 @@ async function undoBlobSwap(
       await mkdir(uploadDir, { recursive: true, mode: 0o700 });
     }
   } catch (err) {
-    console.error(
-      `backup/restore-service: CRITICAL — undoBlobSwap failed while rolling back a failed restore promote; ` +
-        `the live upload directory may be missing or corrupt. MANUAL RECOVERY REQUIRED. ` +
-        `uploadDir="${uploadDir}" movedAsideDir="${handle.movedAsideDir}" hadExistingDir=${handle.hadExistingDir}`,
-      err,
+    log.error(
+      {
+        err,
+        uploadDir,
+        movedAsideDir: handle.movedAsideDir,
+        hadExistingDir: handle.hadExistingDir,
+      },
+      "CRITICAL — undoBlobSwap failed while rolling back a failed restore promote; the live upload directory may be missing or corrupt; MANUAL RECOVERY REQUIRED",
     );
     throw err;
   }
@@ -634,11 +640,22 @@ async function promote(ctx: {
         // Leave the snapshot and the maintenance flag in place (see
         // `rollbackFailed` above) and let this propagate as a generic error.
         rollbackFailed = true;
-        console.error(
-          "backup/restore-service: CRITICAL — rollback of a failed restore promote itself failed; " +
-            "the instance may be left in a mixed/inconsistent state. MANUAL INTERVENTION REQUIRED. " +
-            `snapshotSchema="${ctx.snapshotSchema}" uploadDir="${ctx.uploadDir}"`,
-          { promoteError: err, rollbackError: rollbackErr },
+        // Both errors matter in this manual-intervention scenario. `err` (the
+        // original promote failure) can't share the `err` serializer key with
+        // `rollbackErr`, so serialize its message AND stack under its own key
+        // rather than dropping the stack.
+        const promoteError = toError(err);
+        log.error(
+          {
+            err: rollbackErr,
+            promoteError: {
+              message: promoteError.message,
+              stack: promoteError.stack,
+            },
+            snapshotSchema: ctx.snapshotSchema,
+            uploadDir: ctx.uploadDir,
+          },
+          "CRITICAL — rollback of a failed restore promote itself failed; the instance may be left in a mixed/inconsistent state; MANUAL INTERVENTION REQUIRED",
         );
         throw rollbackErr;
       }

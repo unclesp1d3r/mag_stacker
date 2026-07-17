@@ -5,6 +5,10 @@ import { createBackup } from "@/src/backup/export-service";
 import { MIN_BACKUP_PASSWORD_LENGTH } from "@/src/backup/password-policy";
 import { sameOriginError } from "@/src/backup/same-origin";
 import { db } from "@/src/db/client";
+import { childLogger } from "@/src/lib/logging";
+import { withRequestContext } from "@/src/lib/logging/entry-context";
+
+const log = childLogger("backup-export");
 
 /**
  * Admin backup export (plan Unit U6, R1/R14/R15).
@@ -48,89 +52,92 @@ import { db } from "@/src/db/client";
  * `ReadableStream` APIs nor U4 itself expose "the browser received every
  * byte".
  */
-export async function POST(request: Request): Promise<Response> {
-  const user = await getCurrentUser();
-  if (!user) return new Response(null, { status: 401 });
-  if (user.role !== "admin") return new Response(null, { status: 403 });
+export const POST = withRequestContext(
+  "backup-export",
+  async (request: Request) => {
+    const user = await getCurrentUser();
+    if (!user) return new Response(null, { status: 401 });
+    if (user.role !== "admin") return new Response(null, { status: 403 });
 
-  const originError = sameOriginError(request);
-  if (originError) return originError;
+    const originError = sameOriginError(request);
+    if (originError) return originError;
 
-  let password: string;
-  try {
-    password = await readPassword(request);
-  } catch (error) {
+    let password: string;
+    try {
+      password = await readPassword(request);
+    } catch (error) {
+      await recordOperatorEvent({
+        actor: user.email,
+        action: "export",
+        outcome: `failure: ${errorMessage(error)}`,
+      }).catch((auditError) =>
+        log.error(
+          { err: auditError },
+          "backup export: failed to record a bad-password audit event",
+        ),
+      );
+      return Response.json({ error: errorMessage(error) }, { status: 400 });
+    }
+
+    let bundle: Readable;
+    try {
+      bundle = await createBackup(password, { db });
+    } catch (error) {
+      await recordOperatorEvent({
+        actor: user.email,
+        action: "export",
+        outcome: `failure: ${errorMessage(error)}`,
+      }).catch((auditError) =>
+        log.error(
+          { err: auditError },
+          "backup export: failed to record a build-failure audit event",
+        ),
+      );
+      return Response.json({ error: "backup export failed" }, { status: 500 });
+    }
+
+    // Unlike the failure paths above (which already have a real result — a
+    // 400/500 — to return regardless of whether the audit write lands), a
+    // failure to record *this* row must not silently discard the bundle that
+    // was just built by letting the rejection propagate as an unhandled 500
+    // (which the client couldn't distinguish from a real export failure).
+    // Log-and-still-deliver: the export already succeeded, so the bundle ships
+    // either way — the audit-write failure is only ever logged, never masked.
     await recordOperatorEvent({
       actor: user.email,
       action: "export",
-      outcome: `failure: ${errorMessage(error)}`,
+      outcome: "success",
     }).catch((auditError) =>
-      console.error(
-        "backup export: failed to record a bad-password audit event",
-        auditError,
+      log.error(
+        { err: auditError },
+        "backup export: failed to record the success audit event (bundle is being delivered anyway)",
       ),
     );
-    return Response.json({ error: errorMessage(error) }, { status: 400 });
-  }
 
-  let bundle: Readable;
-  try {
-    bundle = await createBackup(password, { db });
-  } catch (error) {
-    await recordOperatorEvent({
-      actor: user.email,
-      action: "export",
-      outcome: `failure: ${errorMessage(error)}`,
-    }).catch((auditError) =>
-      console.error(
-        "backup export: failed to record a build-failure audit event",
-        auditError,
+    const filename = `magstacker-backup-${timestampForFilename()}.magstacker-backup`;
+    // A mid-stream failure (e.g. a blob deleted between stat and read, an I/O
+    // error) would otherwise yield a truncated download with `operator_audit`
+    // permanently showing "success" above and zero server-side signal — attach
+    // an error listener before handing the stream off so at least the failure
+    // is logged.
+    bundle.on("error", (err) =>
+      log.error(
+        { err },
+        "backup export: bundle stream failed after the success audit was already recorded",
       ),
     );
-    return Response.json({ error: "backup export failed" }, { status: 500 });
-  }
-
-  // Unlike the failure paths above (which already have a real result — a
-  // 400/500 — to return regardless of whether the audit write lands), a
-  // failure to record *this* row must not silently discard the bundle that
-  // was just built by letting the rejection propagate as an unhandled 500
-  // (which the client couldn't distinguish from a real export failure).
-  // Log-and-still-deliver: the export already succeeded, so the bundle ships
-  // either way — the audit-write failure is only ever logged, never masked.
-  await recordOperatorEvent({
-    actor: user.email,
-    action: "export",
-    outcome: "success",
-  }).catch((auditError) =>
-    console.error(
-      "backup export: failed to record the success audit event (bundle is being delivered anyway)",
-      auditError,
-    ),
-  );
-
-  const filename = `magstacker-backup-${timestampForFilename()}.magstacker-backup`;
-  // A mid-stream failure (e.g. a blob deleted between stat and read, an I/O
-  // error) would otherwise yield a truncated download with `operator_audit`
-  // permanently showing "success" above and zero server-side signal — attach
-  // an error listener before handing the stream off so at least the failure
-  // is logged.
-  bundle.on("error", (err) =>
-    console.error(
-      "backup export: bundle stream failed after the success audit was already recorded",
-      err,
-    ),
-  );
-  return new Response(Readable.toWeb(bundle) as unknown as ReadableStream, {
-    status: 200,
-    headers: {
-      "Content-Type": "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      // Bytes decrypt to the whole instance — never cache on disk (mirrors
-      // the documents route's same PII posture).
-      "Cache-Control": "private, no-store",
-    },
-  });
-}
+    return new Response(Readable.toWeb(bundle) as unknown as ReadableStream, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        // Bytes decrypt to the whole instance — never cache on disk (mirrors
+        // the documents route's same PII posture).
+        "Cache-Control": "private, no-store",
+      },
+    });
+  },
+);
 
 /**
  * Reads the password from either an `application/x-www-form-urlencoded` body

@@ -4,6 +4,10 @@ import { getCurrentUser } from "@/src/auth/session";
 import { recordOperatorEvent } from "@/src/backup/audit";
 import { type RestoreOutcome, restore } from "@/src/backup/restore-service";
 import { sameOriginError } from "@/src/backup/same-origin";
+import { childLogger } from "@/src/lib/logging";
+import { withRequestContext } from "@/src/lib/logging/entry-context";
+
+const log = childLogger("backup-restore");
 
 /**
  * Admin backup restore (plan Unit U6, R5/R14/R15).
@@ -51,83 +55,86 @@ const OUTCOME_STATUS: Record<RestoreOutcome["kind"], number> = {
   rolled_back: 500,
 };
 
-export async function POST(request: Request): Promise<Response> {
-  const user = await getCurrentUser();
-  if (!user) return new Response(null, { status: 401 });
-  if (user.role !== "admin") return new Response(null, { status: 403 });
+export const POST = withRequestContext(
+  "backup-restore",
+  async (request: Request) => {
+    const user = await getCurrentUser();
+    if (!user) return new Response(null, { status: 401 });
+    if (user.role !== "admin") return new Response(null, { status: 403 });
 
-  const originError = sameOriginError(request);
-  if (originError) return originError;
+    const originError = sameOriginError(request);
+    if (originError) return originError;
 
-  const rawPasswordHeader = request.headers.get("x-backup-password");
-  if (!rawPasswordHeader) {
-    return Response.json(
-      { outcome: "bad_request", message: "a password is required" },
-      { status: 400 },
-    );
-  }
-  let password: string;
-  try {
-    password = decodeURIComponent(rawPasswordHeader);
-  } catch {
-    // decodeURIComponent throws a URIError on malformed percent-encoding
-    // (e.g. a lone "%"); a crafted header must not crash the route.
-    return Response.json(
-      { outcome: "bad_request", message: "the password header is malformed" },
-      { status: 400 },
-    );
-  }
-  if (!request.body) {
-    return Response.json(
-      { outcome: "bad_request", message: "a backup bundle body is required" },
-      { status: 400 },
-    );
-  }
-  const force = request.headers.get("x-backup-force") === "true";
-  const bundleStream = toNodeReadable(request.body);
+    const rawPasswordHeader = request.headers.get("x-backup-password");
+    if (!rawPasswordHeader) {
+      return Response.json(
+        { outcome: "bad_request", message: "a password is required" },
+        { status: 400 },
+      );
+    }
+    let password: string;
+    try {
+      password = decodeURIComponent(rawPasswordHeader);
+    } catch {
+      // decodeURIComponent throws a URIError on malformed percent-encoding
+      // (e.g. a lone "%"); a crafted header must not crash the route.
+      return Response.json(
+        { outcome: "bad_request", message: "the password header is malformed" },
+        { status: 400 },
+      );
+    }
+    if (!request.body) {
+      return Response.json(
+        { outcome: "bad_request", message: "a backup bundle body is required" },
+        { status: 400 },
+      );
+    }
+    const force = request.headers.get("x-backup-force") === "true";
+    const bundleStream = toNodeReadable(request.body);
 
-  let outcome: RestoreOutcome;
-  try {
-    outcome = await restore(bundleStream, password, { force });
-  } catch (error) {
+    let outcome: RestoreOutcome;
+    try {
+      outcome = await restore(bundleStream, password, { force });
+    } catch (error) {
+      await recordOperatorEvent({
+        actor: user.email,
+        action: "restore",
+        outcome: `failure: ${errorMessage(error)}`,
+      }).catch((auditError) =>
+        log.error(
+          { err: auditError },
+          "backup restore: failed to record a restore-failure audit event",
+        ),
+      );
+      return Response.json(
+        { outcome: "error", message: "restore failed unexpectedly" },
+        { status: 500 },
+      );
+    }
+
+    // Mirrors the export route's success-path handling: the restore already
+    // committed (or was refused) by the time this runs, so an audit-write
+    // failure here must be logged rather than left to propagate as an
+    // unhandled rejection — that would surface as a generic 500 to the client,
+    // indistinguishable from a real restore failure, even though the restore
+    // itself already has a real, decided `outcome`.
     await recordOperatorEvent({
       actor: user.email,
       action: "restore",
-      outcome: `failure: ${errorMessage(error)}`,
+      outcome: outcome.kind,
     }).catch((auditError) =>
-      console.error(
-        "backup restore: failed to record a restore-failure audit event",
-        auditError,
+      log.error(
+        { err: auditError },
+        `backup restore: failed to record the "${outcome.kind}" audit event`,
       ),
     );
+
     return Response.json(
-      { outcome: "error", message: "restore failed unexpectedly" },
-      { status: 500 },
+      { outcome: outcome.kind, message: outcome.message },
+      { status: OUTCOME_STATUS[outcome.kind] },
     );
-  }
-
-  // Mirrors the export route's success-path handling: the restore already
-  // committed (or was refused) by the time this runs, so an audit-write
-  // failure here must be logged rather than left to propagate as an
-  // unhandled rejection — that would surface as a generic 500 to the client,
-  // indistinguishable from a real restore failure, even though the restore
-  // itself already has a real, decided `outcome`.
-  await recordOperatorEvent({
-    actor: user.email,
-    action: "restore",
-    outcome: outcome.kind,
-  }).catch((auditError) =>
-    console.error(
-      `backup restore: failed to record the "${outcome.kind}" audit event`,
-      auditError,
-    ),
-  );
-
-  return Response.json(
-    { outcome: outcome.kind, message: outcome.message },
-    { status: OUTCOME_STATUS[outcome.kind] },
-  );
-}
+  },
+);
 
 /** Bridges the Web `ReadableStream` `request.body` is typed as (the DOM lib
  * global) into the Node `Readable` `restore()` (U5) expects. The runtime

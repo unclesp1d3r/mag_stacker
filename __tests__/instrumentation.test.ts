@@ -5,7 +5,6 @@ import {
   describe,
   expect,
   mock,
-  spyOn,
   test,
 } from "bun:test";
 
@@ -50,6 +49,8 @@ const ORIGINAL_DATABASE_URL = process.env.DATABASE_URL;
 
 let recoverCalls = 0;
 let recoverShouldThrow: unknown = null;
+/** Captures `childLogger("instrumentation").error(obj, msg)` calls (R11/U4). */
+const loggedErrors: Array<{ obj: unknown; msg: string }> = [];
 
 mock.module("@/src/db/client", () => ({
   db: { fake: "db-handle" },
@@ -62,6 +63,18 @@ mock.module("@/src/backup/maintenance", () => ({
     recoverCalls += 1;
     if (recoverShouldThrow) throw recoverShouldThrow;
   },
+}));
+// register() now logs a recovery failure through the structured logger
+// (childLogger), not console.error — capture that instead. runWithContext is
+// stubbed to just invoke the body so the ALS plumbing doesn't need a real store.
+mock.module("@/src/lib/logging", () => ({
+  childLogger: () => ({
+    error: (obj: unknown, msg: string) => {
+      loggedErrors.push({ obj, msg });
+    },
+  }),
+  mintCorrelationId: () => "test-correlation-id",
+  runWithContext: <T>(_ctx: unknown, fn: () => T): T => fn(),
 }));
 
 // instrumentation.ts has no top-level imports of its own — every dependency
@@ -87,6 +100,7 @@ describe("instrumentation.register()", () => {
   beforeEach(() => {
     recoverCalls = 0;
     recoverShouldThrow = null;
+    loggedErrors.length = 0;
   });
 
   afterEach(() => {
@@ -126,16 +140,11 @@ describe("instrumentation.register()", () => {
     process.env.DATABASE_URL = "postgres://ignored/ignored";
     recoverShouldThrow = new Error("simulated recovery failure");
 
-    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
-    try {
-      await expect(register()).resolves.toBeUndefined();
-      expect(recoverCalls).toBe(1);
-      expect(errorSpy).toHaveBeenCalledTimes(1);
-      expect(errorSpy.mock.calls[0]?.[0]).toContain(
-        "crash-recovery sweep failed",
-      );
-    } finally {
-      errorSpy.mockRestore();
-    }
+    await expect(register()).resolves.toBeUndefined();
+    expect(recoverCalls).toBe(1);
+    // The failure is logged through the structured logger, not console.error.
+    expect(loggedErrors).toHaveLength(1);
+    expect(loggedErrors[0]?.msg).toBe("crash-recovery sweep failed");
+    expect(loggedErrors[0]?.obj).toEqual({ err: recoverShouldThrow });
   });
 });
