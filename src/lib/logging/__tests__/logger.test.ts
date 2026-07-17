@@ -213,4 +213,13 @@ describe("buildTransportTargets — file opt-in (AE3 mechanism)", () => {
       (targets[1]?.options as Record<string, unknown> | undefined)?.size,
     ).toBeUndefined();
   });
+
+  test("an uppercase frequency is normalized to lowercase for pino-roll", () => {
+    const targets = buildTransportTargets(
+      testEnv({ file: "/var/log/app.log", rotation: "DAILY" }),
+    );
+
+    // pino-roll only accepts the lowercase keyword — forward the normalized one.
+    expect(targets[1]?.options).toMatchObject({ frequency: "daily" });
+  });
 });

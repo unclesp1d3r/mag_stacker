@@ -56,6 +56,21 @@ describe("withActionContext", () => {
     expect(seenActorName).toBe("Alice");
   });
 
+  test("drops an email-shaped actor name so it can't leak past key-based redaction", async () => {
+    currentUser = { id: "u1", name: "alice@example.com" };
+    let seenActorName: string | undefined;
+    let seenActorId: string | undefined;
+    await withActionContext("test-module", async () => {
+      seenActorName = getContext()?.actorName;
+      seenActorId = getContext()?.actorId;
+      return { ok: true };
+    });
+    // The email-shaped name is dropped; actorId (a safe UUID) still identifies
+    // the actor, and logAction/the mixin fall back to it.
+    expect(seenActorName).toBeUndefined();
+    expect(seenActorId).toBe("u1");
+  });
+
   test("a handler returning {ok:true,data} passes it through unchanged", async () => {
     const result = await withActionContext("test-module", async (userId) => ({
       ok: true,

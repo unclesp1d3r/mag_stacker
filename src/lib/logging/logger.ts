@@ -26,8 +26,12 @@ const FREQUENCY_ROTATION_VALUES = new Set(["daily", "hourly"]);
 function rotationOption(
   rotation: string,
 ): { size: string } | { frequency: string } {
-  return FREQUENCY_ROTATION_VALUES.has(rotation.toLowerCase())
-    ? { frequency: rotation }
+  const lowered = rotation.toLowerCase();
+  // Normalize the frequency to lowercase — `LOG_FILE_ROTATION=DAILY` passes
+  // env validation (case-insensitive) but pino-roll only accepts the lowercase
+  // keyword, so forward the normalized value, not the raw string.
+  return FREQUENCY_ROTATION_VALUES.has(lowered)
+    ? { frequency: lowered }
     : { size: rotation };
 }
 
@@ -132,7 +136,13 @@ export const logger: pino.Logger = lazy(() => {
   return activeLogger;
 });
 
-/** Per-module child logger — attaches `module` to every line without re-passing it. */
+/**
+ * Per-module child logger — attaches `module` to every line without re-passing
+ * it. Returned lazily so a module-level `const log = childLogger("x")` does NOT
+ * construct the base logger (and spawn its worker-thread transports) at import
+ * time; construction is still deferred to the first actual log call, preserving
+ * the lazy-singleton contract during `next build` and unit-test imports.
+ */
 export function childLogger(module: string): pino.Logger {
-  return logger.child({ module });
+  return lazy(() => logger.child({ module }));
 }

@@ -3,6 +3,20 @@ import { type ActionResult, toActionError } from "@/src/domain/action-result";
 import { mintCorrelationId, runWithContext } from "@/src/lib/logging";
 
 /**
+ * The display name to seed as `actorName`. Better Auth defaults `name` to the
+ * account's email when no display name is given (see
+ * `app/(admin)/users/actions.ts` + `scripts/seed-admin.ts`), so `user.name` can
+ * BE an email. `actorName` is emitted as a structured field AND interpolated
+ * into action-log messages — neither of which is covered by the key-based email
+ * redaction — so an email-shaped name would leak (violating R8/R18). Drop it in
+ * that case: `logAction`/the mixin then fall back to `actorId` (a safe UUID).
+ */
+function safeActorName(name: string | undefined): string | undefined {
+  if (name === undefined) return undefined;
+  return name.includes("@") ? undefined : name;
+}
+
+/**
  * Single entry-point wrapper for `"use server"` actions (R10, R19, KTD-4).
  * Resolves the session, mints a correlation id, seeds the ALS context with
  * the fields known at entry (`correlationId`, `entrypoint`, actor id + display
@@ -24,7 +38,12 @@ export async function withActionContext<T>(
 
   const correlationId = mintCorrelationId();
   return runWithContext(
-    { correlationId, entrypoint, actorId: user.id, actorName: user.name },
+    {
+      correlationId,
+      entrypoint,
+      actorId: user.id,
+      actorName: safeActorName(user.name),
+    },
     async () => {
       try {
         return await handler(user.id);
@@ -52,7 +71,12 @@ export async function withAdminActionContext<T>(
   const user = await getCurrentUser();
   const correlationId = mintCorrelationId();
   return runWithContext(
-    { correlationId, entrypoint, actorId: user?.id, actorName: user?.name },
+    {
+      correlationId,
+      entrypoint,
+      actorId: user?.id,
+      actorName: safeActorName(user?.name),
+    },
     () => handler(user),
   );
 }
