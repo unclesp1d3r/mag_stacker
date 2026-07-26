@@ -33,6 +33,10 @@ jobs:
       # Code gates: Biome (lint + format + import order), TypeScript, build.
 
       - uses: biomejs/setup-biome@4c91541eaada48f67d7dbd7833600ce162b68f51 # v2.7.1
+        with:
+          # Keep in sync with @biomejs/biome in package.json and the
+          # biomejs/pre-commit rev in .pre-commit-config.yaml.
+          version: 2.5.5
       - name: Run Biome
         run: biome ci
 
