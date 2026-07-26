@@ -12,6 +12,14 @@ updates:
       default-days: 7
     commit-message:
       prefix: "chore(deps)"
+    ignore:
+      # TypeScript 7 (the native port) can't resolve @types/bun, so `bun:test`
+      # is unresolvable and `bun run typecheck` fails with ~40 TS2307s plus
+      # TS2868 across the suite. The bump can't go green on a rebase, so
+      # Dependabot just reopens a permanently-red PR (see #73). Patch and minor
+      # updates still come through. Remove this once @types/bun supports TS 7.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # Maintain dependencies for GitHub Actions
   - package-ecosystem: "github-actions"
