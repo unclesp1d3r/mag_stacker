@@ -138,7 +138,7 @@ lockfile-check:
     {{ mise_exec }} bun install --lockfile-only
     @git diff --quiet bun.lock || { \
         echo "bun.lock is out of sync with package.json — run 'bun install' and commit the result."; \
-        git diff bun.lock | head -n 50; \
+        git diff bun.lock; \
         exit 1; \
     }
 

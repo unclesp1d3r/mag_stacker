@@ -13,13 +13,18 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     ignore:
-      # TypeScript 7 (the native port) can't resolve @types/bun, so `bun:test`
-      # is unresolvable and `bun run typecheck` fails with ~40 TS2307s plus
-      # TS2868 across the suite. The bump can't go green on a rebase, so
-      # without this Dependabot opens a fresh permanently-red PR on every
-      # subsequent TS 7.x release (see #73). Patch and minor updates still come
-      # through. There is no upstream tracking issue to watch — revisit by
-      # retrying the bump by hand once @types/bun claims TS 7 support.
+      # TS 6.0 changed `compilerOptions.types` to default to [] rather than
+      # auto-discovering every @types/* package, so @types/bun no longer loads
+      # and `bun:test` is unresolvable — `bun run typecheck` fails with ~40
+      # TS2307s plus a TS2868 for the `Bun` global. TS 7 inherits both. The
+      # nominal fix, types: ["bun"], is blocked upstream by oven-sh/bun#30503.
+      # Full rationale: docs/adr/0010-defer-typescript-6-upgrade.md.
+      #
+      # Without this ignore Dependabot opens a fresh permanently-red PR on
+      # every subsequent major release (see #43 for 6.x, #73 for 7.x); patch
+      # and minor updates still come through. Note that it also removes the
+      # recurring-PR nag, so the ADR is now the tracking mechanism — revisit
+      # per its stated trigger: watch oven-sh/bun#30503.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
 

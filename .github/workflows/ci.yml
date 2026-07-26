@@ -46,7 +46,7 @@ jobs:
           fi
           if ! git diff --quiet bun.lock; then
             echo "::error file=bun.lock::bun.lock is out of sync with package.json. Run 'bun install' and commit the updated bun.lock."
-            git diff bun.lock | head -n 50
+            git diff bun.lock
             exit 1
           fi
 
