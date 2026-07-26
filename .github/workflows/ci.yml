@@ -31,18 +31,22 @@ jobs:
         run: bun install --frozen-lockfile
 
       # `--frozen-lockfile` does not currently fail when bun.lock's embedded
-      # manifest mirror has drifted from package.json (oven-sh/bun#24223, open
-      # as of bun 1.3.14) — a hand-edited package.json without a matching
+      # manifest mirror has drifted from package.json (oven-sh/bun#24223,
+      # still open) — a hand-edited package.json without a matching
       # `bun install` lands on main silently. Regenerating the lockfile and
       # diffing catches exactly that: bun preserves already-locked versions
       # that still satisfy their range, so a new upstream release does not
-      # dirty the diff. Drop this step once #24223 ships a fix.
+      # dirty the diff. `just lockfile-check` runs the same gate locally.
+      # Drop this step once #24223 ships a fix.
       - name: Check lockfile is in sync with package.json
         run: |
-          bun install --lockfile-only
-          if ! git diff --exit-code --quiet bun.lock; then
+          if ! bun install --lockfile-only; then
+            echo "::error::bun install --lockfile-only failed; cannot verify that bun.lock matches package.json."
+            exit 1
+          fi
+          if ! git diff --quiet bun.lock; then
             echo "::error file=bun.lock::bun.lock is out of sync with package.json. Run 'bun install' and commit the updated bun.lock."
-            git diff --stat bun.lock
+            git diff bun.lock
             exit 1
           fi
 
@@ -93,32 +97,49 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # No lockfile-drift check here on purpose: this install is subject to
+      # the same oven-sh/bun#24223 gap as the `ci` job's, but `ci` failing
+      # already blocks the merge, so duplicating the gate would only cost
+      # runtime. If that check ever moves out of `ci`, add it back here.
       - name: Install Playwright browser
         run: bunx playwright install --with-deps chromium
 
       # Pull Postgres up front so it's cached for Testcontainers and a pull
-      # failure surfaces as a clear step, not a webServer startup timeout. Uses
-      # the AWS ECR Public mirror of the Docker Official image (same bytes) so
-      # it isn't subject to Docker Hub's unauthenticated per-IP pull limit on
-      # shared runner IPs. Must match POSTGRES_IMAGE in e2e/start-test-server.ts.
-      # ECR Public still rate-limits by shared runner IP ("toomanyrequests:
-      # Rate exceeded"), which is transient and unrelated to the change under
-      # test. Retry with backoff so a throttled pull doesn't red a good run.
+      # failure surfaces as a clear step, not a webServer startup timeout.
+      # Must match POSTGRES_IMAGE in e2e/start-test-server.ts.
+      #
+      # Registry choice and retry are two separate concerns:
+      #   - We use the AWS ECR Public mirror of the Docker Official image
+      #     (same bytes) because Docker Hub's unauthenticated per-IP pull
+      #     limit is routinely exhausted on shared runner IPs.
+      #   - ECR Public has its own, far lighter per-IP throttle that still
+      #     trips occasionally ("toomanyrequests: Rate exceeded"). That is
+      #     transient and unrelated to the change under test, so a throttled
+      #     pull is retried. Any other failure (bad digest, auth, no disk)
+      #     will never succeed on retry, so it fails immediately instead of
+      #     burning the full backoff.
       - name: Pre-pull Postgres image
         env:
           POSTGRES_IMAGE: public.ecr.aws/docker/library/postgres:17@sha256:5c855ad7b85e68e48a62f34662853f38b57c1c1d80f3a927ab58034fd6d31c5e
         run: |
-          for attempt in 1 2 3 4 5; do
-            if docker pull "$POSTGRES_IMAGE"; then
+          max_attempts=5
+          for attempt in $(seq 1 "$max_attempts"); do
+            if output=$(docker pull "$POSTGRES_IMAGE" 2>&1); then
+              echo "$output"
               exit 0
             fi
-            if [ "$attempt" -lt 5 ]; then
+            echo "$output"
+            if ! echo "$output" | grep -qiE "toomanyrequests|rate exceed|timeout|temporarily unavailable|connection reset"; then
+              echo "::error::Pulling $POSTGRES_IMAGE failed for a non-transient reason; not retrying. $(echo "$output" | tail -n 3 | tr '\n' ' ')"
+              exit 1
+            fi
+            if [ "$attempt" -lt "$max_attempts" ]; then
               delay=$((attempt * 15))
-              echo "::warning::Postgres pull failed (attempt $attempt/5); retrying in ${delay}s"
+              echo "::warning::Postgres pull throttled (attempt $attempt/$max_attempts); retrying in ${delay}s"
               sleep "$delay"
             fi
           done
-          echo "::error::Could not pull $POSTGRES_IMAGE after 5 attempts."
+          echo "::error::Could not pull $POSTGRES_IMAGE after $max_attempts attempts. $(echo "$output" | tail -n 3 | tr '\n' ' ')"
           exit 1
 
       # Build ahead of the suite so the launcher finds .next and skips the cold

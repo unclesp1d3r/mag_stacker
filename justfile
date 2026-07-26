@@ -129,6 +129,19 @@ typecheck:
 pre-commit-run:
     {{ mise_exec }} pre-commit run --all-files
 
+# Verify bun.lock matches package.json. `bun install --frozen-lockfile` does
+# not catch a drifted manifest mirror (oven-sh/bun#24223), so regenerate and
+# diff. Mirrors the "Check lockfile is in sync" step in .github/workflows/ci.yml
+# — keep the two in step so this gate can't pass locally and fail in CI.
+[group('quality')]
+lockfile-check:
+    {{ mise_exec }} bun install --lockfile-only
+    @git diff --quiet bun.lock || { \
+        echo "bun.lock is out of sync with package.json — run 'bun install' and commit the result."; \
+        git diff bun.lock; \
+        exit 1; \
+    }
+
 # Testing
 
 alias t := test
@@ -208,5 +221,5 @@ sbom:
 
 # Final gate before commits
 [group('quality')]
-ci-check: lint format-check typecheck pre-commit-run test test-e2e
+ci-check: lockfile-check lint format-check typecheck pre-commit-run test test-e2e
     @echo "[ci-check] all checks passed"
