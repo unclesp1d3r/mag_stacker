@@ -62,21 +62,37 @@ export function AppShell({
     <ToastProvider>
       <div className="flex min-h-screen flex-col">
         <header className="sticky top-0 z-[var(--z-sticky)] border-b border-border bg-background/85 backdrop-blur">
-          <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-6 px-4">
+          <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:gap-6">
             <Link
               href="/magazines"
-              className="font-mono text-sm font-bold uppercase tracking-[0.18em] text-primary"
+              className="shrink-0 font-mono text-sm font-bold uppercase tracking-[0.18em] text-primary"
             >
               MagStacker
             </Link>
-            <nav aria-label="Primary" className="flex items-center gap-1">
+            {/*
+             * The nav must be allowed to shrink below its content width, or the
+             * six-to-eight links force the whole document wider than a phone
+             * viewport (every route measured 976px at 393px wide). `min-w-0`
+             * makes the flex item shrinkable; `overflow-x-auto` then scrolls the
+             * links in place instead of pushing the page. All destinations stay
+             * one swipe away rather than hidden behind a menu.
+             *
+             * `relative` pairs with the scroll: `overflow-x-auto` only clips
+             * descendants whose containing block runs through this element, so
+             * without it any absolutely-positioned child would escape the rail
+             * and widen the document — the bug that hit the data tables.
+             */}
+            <nav
+              aria-label="Primary"
+              className="no-scrollbar relative flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+            >
               {nav.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
                   aria-current={isActive(item.href) ? "page" : undefined}
                   className={cn(
-                    "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                    "shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                     isActive(item.href)
                       ? "bg-accent text-accent-foreground"
                       : "text-ink-soft hover:bg-muted hover:text-foreground",
@@ -86,7 +102,7 @@ export function AppShell({
                 </Link>
               ))}
             </nav>
-            <div className="ml-auto flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-3">
               <span
                 className="hidden text-sm text-ink-soft sm:inline"
                 title={user.email}
