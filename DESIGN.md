@@ -220,7 +220,7 @@ marks live state.
 - Pill, anodized-soft fill, anodized text, hairline border — the compatible-firearm and permission chips. `ok`/`danger` tones for status.
 
 ### Stat (machined detail)
-- Raised panel with a short **anodized tick-mark stamped at the top edge**, a mono uppercase label, and a large tabular value. The tick is the signature "made by an instrument" mark.
+- Raised panel with a mono uppercase label and a large tabular value. Tonal layering, the hairline border, and the raised shadow provide elevation — the component carries no decorative accent stripe (per the One Accent Rule).
 
 ### Navigation
 - Top bar over a translucent body with a hairline underline. Items are soft-ink; the active item is "lit" (anodized-soft fill + anodized text). Account, theme toggle, and sign-out sit in the right chrome.
