@@ -1,21 +1,39 @@
 import { mkdir } from "node:fs/promises";
 import type { Browser, BrowserContext, Page } from "@playwright/test";
+import {
+  DEMO_ACCESSORIES,
+  DEMO_AMMO,
+  DEMO_FIREARMS,
+  DEMO_MAGAZINES,
+} from "@/src/demo/inventory";
 import { storageStateFor } from "./auth";
 import type { SpecUserKey } from "./user-pool";
 
 /**
- * Shared sample data + helpers for the README demo specs (`e2e/demo-*.spec.ts`).
+ * Capture helpers for the README demo specs (`e2e/demo-*.spec.ts`).
  *
- * Each demo spec authenticates as its own throwaway user, seeds this same
- * collection via `seedDemoData`, and captures its slice of the README assets —
- * so the sample data is defined once and reused everywhere. Demo specs are
- * gated behind `DEMO=1` (see `skipUnlessDemo`) so they don't run in the normal
- * CI suite; regenerate the images with:
+ * The sample collection itself lives in `src/demo/inventory.ts` so the plain
+ * Bun seed script (`scripts/seed-demo.ts`) can share it without pulling
+ * Playwright in. This module owns the UI-driven path: each demo spec
+ * authenticates as its own throwaway user, types the same collection into the
+ * real forms via `seedDemoData`, and captures its slice of the README assets.
+ * The datasets are stored in persisted form (numbers, cents), so the form fills
+ * below stringify at the point of use.
+ *
+ * Demo specs are gated behind `DEMO=1` (see `skipUnlessDemo`) so they don't run
+ * in the normal CI suite; regenerate the images with:
  *
  *   DEMO=1 bun run test:e2e e2e/demo-accessories.spec.ts   # (or demo-*.spec.ts)
  *
  * ARIA/accessible-name selectors only — no data-testid.
  */
+
+export {
+  DEMO_ACCESSORIES,
+  DEMO_AMMO,
+  DEMO_FIREARMS,
+  DEMO_MAGAZINES,
+} from "@/src/demo/inventory";
 
 export const SHOTS_DIR = "docs/images";
 
@@ -29,100 +47,12 @@ export function skipUnlessDemo(test: {
   );
 }
 
-export const DEMO_FIREARMS = [
-  {
-    name: 'BCM 11.5" SBR',
-    caliber: "5.56 NATO",
-    type: "rifle",
-    action: "semi-auto",
-    nfa: true,
-  },
-  {
-    name: "SIG P320 XCarry",
-    caliber: "9mm",
-    type: "pistol",
-    action: "semi-auto",
-  },
-  {
-    name: "Glock 19 Gen5",
-    caliber: "9mm",
-    type: "pistol",
-    action: "semi-auto",
-  },
-] as const;
+/** Cents to the dollars-and-cents string the Cost field expects. */
+const CENTS_PER_DOLLAR = 100;
 
-export const DEMO_MAGAZINES = [
-  {
-    brandModel: "Magpul PMAG 30 GEN M3",
-    caliber: "5.56 NATO",
-    baseCapacity: "30",
-  },
-  { brandModel: "Glock OEM 17-round", caliber: "9mm", baseCapacity: "17" },
-  { brandModel: "SIG P320 21-round", caliber: "9mm", baseCapacity: "21" },
-] as const;
-
-export const DEMO_AMMO = [
-  { brand: "Federal", caliber: "5.56 NATO", loadType: "FMJ", quantity: "500" },
-  {
-    brand: "Speer Gold Dot",
-    caliber: "9mm",
-    loadType: "JHP",
-    quantity: "150",
-    lowStock: "200",
-  },
-] as const;
-
-export interface AccessorySeed {
-  category: string;
-  brand?: string;
-  model?: string;
-  serial?: string;
-  cost?: string;
-  nfa?: boolean;
-  mount?: string;
+function dollars(costCents: number): string {
+  return (costCents / CENTS_PER_DOLLAR).toFixed(2);
 }
-
-export const DEMO_ACCESSORIES: AccessorySeed[] = [
-  {
-    category: "Optic",
-    brand: "Aimpoint",
-    model: "CompM5",
-    serial: "AP-CM5-88213",
-    cost: "850.00",
-    mount: 'BCM 11.5" SBR',
-  },
-  {
-    category: "Suppressor",
-    brand: "SureFire",
-    model: "SOCOM556-RC2",
-    serial: "S556-04217",
-    cost: "1100.00",
-    nfa: true,
-    mount: 'BCM 11.5" SBR',
-  },
-  {
-    category: "Trigger",
-    brand: "Geissele",
-    model: "SSA-E",
-    cost: "240.00",
-    mount: 'BCM 11.5" SBR',
-  },
-  {
-    category: "Light",
-    brand: "SureFire",
-    model: "X300U-B",
-    serial: "X300-11902",
-    cost: "310.00",
-    mount: "SIG P320 XCarry",
-  },
-  {
-    category: "Optic",
-    brand: "Trijicon",
-    model: "ACOG TA31",
-    serial: "ACOG-7781",
-    cost: "1500.00",
-  },
-] as const;
 
 /**
  * A high-DPI context for crisp screenshots, authenticated as `userKey`. Caller
@@ -176,7 +106,7 @@ export async function seedDemoData(page: Page): Promise<void> {
     await form.getByLabel("Caliber").fill(f.caliber);
     await form.getByLabel(/^Type/).selectOption(f.type);
     await form.getByLabel("Action").selectOption(f.action);
-    if ("nfa" in f && f.nfa) {
+    if (f.isNfa) {
       await form.getByLabel(/NFA-regulated item/).check();
     }
     await page.getByRole("button", { name: "Add firearm" }).click();
@@ -195,7 +125,7 @@ export async function seedDemoData(page: Page): Promise<void> {
     const form = page.locator("form");
     await form.getByLabel("Brand / model").fill(m.brandModel);
     await form.getByLabel("Caliber").fill(m.caliber);
-    await form.getByLabel("Base capacity").fill(m.baseCapacity);
+    await form.getByLabel("Base capacity").fill(String(m.baseCapacity));
     await page.getByRole("button", { name: "Add magazine" }).click();
     await page
       .getByRole("row")
@@ -216,10 +146,13 @@ export async function seedDemoData(page: Page): Promise<void> {
     const form = page.locator("form");
     await form.getByLabel("Brand").fill(a.brand);
     await form.getByLabel("Caliber").fill(a.caliber);
-    await form.getByLabel("Load type").fill(a.loadType);
-    await form.getByLabel(/^Quantity/).fill(a.quantity);
-    if ("lowStock" in a && a.lowStock) {
-      await form.getByLabel(/Low-stock threshold/).fill(a.lowStock);
+    await form.getByLabel("Load type").fill(a.type);
+    await form.getByLabel("Grain").fill(String(a.grain));
+    await form.getByLabel(/^Quantity/).fill(String(a.quantityRounds));
+    if (a.lowStockThreshold > 0) {
+      await form
+        .getByLabel(/Low-stock threshold/)
+        .fill(String(a.lowStockThreshold));
     }
     await page.getByRole("button", { name: "Add lot" }).click();
     await page.getByRole("row").filter({ hasText: a.brand }).first().waitFor();
@@ -243,9 +176,10 @@ export async function seedDemoData(page: Page): Promise<void> {
         .getByLabel("Mount on firearm")
         .selectOption({ label: s.mount });
     }
-    if (s.serial) await form.getByLabel("Serial number").fill(s.serial);
-    if (s.cost) await form.getByLabel("Cost").fill(s.cost);
-    if (s.nfa) await form.getByLabel("NFA-regulated item").check();
+    if (s.serialNumber)
+      await form.getByLabel("Serial number").fill(s.serialNumber);
+    if (s.costCents) await form.getByLabel("Cost").fill(dollars(s.costCents));
+    if (s.isNfa) await form.getByLabel("NFA-regulated item").check();
     await page.getByRole("button", { name: "Add accessory" }).click();
     await page
       .getByRole("row")
