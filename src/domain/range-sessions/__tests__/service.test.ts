@@ -32,9 +32,7 @@ import {
   updateRangeSession,
 } from "../service";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-live("range-session service (#11)", () => {
+describe("range-session service (#11)", () => {
   let owner = "";
   let editor = "";
   let viewer = "";

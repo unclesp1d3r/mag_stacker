@@ -8,9 +8,7 @@ import {
 } from "@/src/test-support/factories";
 import { buildAmmoCsv } from "../ammo-build";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-live("buildAmmoCsv (ammo plan U6, viewer-relative)", () => {
+describe("buildAmmoCsv (ammo plan U6, viewer-relative)", () => {
   let userA = "";
   let userB = "";
   beforeAll(async () => {

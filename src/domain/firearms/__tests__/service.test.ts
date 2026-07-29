@@ -44,8 +44,6 @@ import {
   updateFirearm,
 } from "../service";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
 // A valid real classification, spread into create/update calls so the pre-
 // taxonomy assertions keep testing what they always tested (U4 made type/action
 // required on the create/update input).
@@ -66,16 +64,18 @@ async function expectRejects(fn: () => Promise<unknown>): Promise<void> {
   expect(threw).toBe(true);
 }
 
-live("firearms service (U5)", () => {
+describe("firearms service (U5)", () => {
   let userA = "";
   let userB = "";
+  /** Extra per-test owners, torn down with the shared pair. */
+  const ownerIds: string[] = [];
 
   beforeAll(async () => {
     userA = await createUser("A");
     userB = await createUser("B");
   });
   afterAll(async () => {
-    await deleteUsers(userA, userB);
+    await deleteUsers(userA, userB, ...ownerIds);
   });
 
   test("covers AE1 path: invalid input throws ValidationError and writes no row (R21)", async () => {
@@ -112,9 +112,17 @@ live("firearms service (U5)", () => {
     const empty = await listFirearms(userB);
     expect(empty).toEqual([]);
 
-    await createFirearm(userA, { name: "Zeta", caliber: "9mm", ...CLASS });
-    await createFirearm(userA, { name: "Alpha", caliber: "9mm", ...CLASS });
-    const list = await listFirearms(userA);
+    // Own the ordering fixture rather than asserting over whatever earlier
+    // tests left on `userA`. The verbatim-whitespace test above stores
+    // "  Spacey  ", and Postgres's ORDER BY and JS `localeCompare` genuinely
+    // disagree about leading spaces (Postgres sorts them first; ICU ignores
+    // them at primary strength), so a shared owner made this assertion depend
+    // on test execution order rather than on the ordering behavior it names.
+    const sortOwner = await createUser("Sort");
+    ownerIds.push(sortOwner);
+    await createFirearm(sortOwner, { name: "Zeta", caliber: "9mm", ...CLASS });
+    await createFirearm(sortOwner, { name: "Alpha", caliber: "9mm", ...CLASS });
+    const list = await listFirearms(sortOwner);
     const names = list.map((f) => f.name);
     const sorted = [...names].sort((a, b) => a.localeCompare(b));
     expect(names).toEqual(sorted);
@@ -189,7 +197,7 @@ live("firearms service (U5)", () => {
 });
 
 // Taxonomy persistence (U4, R3/R6/R7/R12).
-live("firearms service — taxonomy (U4)", () => {
+describe("firearms service — taxonomy (U4)", () => {
   let userA = "";
   let userB = "";
 
@@ -321,7 +329,7 @@ live("firearms service — taxonomy (U4)", () => {
 });
 
 // Nickname persistence + displayed-label sort (#18).
-live("firearms service — nickname (#18)", () => {
+describe("firearms service — nickname (#18)", () => {
   let userN = "";
 
   beforeAll(async () => {
@@ -448,7 +456,7 @@ live("firearms service — nickname (#18)", () => {
 });
 
 // Firearm-delete blob cleanup + orphan sweep (U5, R8, KTD8).
-live("firearms service — photo blob cleanup on delete (U5)", () => {
+describe("firearms service — photo blob cleanup on delete (U5)", () => {
   let userA = "";
 
   beforeAll(async () => {
@@ -609,7 +617,7 @@ live("firearms service — photo blob cleanup on delete (U5)", () => {
 });
 
 // Action-log wiring at the create/delete seams (U6, R17, R18, KTD-5).
-live("firearms service — action-log wiring (U6)", () => {
+describe("firearms service — action-log wiring (U6)", () => {
   let userA = "";
   let userB = "";
 

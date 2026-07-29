@@ -9,14 +9,12 @@ import { expectRejects } from "@/src/test-support/assertions";
 import { db } from "../client";
 import { firearm, firearmDocument, user } from "../schema";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
 /**
  * firearm_document schema (U1) — the child-record table, check constraints, and
  * FK cascade. Domain-level behavior (auth, validation, blob cleanup) lives in
  * the U3/U5 service tests; this covers the DB backstops only.
  */
-live("firearm_document schema (U1)", () => {
+describe("firearm_document schema (U1)", () => {
   const ownerId = `test-user-${randomUUID()}`;
   let firearmId: string;
 

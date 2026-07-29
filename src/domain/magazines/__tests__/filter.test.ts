@@ -17,9 +17,7 @@ describe("escapeLike (pure, R50)", () => {
   });
 });
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-live("listMagazinesFiltered (U9)", () => {
+describe("listMagazinesFiltered (U9)", () => {
   let userA = "";
   let firearmId = "";
 
@@ -100,7 +98,7 @@ live("listMagazinesFiltered (U9)", () => {
   });
 });
 
-live("listMagazinesFiltered — lastInventoriedAt (U2, #70)", () => {
+describe("listMagazinesFiltered — lastInventoriedAt (U2, #70)", () => {
   let owner = "";
   let grantee = "";
   let stranger = "";

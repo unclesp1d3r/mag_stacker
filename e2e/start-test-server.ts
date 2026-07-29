@@ -42,6 +42,7 @@ import {
   type StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
 import { nextStart } from "next/dist/cli/next-start";
+import { POSTGRES_IMAGE } from "@/src/test-support/postgres-image";
 import {
   ARTIFACT_PATH,
   type RunArtifact,
@@ -64,8 +65,6 @@ const BASE_URL = `http://localhost:${PORT}`;
 // the `:17` tag is kept for readability. To bump: pull the tag, then
 // `docker inspect --format='{{index .RepoDigests 0}}'` for the new digest and
 // update this constant AND the CI pre-pull step in .github/workflows/ci.yml.
-const POSTGRES_IMAGE =
-  "public.ecr.aws/docker/library/postgres:17@sha256:5c855ad7b85e68e48a62f34662853f38b57c1c1d80f3a927ab58034fd6d31c5e";
 const E2E_DB_NAME = "magstacker_test";
 
 function randomHex(bytes: number): string {

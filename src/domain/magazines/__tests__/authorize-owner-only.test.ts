@@ -10,15 +10,13 @@ import {
 } from "@/src/test-support/factories";
 import { updateMagazine } from "../service";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
 /**
  * Magazine editing is owner-only (R13/AE6) — a deliberate divergence from the
  * shared owner+edit update gate. An `edit`-grantee who can modify a firearm must
  * be rejected server-side when they try to modify a magazine, not merely hidden
  * from the button in the UI.
  */
-live("magazine owner-only update (R13)", () => {
+describe("magazine owner-only update (R13)", () => {
   let owner = "";
   let editGrantee = "";
   let viewGrantee = "";

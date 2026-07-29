@@ -28,6 +28,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import * as schema from "../../db/schema";
 import { firearm, user } from "../../db/schema";
+import { POSTGRES_IMAGE } from "../../test-support/postgres-image";
 import { wipeDatabase } from "../db-import";
 import {
   assertWritesAllowed,
@@ -41,16 +42,6 @@ import {
   STAGING_SCHEMA_PREFIX,
 } from "../maintenance";
 import { EXPORT_TABLE_ORDER } from "../table-order";
-
-/**
- * Integration tests for the maintenance envelope's crash-recovery and
- * write-blocking primitives (KTD5 hardening). Every test runs against an
- * ephemeral Testcontainers Postgres (never the ambient dev DB) plus a
- * per-test temporary "UPLOAD_DIR" on the real filesystem, matching
- * `restore-service.test.ts`'s harness.
- */
-const POSTGRES_IMAGE =
-  "public.ecr.aws/docker/library/postgres:17@sha256:5c855ad7b85e68e48a62f34662853f38b57c1c1d80f3a927ab58034fd6d31c5e";
 
 type Db = NodePgDatabase<typeof schema>;
 

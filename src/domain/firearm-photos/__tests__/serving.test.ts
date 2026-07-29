@@ -26,8 +26,6 @@ import {
   getServablePhoto,
 } from "../service";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
 /** A small solid-color JPEG upload input, real bytes via `sharp`. */
 async function jpegInput(): Promise<CreatePhotoInput> {
   const bytes = await sharp({
@@ -53,7 +51,7 @@ function expectOk(result: CreatePhotoResult): FirearmPhoto {
   return result.photo;
 }
 
-live("getServablePhoto (#9, U6)", () => {
+describe("getServablePhoto (#9, U6)", () => {
   let owner = "";
   let editor = "";
   let viewer = "";

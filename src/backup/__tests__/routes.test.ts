@@ -34,6 +34,7 @@ import { createBackup } from "@/src/backup/export-service";
 import { MIN_BACKUP_PASSWORD_LENGTH } from "@/src/backup/password-policy";
 import { closePool, db } from "@/src/db/client";
 import { operatorAudit } from "@/src/db/operator-audit-schema";
+import { POSTGRES_IMAGE } from "../../test-support/postgres-image";
 
 /**
  * Uses the REAL `@/src/db/client` singleton (`db`/`closePool`) rather than
@@ -72,8 +73,6 @@ mock.module("@/src/auth/session", () => ({
 
 // Same pinned image as the rest of the backup suite (AWS ECR Public mirror —
 // avoids Docker Hub's unauthenticated per-IP pull limit on shared runners).
-const POSTGRES_IMAGE =
-  "public.ecr.aws/docker/library/postgres:17@sha256:5c855ad7b85e68e48a62f34662853f38b57c1c1d80f3a927ab58034fd6d31c5e";
 
 const PASSWORD = "correct horse battery staple";
 const ADMIN: MockUser = {

@@ -19,9 +19,7 @@ import {
 import { NotAuthorizedError, NotFoundError } from "../errors";
 import { createGrant } from "../grants";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-live("authorize write-decision gate (U4)", () => {
+describe("authorize write-decision gate (U4)", () => {
   let userA = "";
   let userB = "";
   let userC = "";

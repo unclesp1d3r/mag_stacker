@@ -13,8 +13,6 @@ import {
 // Gate: skip live tests when DATABASE_URL is not configured.
 // ---------------------------------------------------------------------------
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
 // ---------------------------------------------------------------------------
 // Pure tests — always run, zero DB connection required (R74).
 // ---------------------------------------------------------------------------
@@ -127,7 +125,7 @@ describe("manufacturers", () => {
 // Live tests — require DATABASE_URL.
 // ---------------------------------------------------------------------------
 
-live("distinctCalibers", () => {
+describe("distinctCalibers", () => {
   let db: Database;
   let makeFirearm: typeof FactoriesType.makeFirearm;
   let makeMagazine: typeof FactoriesType.makeMagazine;
@@ -220,7 +218,7 @@ live("distinctCalibers", () => {
   });
 });
 
-live("calibersForInput", () => {
+describe("calibersForInput", () => {
   let db: Database;
   let makeFirearm: typeof FactoriesType.makeFirearm;
   let createUser: typeof FactoriesType.createUser;
@@ -270,7 +268,7 @@ live("calibersForInput", () => {
   });
 });
 
-live("calibersForFilter", () => {
+describe("calibersForFilter", () => {
   let db: Database;
   let makeFirearm: typeof FactoriesType.makeFirearm;
   let createUser: typeof FactoriesType.createUser;

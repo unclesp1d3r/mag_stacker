@@ -51,8 +51,7 @@ describe("database health surface (U12, R74)", () => {
     ).toEqual(["emptyName"]);
   });
 
-  const live = process.env.DATABASE_URL ? test : test.skip;
-  live("checkDatabase returns true against a reachable database", async () => {
+  test("checkDatabase returns true against a reachable database", async () => {
     expect(await checkDatabase()).toBe(true);
   });
 });

@@ -12,9 +12,7 @@ import {
 } from "@/src/test-support/factories";
 import { buildInventoryCsv } from "../build";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-live("buildInventoryCsv (U8, viewer-relative)", () => {
+describe("buildInventoryCsv (U8, viewer-relative)", () => {
   let userA = "";
   let userB = "";
   beforeAll(async () => {
