@@ -1,5 +1,6 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import { cn } from "./cn";
+import { Data, Kicker } from "./typography";
 
 export function Card({
   className,
@@ -29,7 +30,13 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="relative flex flex-wrap items-end justify-between gap-4 border-b border-border pb-4 before:absolute before:bottom-[-1px] before:left-0 before:h-0.5 before:w-12 before:bg-primary before:content-['']">
+    // No accent stripe under the rule. The One Accent Rule reserves the
+    // anodized orange for the live control, the current selection, the lit row
+    // — "never to decorate a heading, a border stripe, or a background panel."
+    // A stripe on every page header is exactly the decorative use that spends
+    // the accent's rarity, which is the only thing that makes "lit" read as a
+    // signal. The hairline rule alone carries the separation.
+    <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-4">
       <div className="space-y-1">
         <h1 className="text-pretty text-[1.75rem] font-bold leading-none tracking-[-0.02em] text-foreground">
           {title}
@@ -47,13 +54,14 @@ export function PageHeader({
 
 export function Stat({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="relative overflow-hidden rounded-lg border border-border bg-card p-5 shadow-[var(--shadow-raised)] before:absolute before:left-5 before:top-0 before:h-0.5 before:w-3.5 before:bg-primary before:content-['']">
-      <div className="font-mono text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-        {label}
-      </div>
-      <div className="mt-1.5 text-3xl font-semibold tabular text-foreground">
+    // Same One Accent Rule call as PageHeader: the tick above each stat was
+    // decoration on a background panel, not a state signal. Tonal layering and
+    // the hairline border do the elevation work (DESIGN.md §4, "largely flat").
+    <div className="overflow-hidden rounded-lg border border-border bg-card p-5 shadow-[var(--shadow-raised)]">
+      <Kicker className="block">{label}</Kicker>
+      <Data className="mt-1.5 block text-3xl font-semibold text-foreground">
         {value}
-      </div>
+      </Data>
     </div>
   );
 }

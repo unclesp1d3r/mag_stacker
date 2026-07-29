@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Badge, EmptyState } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/surface";
+import { Data } from "@/components/ui/typography";
 
 /**
  * The subset of an accessory row this section needs to render. Kept narrow
@@ -59,8 +60,8 @@ export function MountedAccessories({
           <h2 className="text-sm font-semibold text-foreground">
             Mounted accessories
           </h2>
-          <p className="text-xs text-muted-foreground tabular">
-            {accessories.length} accessor
+          <p className="text-xs text-muted-foreground">
+            <Data>{accessories.length}</Data> accessor
             {accessories.length === 1 ? "y" : "ies"} ·{" "}
             {formatCostCents(totalValueCents)} total value
           </p>
@@ -107,9 +108,9 @@ export function MountedAccessories({
               </Link>
               <div className="flex shrink-0 items-center gap-2">
                 {a.isNfa ? <Badge tone="destructive">NFA</Badge> : null}
-                <span className="tabular text-sm text-foreground">
+                <Data className="text-sm text-foreground">
                   {a.costCents !== null ? formatCostCents(a.costCents) : "—"}
-                </span>
+                </Data>
               </div>
             </li>
           ))}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/feedback";
 import { Select } from "@/components/ui/select";
+import { Kicker } from "@/components/ui/typography";
 import type { ParentType } from "@/src/auth/visibility";
 import {
   loadShareState,
@@ -200,9 +201,9 @@ export function ShareControl({
             </div>
 
             <div className="mt-5 border-t border-border pt-4">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-soft">
+              <Kicker as="h3" className="mb-2">
                 Shared with
-              </h3>
+              </Kicker>
               <GrantsList
                 grants={grants}
                 onRevoke={onRevoke}

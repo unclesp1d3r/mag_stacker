@@ -7,8 +7,10 @@ import { useEffect, useRef, useState } from "react";
 import { ShareControl } from "@/app/(app)/grants/share-control";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DetailRow, orDash } from "@/components/ui/detail-row";
 import { Badge } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/surface";
+import { Data } from "@/components/ui/typography";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import type { Permission } from "@/src/auth/visibility";
 import { InventoryLogHistory } from "../inventory-log/inventory-log-history";
@@ -34,28 +36,6 @@ interface MagazineDetailViewProps {
   prefixOptions: string[];
   prefixNextStart: Record<string, number>;
   magpulMode: boolean;
-}
-
-/** One read-only label/value row. */
-function DetailRow({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-0.5 border-b border-border py-2 last:border-b-0 sm:flex-row sm:gap-4">
-      <dt className="w-40 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="min-w-0 wrap-break-word text-sm text-foreground">
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-function orDash(value: string): ReactNode {
-  return value.trim() !== "" ? (
-    value
-  ) : (
-    <span className="text-muted-foreground">—</span>
-  );
 }
 
 export function MagazineDetailView({
@@ -166,17 +146,15 @@ export function MagazineDetailView({
             <DetailRow label="Caliber" value={magazine.caliber} />
             <DetailRow
               label="Effective capacity"
-              value={<span className="tabular">{effectiveCapacity}</span>}
+              value={<Data>{effectiveCapacity}</Data>}
             />
             <DetailRow
               label="Base capacity"
-              value={<span className="tabular">{magazine.baseCapacity}</span>}
+              value={<Data>{magazine.baseCapacity}</Data>}
             />
             <DetailRow
               label="Extension rounds"
-              value={
-                <span className="tabular">{magazine.extensionRounds}</span>
-              }
+              value={<Data>{magazine.extensionRounds}</Data>}
             />
             <DetailRow
               label="Label"

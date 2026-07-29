@@ -16,6 +16,7 @@ import {
   createDefaultTableViewState,
   type TableViewState,
 } from "@/components/ui/data-table/types";
+import { orDash } from "@/components/ui/detail-row";
 import { Badge, EmptyState } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/surface";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
@@ -46,14 +47,6 @@ interface AmmoViewProps {
 }
 
 type FormState = { open: false } | { open: true };
-
-function orDash(value: string) {
-  return value.trim() !== "" ? (
-    value
-  ) : (
-    <span className="text-muted-foreground">—</span>
-  );
-}
 
 export function AmmoView({
   ammo,

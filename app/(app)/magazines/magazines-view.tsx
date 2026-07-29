@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/popover";
 import { Select } from "@/components/ui/select";
 import { Card } from "@/components/ui/surface";
+import { Data } from "@/components/ui/typography";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import { useRowFlash } from "@/hooks/use-row-flash";
 import { useTableViewState } from "@/hooks/use-table-view-state";
@@ -186,9 +187,7 @@ export function MagazinesView({
         id: "caliber",
         header: "Caliber",
         meta: { label: "Caliber" },
-        cell: ({ getValue }) => (
-          <span className="tabular">{getValue<string>()}</span>
-        ),
+        cell: ({ getValue }) => <Data>{getValue<string>()}</Data>,
       },
       {
         id: "effectiveCapacity",
@@ -252,9 +251,7 @@ export function MagazinesView({
         header: "Last inventoried",
         meta: { label: "Last inventoried" },
         cell: ({ row }) => (
-          <span className="tabular">
-            {formatLastInventoried(row.original.lastInventoriedAt)}
-          </span>
+          <Data>{formatLastInventoried(row.original.lastInventoriedAt)}</Data>
         ),
       },
       {

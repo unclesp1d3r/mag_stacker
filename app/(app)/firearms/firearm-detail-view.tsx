@@ -7,8 +7,10 @@ import { useEffect, useRef, useState } from "react";
 import { ShareControl } from "@/app/(app)/grants/share-control";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DetailRow, orDash } from "@/components/ui/detail-row";
 import { Badge } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/surface";
+import { Data } from "@/components/ui/typography";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import type { Permission } from "@/src/auth/visibility";
 import type { FirearmDocumentRow } from "@/src/domain/firearm-documents/row";
@@ -47,28 +49,6 @@ interface FirearmDetailViewProps {
   /** Server-loaded via `listDocuments` for the OWNER only (empty for a
    * non-owner, who never sees the section this feeds — U7, R16). */
   documents: FirearmDocumentRow[];
-}
-
-/** One read-only label/value row. */
-function DetailRow({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-0.5 border-b border-border py-2 last:border-b-0 sm:flex-row sm:gap-4">
-      <dt className="w-40 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="min-w-0 wrap-break-word text-sm text-foreground">
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-function orDash(value: string): ReactNode {
-  return value.trim() !== "" ? (
-    value
-  ) : (
-    <span className="text-muted-foreground">—</span>
-  );
 }
 
 export function FirearmDetailView({
@@ -199,7 +179,7 @@ export function FirearmDetailView({
             />
             <DetailRow
               label="Compatible magazines"
-              value={<span className="tabular">{magazineCount}</span>}
+              value={<Data>{magazineCount}</Data>}
             />
             <DetailRow
               label="NFA item"
