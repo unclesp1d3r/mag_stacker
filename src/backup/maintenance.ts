@@ -391,12 +391,24 @@ async function rollbackLiveFromSnapshot(
  * sibling directory (the directory `restore-service.ts`'s `beginBlobSwap`
  * moves the pre-restore blob store aside to) back into `uploadDir`, mirroring
  * `restore-service.ts`'s own `undoBlobSwap`. If more than one such directory
- * exists (e.g. from more than one interrupted attempt), the newest by mtime
- * wins and every other one is discarded — they're stale artifacts of earlier
+ * exists (e.g. from more than one interrupted attempt), the newest by its
+ * embedded creation stamp wins and every other one is discarded — they're stale artifacts of earlier
  * crashes, not independently recoverable state. A no-op if no such directory
  * exists (the crash happened before any pre-restore directory was created,
  * or blob promotion had already fully completed and cleaned up).
  */
+/**
+ * The epoch-ms creation stamp `beginBlobSwap` embeds as
+ * `<uploadDir>.pre-restore-<epochMs>-<uuid>`, or undefined for a directory left
+ * by an older build that named it `<uploadDir>.pre-restore-<uuid>`. Requiring
+ * 13+ digits before the separator is what distinguishes a stamp from a UUID
+ * whose first group happens to be all digits (that group is only 8 chars).
+ */
+function preRestoreStamp(path: string): number | undefined {
+  const match = /\.pre-restore-(\d{13,})-/.exec(path);
+  return match ? Number(match[1]) : undefined;
+}
+
 async function restoreBlobsFromNewestPreRestoreDir(
   uploadDir: string,
 ): Promise<void> {
@@ -417,14 +429,29 @@ async function restoreBlobsFromNewestPreRestoreDir(
     .map((entry) => join(parentDir, entry.name));
   if (candidates.length === 0) return;
 
-  const withMtimes = await Promise.all(
+  const withOrder = await Promise.all(
     candidates.map(async (path) => ({
       path,
+      stamp: preRestoreStamp(path),
       mtimeMs: (await stat(path)).mtimeMs,
     })),
   );
-  withMtimes.sort((a, b) => b.mtimeMs - a.mtimeMs);
-  const [newest, ...stale] = withMtimes;
+  // Order by the creation stamp `beginBlobSwap` writes into the name. mtime is
+  // only a fallback for directories left by an older build that did not stamp
+  // them: `rename` does not update a directory's own mtime, so mtime here is
+  // when blobs were last written, not when the directory was moved aside — it
+  // can order two pre-restore directories backwards, and ties silently fall
+  // through to readdir order, which is filesystem-dependent. A stamped
+  // directory always outranks an unstamped one, since any unstamped directory
+  // necessarily predates the upgrade that started stamping them.
+  withOrder.sort((a, b) => {
+    if (a.stamp !== undefined && b.stamp !== undefined)
+      return b.stamp - a.stamp;
+    if (a.stamp !== undefined) return -1;
+    if (b.stamp !== undefined) return 1;
+    return b.mtimeMs - a.mtimeMs;
+  });
+  const [newest, ...stale] = withOrder;
   if (!newest) return;
 
   await rm(uploadDir, { recursive: true, force: true }).catch(() => {});

@@ -14,6 +14,7 @@ import {
   readdir,
   readFile,
   rm,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -264,21 +265,33 @@ describe("maintenance envelope (KTD5 hardening)", () => {
       // The pre-restore blob directory `beginBlobSwap` would have moved
       // aside — holds the ORIGINAL blobs, which is what recovery must
       // restore `uploadDir` back to.
-      const staleDir = `${uploadDir}.pre-restore-${randomUUID()}`;
+      // Order comes from the epoch-ms stamp `beginBlobSwap` puts in the name,
+      // so state it explicitly. Creating the directories back to back and
+      // trusting mtime made this test depend on the two mkdir calls landing in
+      // different filesystem ticks — which they do not on a fast runner, and it
+      // failed in CI while passing locally.
+      const stamp = Date.now();
+      const staleDir = `${uploadDir}.pre-restore-${stamp - 60_000}-${randomUUID()}`;
       await mkdir(staleDir, { recursive: true });
       await writeFile(
         join(staleDir, "stale.txt"),
         "stale — from an even older crash",
       );
 
-      const originalDir = `${uploadDir}.pre-restore-${randomUUID()}`;
+      const originalDir = `${uploadDir}.pre-restore-${stamp}-${randomUUID()}`;
       await mkdir(originalDir, { recursive: true });
       await writeFile(
         join(originalDir, "original.txt"),
         "original pre-restore blob",
       );
-      // The newest-by-mtime directory is the one that should win — force a
-      // detectable ordering by writing the "original" (newest) dir last.
+
+      // Force the STALE directory's mtime to be the newest one. Ordering by
+      // mtime would now pick it and destroy the real pre-restore blobs; only
+      // the name stamp gets this right. This is the actual regression guard —
+      // `rename` never updates a directory's own mtime, so in production these
+      // mtimes reflect when blobs were last written, not swap order.
+      const future = new Date(stamp + 60_000);
+      await utimes(staleDir, future, future);
 
       // `uploadDir` itself holds whatever the half-finished force-restore
       // had already swapped in — new, half-promoted blobs.
