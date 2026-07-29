@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { PageHeader } from "@/components/ui/surface";
 import { getCurrentUser } from "@/src/auth/session";
 import { visibleFirearmPermissions } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
@@ -58,10 +57,6 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Accessories"
-        description="Track parts, where they're mounted, cost, and NFA status."
-      />
       <AccessoriesView
         accessories={items}
         currentUserId={user.id}

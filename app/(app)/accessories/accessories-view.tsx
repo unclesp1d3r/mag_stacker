@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/data-table/types";
 import { orDash } from "@/components/ui/detail-row";
 import { Badge, EmptyState } from "@/components/ui/feedback";
-import { Card } from "@/components/ui/surface";
+import { Card, PageHeader } from "@/components/ui/surface";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import { useRowFlash } from "@/hooks/use-row-flash";
 import { useTableViewState } from "@/hooks/use-table-view-state";
@@ -227,15 +227,21 @@ export function AccessoriesView({
   }
 
   return (
-    <div className="space-y-5">
-      {/* The cold-start empty state carries its own add CTA; only show this
-          toolbar button once there's inventory to act on (mirrors ammo/
-          magazines/firearms views). */}
-      {!form.open && accessories.length > 0 ? (
-        <div className="flex justify-end">
-          <Button onClick={openCreate}>Add accessory</Button>
-        </div>
-      ) : null}
+    <div className="space-y-6">
+      {/* Page actions belong in the header, next to the title, on every CRUD
+          surface. The cold-start empty state carries its own add CTA, so only
+          show this once there's inventory to act on (mirrors ammo/magazines/
+          firearms views). This surface has no export, so the header carries
+          the add button alone. */}
+      <PageHeader
+        title="Accessories"
+        description="Track parts, where they're mounted, cost, and NFA status."
+        actions={
+          !form.open && accessories.length > 0 ? (
+            <Button onClick={openCreate}>Add accessory</Button>
+          ) : undefined
+        }
+      />
 
       {form.open ? (
         <Card>

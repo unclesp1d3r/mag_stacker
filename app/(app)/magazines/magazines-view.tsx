@@ -35,7 +35,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Select } from "@/components/ui/select";
-import { Card } from "@/components/ui/surface";
+import { Card, PageHeader } from "@/components/ui/surface";
 import { Data } from "@/components/ui/typography";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import { useRowFlash } from "@/hooks/use-row-flash";
@@ -54,6 +54,7 @@ import {
   magazineCapacityAggregate,
 } from "@/src/domain/tables/magazine-groups";
 import { deleteMagazineAction } from "./actions";
+import { ExportButton } from "./export-button";
 import {
   formatLastInventoried,
   lastInventoriedSortValue,
@@ -666,17 +667,28 @@ export function MagazinesView({
   );
 
   return (
-    <div className="space-y-5">
-      {/* When the inventory is truly empty the empty state owns the add CTA;
-          show this toolbar button only once there are rows. Filtering is
+    <div className="space-y-6">
+      {/* Page actions belong in the header, next to the title, on every CRUD
+          surface — not floating in a row of their own below the rule.
+          When the inventory is truly empty the empty state owns the add CTA;
+          show these controls only once there are rows. Filtering is
           client-side now, so an active filter never changes this — the
           unfiltered `magazines` prop is what distinguishes cold-start from
           a normal (possibly filtered-to-zero) inventory. */}
-      {!form.open && magazines.length > 0 ? (
-        <div className="flex justify-end">
-          <Button onClick={openCreate}>Add magazine</Button>
-        </div>
-      ) : null}
+      <PageHeader
+        title="Magazines"
+        description="Search, filter, add, and export your magazines."
+        actions={
+          magazines.length > 0 ? (
+            <>
+              <ExportButton />
+              {form.open ? null : (
+                <Button onClick={openCreate}>Add magazine</Button>
+              )}
+            </>
+          ) : undefined
+        }
+      />
 
       {form.open ? (
         <Card>

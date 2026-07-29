@@ -18,13 +18,14 @@ import {
 } from "@/components/ui/data-table/types";
 import { orDash } from "@/components/ui/detail-row";
 import { Badge, EmptyState } from "@/components/ui/feedback";
-import { Card } from "@/components/ui/surface";
+import { Card, PageHeader } from "@/components/ui/surface";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import { useRowFlash } from "@/hooks/use-row-flash";
 import { useTableViewState } from "@/hooks/use-table-view-state";
 import { isLowStock } from "@/src/domain/ammo/validate";
 import { deleteAmmoAction } from "./actions";
 import { AmmoForm, lotDisplayName } from "./ammo-form";
+import { ExportButton } from "./export-button";
 
 export interface AmmoListItem {
   id: string;
@@ -216,15 +217,23 @@ export function AmmoView({
   }
 
   return (
-    <div className="space-y-5">
-      {/* The cold-start empty state carries its own add CTA; only show this
-          toolbar button once there's inventory to act on (mirrors magazines/
+    <div className="space-y-6">
+      {/* Page actions belong in the header, next to the title, on every CRUD
+          surface. The cold-start empty state carries its own add CTA, so only
+          show these once there's inventory to act on (mirrors magazines/
           firearms views). */}
-      {!form.open && ammo.length > 0 ? (
-        <div className="flex justify-end">
-          <Button onClick={openCreate}>Add lot</Button>
-        </div>
-      ) : null}
+      <PageHeader
+        title="Ammo"
+        description="Track rounds on hand and low-stock alerts."
+        actions={
+          ammo.length > 0 ? (
+            <>
+              <ExportButton />
+              {form.open ? null : <Button onClick={openCreate}>Add lot</Button>}
+            </>
+          ) : undefined
+        }
+      />
 
       {form.open ? (
         <Card>
