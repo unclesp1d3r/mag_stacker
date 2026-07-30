@@ -83,15 +83,20 @@ try {
  * `container.stop()` — it would read as cleanup while doing nothing. Ryuk is the
  * real guarantee for every other exit path, including a crash or SIGKILL.
  */
+const SIGNAL_NUMBERS = { SIGINT: 2, SIGTERM: 15 } as const;
+
 let stopping = false;
-const stopAndExit = (): void => {
+const stopAndExit = (signal: keyof typeof SIGNAL_NUMBERS): void => {
   if (stopping) return;
   stopping = true;
   void container
     .stop()
     // A failed stop must not change the exit path; Ryuk still reaps it.
     .catch(() => {})
-    .finally(() => process.exit(0));
+    // `128 + signal`, the shell convention: exiting 0 here would report an
+    // interrupted run as a passing one, since bun test propagates a preload's
+    // exit code as the whole run's status.
+    .finally(() => process.exit(128 + SIGNAL_NUMBERS[signal]));
 };
-process.on("SIGINT", stopAndExit);
-process.on("SIGTERM", stopAndExit);
+process.on("SIGINT", () => stopAndExit("SIGINT"));
+process.on("SIGTERM", () => stopAndExit("SIGTERM"));

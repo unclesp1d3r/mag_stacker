@@ -399,14 +399,22 @@ async function rollbackLiveFromSnapshot(
  */
 /**
  * The epoch-ms creation stamp `beginBlobSwap` embeds as
- * `<uploadDir>.pre-restore-<epochMs>-<uuid>`, or undefined for a directory left
- * by an older build that named it `<uploadDir>.pre-restore-<uuid>`. Requiring
+ * `<uploadDir>.pre-restore-<epochMs>-<uuid>`, read from the directory's own name
+ * (`entryName`) relative to `prefix`. Undefined for a directory left by an older
+ * build that named it `<uploadDir>.pre-restore-<uuid>`. Requiring
  * 13-15 digits before the separator is what distinguishes a stamp from a UUID
  * whose first group happens to be all digits (that group is only 8 chars); the
  * upper bound keeps the value inside the safe-integer range.
  */
-function preRestoreStamp(path: string): number | undefined {
-  const match = /\.pre-restore-(\d{13,15})-/.exec(path);
+function preRestoreStamp(
+  entryName: string,
+  prefix: string,
+): number | undefined {
+  // Anchored to the character after the known prefix, NOT searched across the
+  // whole path: an unanchored match could find a `.pre-restore-<digits>-`
+  // segment in an ancestor directory's name instead, giving every candidate the
+  // same rank and handing the decision back to readdir order.
+  const match = /^(\d{13,15})-/.exec(entryName.slice(prefix.length));
   if (!match) return undefined;
   const stamp = Number(match[1]);
   // Bounded above as well as below. An unbounded run of digits would pass
@@ -450,13 +458,13 @@ async function restoreBlobsFromNewestPreRestoreDir(
 
   const candidates = entries
     .filter((entry) => entry.isDirectory() && entry.name.startsWith(prefix))
-    .map((entry) => join(parentDir, entry.name));
+    .map((entry) => ({ path: join(parentDir, entry.name), name: entry.name }));
   if (candidates.length === 0) return;
 
   const withOrder = await Promise.all(
-    candidates.map(async (path) => ({
+    candidates.map(async ({ path, name }) => ({
       path,
-      stamp: preRestoreStamp(path),
+      stamp: preRestoreStamp(name, prefix),
       mtimeMs: (await stat(path)).mtimeMs,
     })),
   );
@@ -618,26 +626,21 @@ export async function recoverInterruptedRestore(
       try {
         if (await schemaExists(db, snapshotSchema)) {
           await rollbackLiveFromSnapshot(db, snapshotSchema);
-          try {
-            await restoreBlobsFromNewestPreRestoreDir(uploadDir);
-          } catch (err) {
-            // NOT `logRecoveryFailure`: the database rollback above already
-            // succeeded, so failing here leaves the DB describing the
-            // pre-restore state while the blob store still holds the
-            // half-promoted one. That divergence needs an operator, not a
-            // routine log line among the housekeeping sweeps.
-            log.error(
-              { err, uploadDir },
-              "MANUAL INTERVENTION REQUIRED — the database was rolled back to its pre-restore state but restoring the pre-restore blobs failed; database rows and stored blobs now describe different states and must be reconciled by hand",
-            );
-          }
+          // A blob failure escalates exactly like a failed DB rollback: it
+          // rethrows into the handler below, which keeps the maintenance flag
+          // ACTIVE and preserves the snapshot schema. Logging loudly but then
+          // dropping the snapshot and clearing the flag — as this did — tells
+          // the operator to reconcile by hand while deleting the thing they
+          // would reconcile from, and readmits ordinary writes on top of a
+          // database and blob store that describe different states.
+          await restoreBlobsFromNewestPreRestoreDir(uploadDir);
           await dropSchemaIfExists(db, snapshotSchema);
         }
       } catch (err) {
         rollbackFailed = true;
         log.error(
           { err, snapshotSchema },
-          "MANUAL INTERVENTION REQUIRED — rolling back an interrupted restore failed partway; the live database may now be a mix of wiped and restored tables; the maintenance flag is being left ACTIVE (blocking ordinary writes) and the snapshot schema is being preserved so a retry or manual recovery can still use it",
+          "MANUAL INTERVENTION REQUIRED — rolling back an interrupted restore failed partway; the live database may now be a mix of wiped and restored tables, or its rows may disagree with the stored blobs; the maintenance flag is being left ACTIVE (blocking ordinary writes) and the snapshot schema is being preserved so a retry or manual recovery can still use it",
         );
       }
     }

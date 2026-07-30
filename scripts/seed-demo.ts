@@ -180,7 +180,7 @@ async function main(): Promise<void> {
   });
   if (!owner) {
     throw new Error(
-      `No account found for ${email}. Run \`bun run seed:admin\` first.`,
+      "No account found for the configured SEED_EMAIL/ADMIN_EMAIL. Run `bun run seed:admin` first.",
     );
   }
 
@@ -190,11 +190,11 @@ async function main(): Promise<void> {
   if (await hasInventory(owner.id)) {
     if (!shouldReset) {
       console.log(
-        `${email} already has inventory; nothing to do. Re-run with --reset to replace it.`,
+        "The target account already has inventory; nothing to do. Re-run with --reset to replace it.",
       );
       return;
     }
-    console.log(`Clearing existing inventory for ${email}…`);
+    console.log("Clearing existing inventory for the target account…");
     await resetInventory(owner.id);
   }
 

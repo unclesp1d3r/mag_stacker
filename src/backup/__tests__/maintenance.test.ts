@@ -358,6 +358,43 @@ describe("maintenance envelope (KTD5 hardening)", () => {
       expect(await readUploadDirKeys(uploadDir)).toEqual(["stamped.txt"]);
     });
 
+    test("ranks candidates by their own stamp even when an ancestor directory name looks like a pre-restore directory", async () => {
+      // The stamp is parsed from the candidate's own name. Searching the whole
+      // path instead would match this ancestor's segment for BOTH candidates,
+      // give them an identical rank, and hand the decision to readdir order.
+      const decoyParent = await mkdtemp(
+        join(tmpdir(), "magstacker-x.pre-restore-1700000000000-decoy-"),
+      );
+      const nestedUploadDir = join(decoyParent, "uploads");
+      await mkdir(nestedUploadDir, { recursive: true });
+      await writeFile(join(nestedUploadDir, "half-promoted.txt"), "new blob");
+
+      await seedOwner(db, "Decoy Parent Owner");
+      const expectedSnapshot = await snapshotTables(db);
+      const snapshotSchema = `${SNAPSHOT_SCHEMA_PREFIX}${randomUUID().replace(/-/g, "")}`;
+      await createSnapshotSchemaFromCurrentState(db, snapshotSchema);
+      await wipeDatabase(db);
+      await seedOwner(db, "Half-Promoted New Owner");
+      await enterMaintenance(db, "force-restore");
+      await recordMaintenanceSnapshotSchema(db, snapshotSchema);
+
+      const stamp = Date.now();
+      const older = `${nestedUploadDir}.pre-restore-${stamp - 60_000}-${randomUUID()}`;
+      await mkdir(older, { recursive: true });
+      await writeFile(join(older, "older.txt"), "older crash");
+
+      const newest = `${nestedUploadDir}.pre-restore-${stamp}-${randomUUID()}`;
+      await mkdir(newest, { recursive: true });
+      await writeFile(join(newest, "newest.txt"), "the real pre-restore blob");
+
+      await recoverInterruptedRestore(db, nestedUploadDir);
+
+      expect(await snapshotTables(db)).toEqual(expectedSnapshot);
+      expect(await readUploadDirKeys(nestedUploadDir)).toEqual(["newest.txt"]);
+
+      await rm(decoyParent, { recursive: true, force: true });
+    });
+
     test("sweeps leftover restore_staging_*/restore_snapshot_* schemas and restore-staging-* temp directories regardless of flag state", async () => {
       const leftoverStagingSchema = `${STAGING_SCHEMA_PREFIX}${randomUUID().replace(/-/g, "")}`;
       const leftoverSnapshotSchema = `${SNAPSHOT_SCHEMA_PREFIX}${randomUUID().replace(/-/g, "")}`;
