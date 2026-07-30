@@ -8,11 +8,23 @@ import type { ShareGrant } from "./actions";
 
 interface GrantsListProps {
   grants: ShareGrant[];
-  onRevoke: (granteeId: string) => void;
+  /** Resolves true when the grant was revoked, false when the server refused. */
+  onRevoke: (granteeId: string) => Promise<boolean>;
   pending: boolean;
+  /**
+   * Lets the parent know a nested confirmation is open. `ShareControl` closes
+   * its own modal on Escape, which would otherwise tear down the whole sharing
+   * panel when the user only meant to cancel the revoke.
+   */
+  onConfirmOpenChange?: (open: boolean) => void;
 }
 
-export function GrantsList({ grants, onRevoke, pending }: GrantsListProps) {
+export function GrantsList({
+  grants,
+  onRevoke,
+  pending,
+  onConfirmOpenChange,
+}: GrantsListProps) {
   /**
    * Revoking is destructive and was firing straight off the click — the only
    * destructive action in the app without a confirm step. It doesn't go through
@@ -21,6 +33,11 @@ export function GrantsList({ grants, onRevoke, pending }: GrantsListProps) {
    * is the confirm gate, so this holds just the pending target.
    */
   const [confirming, setConfirming] = useState<ShareGrant | null>(null);
+
+  function requestConfirm(grant: ShareGrant | null): void {
+    setConfirming(grant);
+    onConfirmOpenChange?.(grant !== null);
+  }
   if (grants.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -55,7 +72,7 @@ export function GrantsList({ grants, onRevoke, pending }: GrantsListProps) {
               variant="destructive"
               size="sm"
               disabled={pending}
-              onClick={() => setConfirming(grant)}
+              onClick={() => requestConfirm(grant)}
             >
               Revoke
             </Button>
@@ -73,11 +90,15 @@ export function GrantsList({ grants, onRevoke, pending }: GrantsListProps) {
         confirmLabel="Revoke"
         pending={pending}
         pendingLabel="Revoking…"
-        onConfirm={() => {
-          if (confirming) onRevoke(confirming.granteeId);
-          setConfirming(null);
+        // Await the result rather than dismissing on click. Closing
+        // immediately made the dialog's own `pending`/"Revoking…" state
+        // unreachable and read as success, while a failure surfaced later as a
+        // banner elsewhere in the panel with nothing tying it to this action.
+        onConfirm={async () => {
+          if (!confirming) return;
+          if (await onRevoke(confirming.granteeId)) requestConfirm(null);
         }}
-        onCancel={() => setConfirming(null)}
+        onCancel={() => requestConfirm(null)}
       />
     </>
   );

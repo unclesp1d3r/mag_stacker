@@ -24,8 +24,17 @@ describe("buildInventoryCsv (U8, viewer-relative)", () => {
   });
 
   test("an empty inventory yields header only", async () => {
-    const csv = await buildInventoryCsv(userB);
-    expect(csv.split("\n").filter((l) => l.length > 0)).toHaveLength(1);
+    // Its own viewer, not the shared `userB`: a later test in this block grants
+    // `userB` visibility into another owner's row, which would permanently make
+    // this "empty" assertion depend on test declaration order. Same bug class the
+    // firearms ordering test hit.
+    const emptyViewer = await createUser("csv-empty");
+    try {
+      const csv = await buildInventoryCsv(emptyViewer);
+      expect(csv.split("\n").filter((l) => l.length > 0)).toHaveLength(1);
+    } finally {
+      await deleteUsers(emptyViewer);
+    }
   });
 
   test("documents are never included in CSV export (R11, AE4)", async () => {

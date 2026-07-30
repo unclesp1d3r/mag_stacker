@@ -31,7 +31,7 @@ describe("proxy auth gate (optimistic, no DB)", () => {
 
 // --- Live auth flow via auth.handler (needs the DB + seeded admin) ----------
 // The seeded admin (scripts/seed-admin.ts) must exist; run `bun run seed:admin`
-// against the compose DB before these. Skipped when DATABASE_URL is unset.
+// against the ephemeral Testcontainers DB the test preload provisions.
 
 describe("Better Auth HTTP surface", () => {
   // Import lazily so the pure proxy tests run without a DB.

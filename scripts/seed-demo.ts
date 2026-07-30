@@ -40,25 +40,62 @@ import { createMagazine } from "@/src/domain/magazines/service";
  * Seeds the account named by SEED_EMAIL, falling back to ADMIN_EMAIL.
  */
 
-/** Child-first: accessories reference firearms, so they go before firearms. */
+/**
+ * Clear the owner's inventory in one transaction.
+ *
+ * The transaction is the point: five sequential auto-committing deletes would
+ * leave a half-wiped account if any one of them failed, and because the probe
+ * below is what decides whether to seed, a later run could then report "already
+ * has inventory; nothing to do" over data the failed run had already destroyed.
+ * All or nothing instead.
+ *
+ * Child-first ordering: accessories reference firearms, so they go before
+ * firearms. `magazine_firearm` rows cascade from either side.
+ */
 async function resetInventory(ownerId: string): Promise<void> {
-  await db.delete(accessory).where(eq(accessory.ownerId, ownerId));
-  await db.delete(ammo).where(eq(ammo.ownerId, ownerId));
-  // magazine_firearm rows cascade from either side.
-  await db.delete(magazine).where(eq(magazine.ownerId, ownerId));
-  await db.delete(firearm).where(eq(firearm.ownerId, ownerId));
-  await db
-    .delete(magazineLabelPrefix)
-    .where(eq(magazineLabelPrefix.ownerId, ownerId));
+  await db.transaction(async (tx) => {
+    await tx.delete(accessory).where(eq(accessory.ownerId, ownerId));
+    await tx.delete(ammo).where(eq(ammo.ownerId, ownerId));
+    await tx.delete(magazine).where(eq(magazine.ownerId, ownerId));
+    await tx.delete(firearm).where(eq(firearm.ownerId, ownerId));
+    await tx
+      .delete(magazineLabelPrefix)
+      .where(eq(magazineLabelPrefix.ownerId, ownerId));
+  });
 }
 
+/**
+ * True when the owner holds ANY seeded inventory.
+ *
+ * Every owned table is checked, not just `firearm`: an account holding only
+ * magazines, ammo, or unmounted accessories would otherwise read as empty, so a
+ * plain run would stack a second copy of the demo set on top of it and
+ * `--reset` would leave those rows behind.
+ */
 async function hasInventory(ownerId: string): Promise<boolean> {
-  const [existing] = await db
-    .select({ id: firearm.id })
-    .from(firearm)
-    .where(eq(firearm.ownerId, ownerId))
-    .limit(1);
-  return existing !== undefined;
+  const counts = await Promise.all([
+    db
+      .select({ id: firearm.id })
+      .from(firearm)
+      .where(eq(firearm.ownerId, ownerId))
+      .limit(1),
+    db
+      .select({ id: magazine.id })
+      .from(magazine)
+      .where(eq(magazine.ownerId, ownerId))
+      .limit(1),
+    db
+      .select({ id: ammo.id })
+      .from(ammo)
+      .where(eq(ammo.ownerId, ownerId))
+      .limit(1),
+    db
+      .select({ id: accessory.id })
+      .from(accessory)
+      .where(eq(accessory.ownerId, ownerId))
+      .limit(1),
+  ]);
+  return counts.some((rows) => rows.length > 0);
 }
 
 async function seed(ownerId: string): Promise<void> {

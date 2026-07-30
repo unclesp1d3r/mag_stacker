@@ -11,13 +11,13 @@ import { Kicker } from "./typography";
  *
  * Renders `dt`/`dd`, so the caller supplies the wrapping `<dl>`.
  */
-export function DetailRow({
-  label,
-  value,
-}: {
+export interface DetailRowProps {
+  /** Deliberately `string`, not `ReactNode`: this renders as a mono kicker, not an arbitrary slot. */
   label: string;
   value: ReactNode;
-}) {
+}
+
+export function DetailRow({ label, value }: DetailRowProps) {
   return (
     <div className="flex flex-col gap-0.5 border-b border-border py-2 last:border-b-0 sm:flex-row sm:gap-4">
       <Kicker as="dt" className="w-40 shrink-0 pt-0.5">

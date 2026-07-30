@@ -318,6 +318,46 @@ describe("maintenance envelope (KTD5 hardening)", () => {
       );
     });
 
+    test("prefers a stamped pre-restore directory over an unstamped one left by an older build, whatever their mtimes say", async () => {
+      await seedOwner(db, "Legacy Fallback Owner");
+      const expectedSnapshot = await snapshotTables(db);
+      const snapshotSchema = `${SNAPSHOT_SCHEMA_PREFIX}${randomUUID().replace(/-/g, "")}`;
+      await createSnapshotSchemaFromCurrentState(db, snapshotSchema);
+      await wipeDatabase(db);
+      await seedOwner(db, "Half-Promoted New Owner");
+      await enterMaintenance(db, "force-restore");
+      await recordMaintenanceSnapshotSchema(db, snapshotSchema);
+
+      const stamp = Date.now();
+
+      // An older build named its moved-aside directory with no epoch-ms stamp.
+      // It can only predate the build that started stamping, so it must lose to
+      // a stamped directory — even when its mtime is the newest on disk, which
+      // is what the mtime fallback alone would go on.
+      const legacyDir = `${uploadDir}.pre-restore-${randomUUID()}`;
+      await mkdir(legacyDir, { recursive: true });
+      await writeFile(join(legacyDir, "legacy.txt"), "from a pre-stamp build");
+
+      const stampedDir = `${uploadDir}.pre-restore-${stamp}-${randomUUID()}`;
+      await mkdir(stampedDir, { recursive: true });
+      await writeFile(
+        join(stampedDir, "stamped.txt"),
+        "the real pre-restore blob",
+      );
+
+      const future = new Date(stamp + 60_000);
+      await utimes(legacyDir, future, future);
+
+      await rm(uploadDir, { recursive: true, force: true }).catch(() => {});
+      await mkdir(uploadDir, { recursive: true });
+      await writeFile(join(uploadDir, "half-promoted.txt"), "new blob");
+
+      await recoverInterruptedRestore(db, uploadDir);
+
+      expect(await snapshotTables(db)).toEqual(expectedSnapshot);
+      expect(await readUploadDirKeys(uploadDir)).toEqual(["stamped.txt"]);
+    });
+
     test("sweeps leftover restore_staging_*/restore_snapshot_* schemas and restore-staging-* temp directories regardless of flag state", async () => {
       const leftoverStagingSchema = `${STAGING_SCHEMA_PREFIX}${randomUUID().replace(/-/g, "")}`;
       const leftoverSnapshotSchema = `${SNAPSHOT_SCHEMA_PREFIX}${randomUUID().replace(/-/g, "")}`;

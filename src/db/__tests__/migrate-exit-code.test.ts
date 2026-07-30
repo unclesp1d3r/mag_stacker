@@ -24,10 +24,9 @@ async function runMigrate(
   return { exitCode, output: stdout + stderr };
 }
 
-// The container-backed success path is a Postgres integration test — gate it
-// on DATABASE_URL like the rest of the suite so environments without
-// integration infrastructure skip it cleanly. The failure path needs no DB
-// (it deliberately targets a closed port) and always runs.
+// Both paths always run — nothing here is conditional. The success path
+// provisions its own ephemeral Postgres via Testcontainers, and the failure path
+// needs no database at all (it deliberately targets a closed port).
 
 describe("migrate.ts — exit code (regression)", () => {
   test("a failed migration (unreachable DATABASE_URL) exits non-zero and logs the failure", async () => {

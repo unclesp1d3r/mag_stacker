@@ -32,7 +32,8 @@ export function PageHeader({
   return (
     // No accent stripe under the rule. The One Accent Rule reserves the
     // anodized orange for the live control, the current selection, the lit row
-    // — "never to decorate a heading, a border stripe, or a background panel."
+    // — "Never use it to decorate a heading, a border stripe, or a background
+    // panel."
     // A stripe on every page header is exactly the decorative use that spends
     // the accent's rarity, which is the only thing that makes "lit" read as a
     // signal. The hairline rule alone carries the separation.

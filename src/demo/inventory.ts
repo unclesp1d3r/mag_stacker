@@ -11,17 +11,21 @@
  *   cents). That conversion lives with the caller that needs it rather than in
  *   a shared adapter — one caller, one line each.
  *
- * This module must stay dependency-free: `scripts/seed-demo.ts` is a plain Bun
- * script, and importing anything from `e2e/fixtures/` would drag Playwright in.
+ * This module imports only pure domain constants — never anything from
+ * `e2e/fixtures/`, which would drag Playwright into the plain Bun seed script.
  */
+
+import type {
+  FirearmAction,
+  FirearmType,
+} from "@/src/domain/firearms/constants";
+import { MAX_LABEL_LENGTH } from "@/src/domain/magazines/constants";
 
 export interface DemoFirearmSeed {
   name: string;
   caliber: string;
-  /** A `FIREARM_TYPES` token — validated on write by the domain service. */
-  type: string;
-  /** A `FIREARM_ACTIONS` token — validated on write by the domain service. */
-  action: string;
+  type: FirearmType;
+  action: FirearmAction;
   isNfa?: boolean;
 }
 
@@ -52,10 +56,10 @@ export interface DemoAccessorySeed {
   costCents?: number;
   isNfa?: boolean;
   /** Mount target, by firearm `name` — resolved to an id at seed time. */
-  mount?: string;
+  mount?: DemoFirearmName;
 }
 
-export const DEMO_FIREARMS: readonly DemoFirearmSeed[] = [
+export const DEMO_FIREARMS = [
   {
     name: 'BCM 11.5" SBR',
     caliber: "5.56 NATO",
@@ -68,14 +72,23 @@ export const DEMO_FIREARMS: readonly DemoFirearmSeed[] = [
     caliber: "9mm",
     type: "pistol",
     action: "semi-auto",
+    isNfa: false,
   },
   {
     name: "Glock 19 Gen5",
     caliber: "9mm",
     type: "pistol",
     action: "semi-auto",
+    isNfa: false,
   },
-];
+] as const satisfies readonly DemoFirearmSeed[];
+
+/**
+ * The firearm names this module declares. `DemoAccessorySeed.mount` is typed to
+ * this, so renaming a firearm without updating its accessories is a typecheck
+ * error rather than a throw partway through seeding.
+ */
+export type DemoFirearmName = (typeof DEMO_FIREARMS)[number]["name"];
 
 /** The curated three used by the README captures. */
 export const DEMO_MAGAZINES: readonly DemoMagazineSeed[] = [
@@ -158,7 +171,26 @@ export const DEMO_ACCESSORIES: readonly DemoAccessorySeed[] = [
  * a realistic multi-caliber locker and exercise the label auto-numbering prefix
  * list (#22) at the same time.
  */
-const BULK_MAGAZINE_LINES = [
+/**
+ * One numbered magazine line. `extensionRounds` is optional because most lines
+ * have none; a named interface (rather than an `as const` array of differently
+ * shaped literals) is what lets `bulkMagazines` read the field directly instead
+ * of probing for it with `in`.
+ */
+interface BulkMagazineLine {
+  /**
+   * Label prefix. Kept to two characters because Magpul mode caps a label at
+   * `MAX_LABEL_LENGTH` (4) dot-matrix cells — see the budget check below.
+   */
+  readonly prefix: string;
+  readonly brandModel: string;
+  readonly caliber: string;
+  readonly baseCapacity: number;
+  readonly extensionRounds?: number;
+  readonly count: number;
+}
+
+const BULK_MAGAZINE_LINES: readonly BulkMagazineLine[] = [
   {
     prefix: "AR",
     brandModel: "Magpul PMAG 30 GEN M3",
@@ -167,7 +199,7 @@ const BULK_MAGAZINE_LINES = [
     count: 12,
   },
   {
-    prefix: "G19",
+    prefix: "GL",
     brandModel: "Glock OEM 15-round",
     caliber: "9mm",
     baseCapacity: 15,
@@ -175,7 +207,7 @@ const BULK_MAGAZINE_LINES = [
     count: 8,
   },
   {
-    prefix: "P320",
+    prefix: "SG",
     brandModel: "SIG P320 21-round",
     caliber: "9mm",
     baseCapacity: 21,
@@ -188,21 +220,41 @@ const BULK_MAGAZINE_LINES = [
     baseCapacity: 30,
     count: 4,
   },
-] as const;
+];
 
 /** Two digits so labels sort lexically the way they sort numerically. */
 const LABEL_DIGITS = 2;
 
-/** Expand `BULK_MAGAZINE_LINES` into individually-labeled magazines. */
+/**
+ * Expand `BULK_MAGAZINE_LINES` into individually-labeled magazines.
+ *
+ * Labels must fit the Magpul dot-matrix rule — `MAX_LABEL_LENGTH` (4) cells of
+ * `A-Z`, `0-9`, and hyphen — because `createMagazine` enforces it for any owner
+ * with Magpul mode enabled. An earlier version generated `AR-01` / `P320-01`
+ * (5-7 characters), which meant `just db-seed` failed outright with
+ * `magpulLabelTooLong` for such an owner; it only appeared to work because the
+ * seeded admin defaults to `magpulMode: false`. Two-character prefixes plus two
+ * digits spend the budget exactly, so there is no room for a hyphen.
+ */
 export function bulkMagazines(): DemoMagazineSeed[] {
-  return BULK_MAGAZINE_LINES.flatMap((line) =>
-    Array.from({ length: line.count }, (_, i) => ({
+  return BULK_MAGAZINE_LINES.flatMap((line) => {
+    const label = (index: number) =>
+      `${line.prefix}${String(index + 1).padStart(LABEL_DIGITS, "0")}`;
+    // Guards the budget at the source: a longer prefix or a third digit is a
+    // seed-authoring mistake, not something to discover as a validation error
+    // partway through writing rows.
+    if (label(line.count - 1).length > MAX_LABEL_LENGTH) {
+      throw new Error(
+        `Demo magazine prefix "${line.prefix}" with ${line.count} entries exceeds the ${MAX_LABEL_LENGTH}-character Magpul label budget.`,
+      );
+    }
+    return Array.from({ length: line.count }, (_, i) => ({
       brandModel: line.brandModel,
       caliber: line.caliber,
       baseCapacity: line.baseCapacity,
-      extensionRounds: "extensionRounds" in line ? line.extensionRounds : 0,
-      label: `${line.prefix}-${String(i + 1).padStart(LABEL_DIGITS, "0")}`,
+      extensionRounds: line.extensionRounds ?? 0,
+      label: label(i),
       labelPrefix: line.prefix,
-    })),
-  );
+    }));
+  });
 }

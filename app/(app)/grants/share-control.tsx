@@ -38,6 +38,9 @@ export function ShareControl({
   const [allowCreate, setAllowCreate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [revoking, setRevoking] = useState(false);
+  /** True while `GrantsList`'s revoke confirmation is open — see the Escape handler. */
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const granteeSel = useId();
   const permSel = useId();
   const titleId = useId();
@@ -62,11 +65,13 @@ export function ShareControl({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      // A nested revoke confirmation owns Escape while it is open; closing this
+      // panel too would discard the whole sharing context over a cancel.
+      if (e.key === "Escape" && !confirmOpen) setOpen(false);
     }
     if (open) window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, confirmOpen]);
 
   function onShare() {
     if (!granteeId) return;
@@ -88,16 +93,30 @@ export function ShareControl({
     });
   }
 
-  function onRevoke(targetGranteeId: string) {
-    startTransition(async () => {
+  /**
+   * Returns whether the revoke succeeded so `GrantsList` can keep its
+   * confirmation open (showing the error in place) instead of dismissing as
+   * though the grant were gone. Not wrapped in `startTransition` because the
+   * caller awaits this — a transition's callback cannot be awaited from outside,
+   * so the pending flag is tracked explicitly instead.
+   */
+  async function onRevoke(targetGranteeId: string): Promise<boolean> {
+    setRevoking(true);
+    try {
       const result = await revokeGrantAction(
         parentType,
         parentId,
         targetGranteeId,
       );
-      if (result.ok) reload();
-      else setError(result.error ?? "Could not revoke.");
-    });
+      if (result.ok) {
+        reload();
+        return true;
+      }
+      setError(result.error ?? "Could not revoke.");
+      return false;
+    } finally {
+      setRevoking(false);
+    }
   }
 
   const grants: ShareGrant[] = state?.grants ?? [];
@@ -207,7 +226,8 @@ export function ShareControl({
               <GrantsList
                 grants={grants}
                 onRevoke={onRevoke}
-                pending={pending}
+                pending={pending || revoking}
+                onConfirmOpenChange={setConfirmOpen}
               />
             </div>
 

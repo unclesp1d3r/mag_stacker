@@ -10,7 +10,7 @@ import {
 } from "../reference";
 
 // ---------------------------------------------------------------------------
-// Gate: skip live tests when DATABASE_URL is not configured.
+// These hit the database the test preload provisions (no ambient DB, no skip).
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ describe("manufacturers", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Live tests — require DATABASE_URL.
+// Live tests — against the preload-managed Testcontainers database.
 // ---------------------------------------------------------------------------
 
 describe("distinctCalibers", () => {

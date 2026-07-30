@@ -34,37 +34,64 @@ import { POSTGRES_IMAGE, TEST_DB_NAME } from "./postgres-image";
  * first test module is *imported*, not merely before the first test runs —
  * module-scope code reads it. A `beforeAll` hook would run too late.
  *
+ * **This assumes `bun test` runs matched files sequentially in one process**,
+ * which it does today (there is no `--shard`/parallel flag in `package.json` or
+ * CI). One container is shared by every test file, and `src/backup/__tests__/
+ * routes.test.ts` additionally repoints `DATABASE_URL` at its own container and
+ * restores it afterward. Enabling parallel or sharded execution would break both
+ * — each worker would need its own container, and the repointing would race.
+ *
  * Teardown is Ryuk's job (the Testcontainers reaper removes the container when
  * this process exits, including on crash or kill), matching how the e2e
- * launcher treats its own container. The explicit stop below is the fast path,
- * not the guarantee.
+ * launcher treats its own container. The signal handlers below only cover
+ * Ctrl-C/SIGTERM, where they also have to terminate the process explicitly —
+ * registering a signal listener replaces the default exit behavior.
  */
 
 const container: StartedPostgreSqlContainer = await new PostgreSqlContainer(
   POSTGRES_IMAGE,
 )
   .withDatabase(TEST_DB_NAME)
-  .start();
+  .start()
+  .catch((cause: unknown) => {
+    // Without this the first thing a developer sees is a testcontainers socket
+    // stack trace, which does not name the actual problem.
+    throw new Error(
+      "Could not start the ephemeral test Postgres container — is Docker running?",
+      { cause },
+    );
+  });
 
 process.env.DATABASE_URL = container.getConnectionUri();
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 try {
   await migrate(drizzle(pool), { migrationsFolder: "./src/db/migrations" });
+} catch (cause) {
+  throw new Error("Could not migrate the ephemeral test database.", { cause });
 } finally {
   await pool.end();
 }
 
-// Best-effort fast teardown. Registered once; Ryuk still reaps if we never get
-// here (SIGKILL, hard crash), which is why this is not the guarantee.
-let stopped = false;
-const stop = (): void => {
-  if (stopped) return;
-  stopped = true;
-  void container.stop().catch(() => {
-    // Ryuk will reap it; a failed stop must never fail the test run.
-  });
+/**
+ * Stop the container on Ctrl-C or a supervisor's SIGTERM.
+ *
+ * Registering a signal listener REPLACES the default terminate-on-signal
+ * behavior, so this has to exit the process itself or Ctrl-C would leave the run
+ * hanging with no output. There is deliberately no `process.on("exit")`
+ * counterpart: that handler must be synchronous, so it could never await
+ * `container.stop()` — it would read as cleanup while doing nothing. Ryuk is the
+ * real guarantee for every other exit path, including a crash or SIGKILL.
+ */
+let stopping = false;
+const stopAndExit = (): void => {
+  if (stopping) return;
+  stopping = true;
+  void container
+    .stop()
+    // A failed stop must not change the exit path; Ryuk still reaps it.
+    .catch(() => {})
+    .finally(() => process.exit(0));
 };
-process.on("exit", stop);
-process.on("SIGINT", stop);
-process.on("SIGTERM", stop);
+process.on("SIGINT", stopAndExit);
+process.on("SIGTERM", stopAndExit);
