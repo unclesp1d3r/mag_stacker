@@ -37,6 +37,7 @@ import {
   exitMaintenance,
   isMaintenanceActive,
   MaintenanceModeError,
+  nextPreRestoreStamp,
   recordMaintenanceSnapshotSchema,
   recoverInterruptedRestore,
   SNAPSHOT_SCHEMA_PREFIX,
@@ -356,6 +357,22 @@ describe("maintenance envelope (KTD5 hardening)", () => {
 
       expect(await snapshotTables(db)).toEqual(expectedSnapshot);
       expect(await readUploadDirKeys(uploadDir)).toEqual(["stamped.txt"]);
+    });
+
+    test("issues a strictly increasing stamp even for swaps inside the same millisecond", () => {
+      // `Date.now()` alone would return the same value for consecutive calls
+      // here, and equal stamps compare equal — which drops the ordering back to
+      // readdir order, the failure the stamp exists to prevent.
+      const stamps = Array.from({ length: 50 }, () => nextPreRestoreStamp());
+      expect(new Set(stamps).size).toBe(stamps.length);
+      for (let i = 1; i < stamps.length; i++) {
+        expect(stamps[i]).toBeGreaterThan(stamps[i - 1]);
+      }
+      // Still a plain epoch-ms-width integer, so the parser's digit bound holds.
+      for (const stamp of stamps) {
+        expect(String(stamp).length).toBeGreaterThanOrEqual(13);
+        expect(String(stamp).length).toBeLessThanOrEqual(15);
+      }
     });
 
     test("ranks candidates by their own stamp even when an ancestor directory name looks like a pre-restore directory", async () => {

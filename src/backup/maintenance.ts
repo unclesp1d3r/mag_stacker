@@ -398,6 +398,28 @@ async function rollbackLiveFromSnapshot(
  * or blob promotion had already fully completed and cleaned up).
  */
 /**
+ * Monotonic creation stamp for a pre-restore blob directory.
+ *
+ * `Date.now()` alone is not collision-safe: two swaps inside the same
+ * millisecond would produce identical stamps, which compare equal and hand the
+ * ordering back to readdir order — precisely the failure the stamp exists to
+ * prevent. Clamping to `previous + 1` makes the sequence strictly increasing
+ * within a process regardless of clock resolution, without changing the name
+ * format or growing past 13 digits for centuries.
+ *
+ * Across process restarts ordering still relies on the wall clock moving
+ * forward, which is sound here: a restore holds an app-wide advisory lock for
+ * its whole body, so two swaps never interleave between processes.
+ */
+let lastPreRestoreStamp = 0;
+export function nextPreRestoreStamp(): number {
+  const now = Date.now();
+  lastPreRestoreStamp =
+    now > lastPreRestoreStamp ? now : lastPreRestoreStamp + 1;
+  return lastPreRestoreStamp;
+}
+
+/**
  * The epoch-ms creation stamp `beginBlobSwap` embeds as
  * `<uploadDir>.pre-restore-<epochMs>-<uuid>`, read from the directory's own name
  * (`entryName`) relative to `prefix`. Undefined for a directory left by an older

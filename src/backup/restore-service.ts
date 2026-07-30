@@ -82,6 +82,7 @@ import { importDatabase } from "./db-import";
 import {
   enterMaintenance,
   exitMaintenance,
+  nextPreRestoreStamp,
   recordMaintenanceSnapshotSchema,
   SNAPSHOT_SCHEMA_PREFIX,
   STAGING_SCHEMA_PREFIX,
@@ -455,8 +456,9 @@ async function beginBlobSwap(uploadDir: string): Promise<BlobSwapHandle> {
   // when the swap happened. Recovery has to pick the newest of several such
   // directories after repeated interrupted restores, and mtime cannot answer
   // that. An explicit epoch-ms stamp can. See
-  // `restoreBlobsFromNewestPreRestoreDir` in maintenance.ts.
-  const movedAsideDir = `${uploadDir}.pre-restore-${Date.now()}-${randomUUID()}`;
+  // `restoreBlobsFromNewestPreRestoreDir` in maintenance.ts. The stamp comes
+  // from there too, and is monotonic so two swaps cannot collide.
+  const movedAsideDir = `${uploadDir}.pre-restore-${nextPreRestoreStamp()}-${randomUUID()}`;
   const hadExistingDir = await pathExists(uploadDir);
   if (hadExistingDir) {
     await rename(uploadDir, movedAsideDir);
