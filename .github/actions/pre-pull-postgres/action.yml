@@ -1,0 +1,58 @@
+name: Pre-pull Postgres image
+description: >-
+  Pull the pinned test Postgres up front so it is warm for Testcontainers and a
+  pull failure surfaces as a clear step rather than a downstream startup
+  timeout. Requires bun on PATH (the image is read from the TypeScript source).
+
+runs:
+  using: composite
+  steps:
+    # Single source of truth: read the digest straight out of the module the
+    # test harness imports, so CI can never pull a different runtime than the
+    # suites use. Previously this string was pasted into the workflow and had
+    # to be kept in lockstep by hand.
+    - name: Resolve pinned image
+      id: image
+      shell: bash
+      run: |
+        image=$(bun -e 'import { POSTGRES_IMAGE } from "./src/test-support/postgres-image"; console.log(POSTGRES_IMAGE)')
+        if [ -z "$image" ]; then
+          echo "::error::Could not read POSTGRES_IMAGE from src/test-support/postgres-image.ts"
+          exit 1
+        fi
+        echo "image=$image" >> "$GITHUB_OUTPUT"
+        echo "Pinned image: $image"
+
+    # Registry choice and retry are two separate concerns:
+    #   - We use the AWS ECR Public mirror of the Docker Official image (same
+    #     bytes) because Docker Hub's unauthenticated per-IP pull limit is
+    #     routinely exhausted on shared runner IPs.
+    #   - ECR Public has its own, far lighter per-IP throttle that still trips
+    #     occasionally ("toomanyrequests: Rate exceeded"). That is transient and
+    #     unrelated to the change under test, so a throttled pull is retried.
+    #     Any other failure (bad digest, auth, no disk) will never succeed on
+    #     retry, so it fails immediately instead of burning the full backoff.
+    - name: Pull
+      shell: bash
+      env:
+        POSTGRES_IMAGE: ${{ steps.image.outputs.image }}
+      run: |
+        max_attempts=5
+        for attempt in $(seq 1 "$max_attempts"); do
+          if output=$(docker pull "$POSTGRES_IMAGE" 2>&1); then
+            echo "$output"
+            exit 0
+          fi
+          echo "$output"
+          if ! echo "$output" | grep -qiE "toomanyrequests|rate exceed|timeout|temporarily unavailable|connection reset"; then
+            echo "::error::Pulling $POSTGRES_IMAGE failed for a non-transient reason; not retrying. $(echo "$output" | tail -n 3 | tr '\n' ' ')"
+            exit 1
+          fi
+          if [ "$attempt" -lt "$max_attempts" ]; then
+            delay=$((attempt * 15))
+            echo "::warning::Postgres pull throttled (attempt $attempt/$max_attempts); retrying in ${delay}s"
+            sleep "$delay"
+          fi
+        done
+        echo "::error::Could not pull $POSTGRES_IMAGE after $max_attempts attempts. $(echo "$output" | tail -n 3 | tr '\n' ' ')"
+        exit 1

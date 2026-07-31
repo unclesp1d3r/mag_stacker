@@ -29,27 +29,13 @@ import { NotFoundError } from "../../auth/errors";
 import { createGrant, revokeGrant } from "../../auth/grants";
 import * as schema from "../../db/schema";
 import { accessory, firearm, grant, magazine, user } from "../../db/schema";
+import { POSTGRES_IMAGE } from "../../test-support/postgres-image";
 import { wipeDatabase } from "../db-import";
 import {
   enterMaintenance,
   exitMaintenance,
   MaintenanceModeError,
 } from "../maintenance";
-
-/**
- * Integration coverage for the KTD5 write-path enforcement gap: a
- * force-restore's durable maintenance flag must block every ordinary write —
- * not just be checkable from `maintenance.ts`. Exercises the shared
- * write-authorization gates (`authorize.ts`, `accessory-visibility.ts`,
- * `grants.ts`) directly against an isolated Testcontainers Postgres, mirroring
- * `maintenance.test.ts`'s harness. These take `db`/`tx: DbOrTx` as an
- * explicit parameter, so this runs against a dedicated container rather than
- * the app's shared `@/src/db/client` singleton — no risk of leaving the
- * ambient dev DB's maintenance flag stuck active for every other test file in
- * the same `bun test src` run.
- */
-const POSTGRES_IMAGE =
-  "public.ecr.aws/docker/library/postgres:17@sha256:5c855ad7b85e68e48a62f34662853f38b57c1c1d80f3a927ab58034fd6d31c5e";
 
 type Db = NodePgDatabase<typeof schema>;
 

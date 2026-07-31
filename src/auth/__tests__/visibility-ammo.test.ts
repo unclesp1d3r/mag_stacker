@@ -12,8 +12,6 @@ import { NotAuthorizedError, NotFoundError } from "../errors";
 import { createGrant } from "../grants";
 import { getVisibleIds, resolvePermission } from "../visibility";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
 /**
  * Asserts a thenable rejects. Drizzle/pg query builders are thenables, not
  * Promises, so bun's `.rejects` matcher is unreliable on them — use this helper
@@ -29,7 +27,7 @@ async function expectRejects(fn: () => Promise<unknown>): Promise<void> {
   expect(threw).toBe(true);
 }
 
-live("ammo as a ParentType (U2, ammo plan)", () => {
+describe("ammo as a ParentType (U2, ammo plan)", () => {
   let userA = "";
   let userB = "";
   let userC = "";

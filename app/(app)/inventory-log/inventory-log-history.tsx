@@ -17,6 +17,7 @@ import {
 import { EmptyState, Spinner } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/surface";
 import { useToast } from "@/components/ui/toast";
+import { Data } from "@/components/ui/typography";
 import { useTableViewState } from "@/hooks/use-table-view-state";
 import type { ParentType } from "@/src/auth/visibility";
 import {
@@ -149,9 +150,7 @@ export function InventoryLogHistory({
         header: "Timestamp",
         meta: { label: "Timestamp" },
         cell: ({ getValue }) => (
-          <span className="tabular">
-            {formatTimestamp(getValue<Date | string>())}
-          </span>
+          <Data>{formatTimestamp(getValue<Date | string>())}</Data>
         ),
       },
       {

@@ -12,6 +12,7 @@ import {
   type ColumnDef,
   createDefaultTableViewState,
 } from "@/components/ui/data-table/types";
+import { Data } from "@/components/ui/typography";
 import { useTableViewState } from "@/hooks/use-table-view-state";
 import type {
   CaliberCoverage,
@@ -44,7 +45,7 @@ export function SummaryTables({
         header: "Caliber",
         meta: { label: "Caliber" },
         cell: ({ getValue }) => (
-          <span className="font-medium tabular">{getValue<string>()}</span>
+          <Data className="font-medium">{getValue<string>()}</Data>
         ),
       },
       {
@@ -92,7 +93,7 @@ export function SummaryTables({
         header: "Caliber",
         meta: { label: "Caliber" },
         cell: ({ getValue }) => (
-          <span className="font-medium tabular">{getValue<string>()}</span>
+          <Data className="font-medium">{getValue<string>()}</Data>
         ),
       },
       {

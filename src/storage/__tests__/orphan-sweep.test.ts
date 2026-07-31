@@ -17,13 +17,11 @@ import {
 } from "@/src/storage";
 import { orphanSweep } from "@/src/storage/orphan-sweep";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
 function blobPath(key: string): string {
   return join(activeStorageRoot(), key);
 }
 
-live("orphan sweep per-key delete failure (U5 logging migration)", () => {
+describe("orphan sweep per-key delete failure (U5 logging migration)", () => {
   afterAll(() => {
     rmSync(uploadDir, { recursive: true, force: true });
   });

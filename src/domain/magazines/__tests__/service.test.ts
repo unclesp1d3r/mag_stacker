@@ -23,9 +23,7 @@ import {
   updateMagazine,
 } from "../service";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-live("magazines service (U6)", () => {
+describe("magazines service (U6)", () => {
   let userA = "";
   let userB = "";
 
@@ -160,7 +158,7 @@ live("magazines service (U6)", () => {
   });
 });
 
-live("Magpul mode label constraint — service integration (U3/U4)", () => {
+describe("Magpul mode label constraint — service integration (U3/U4)", () => {
   let ownerUser = "";
   let granteeUser = "";
 
@@ -298,7 +296,7 @@ live("Magpul mode label constraint — service integration (U3/U4)", () => {
   });
 });
 
-live("createMagazine — prefix recording (#22)", () => {
+describe("createMagazine — prefix recording (#22)", () => {
   test("records a non-empty labelPrefix in the owner's list (R1)", async () => {
     const owner = await createUser("cp-rec");
     await createMagazine(owner, {
@@ -349,7 +347,7 @@ live("createMagazine — prefix recording (#22)", () => {
 });
 
 // Action-log wiring at the create/delete seams (U6, R17, R18, KTD-5).
-live("magazines service — action-log wiring (U6)", () => {
+describe("magazines service — action-log wiring (U6)", () => {
   test("creating a magazine inside runWithContext emits exactly one action line", async () => {
     const owner = await createUser("al-create");
     const spy = spyOn(logging, "logAction");

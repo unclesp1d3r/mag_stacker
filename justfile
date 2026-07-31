@@ -4,12 +4,15 @@
 # Single-package Next.js 16 app on Bun. Toolchain: Biome (lint + format
 # for TS/TSX/JS/JSON), taplo (TOML), Postgres + Drizzle, Better Auth.
 # Tests run under `bun test`; integration/E2E spin up Postgres via
-# Testcontainers (Docker required) — there is no docker-compose stack.
+# Testcontainers (Docker required) — there is no docker-compose stack. The
+# suite provisions its own database (see src/test-support/preload.ts), so it
+# never needs DATABASE_URL set.
 #
 # All dev tools are pinned in mise.toml and invoked through `mise exec`
 # so recipes use the same versions as CI. mise's `_.file` also injects
 # `.env` / `.env.local`; recipes that need `DATABASE_URL` (db-migrate,
-# seed-admin, tests) rely on it being set there. See AGENTS.md.
+# seed-admin, db-seed) rely on it being set there — the test suite does not.
+# See AGENTS.md.
 
 set shell := ["bash", "-cu"]
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
@@ -146,7 +149,7 @@ lockfile-check:
 
 alias t := test
 
-# Run the unit/integration suite (integration tests need Docker + DATABASE_URL)
+# Run the unit/integration suite (needs Docker; Postgres comes from Testcontainers)
 [group('test')]
 test:
     {{ mise_exec }} bun run test
@@ -211,6 +214,11 @@ db-migrate:
 [group('db')]
 seed-admin:
     {{ mise_exec }} bun run seed:admin
+
+# Seed demo inventory for local work (idempotent; `just db-seed --reset` replaces it)
+[group('db')]
+db-seed *ARGS:
+    {{ mise_exec }} bun run seed:demo {{ ARGS }}
 
 # Security
 

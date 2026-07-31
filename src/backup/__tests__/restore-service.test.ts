@@ -32,6 +32,7 @@ import { NotAuthorizedError } from "../../auth/errors";
 import * as schema from "../../db/schema";
 import { firearm, firearmDocument, user } from "../../db/schema";
 import { PathTraversalError } from "../../storage";
+import { POSTGRES_IMAGE } from "../../test-support/postgres-image";
 import { type BundleBlobEntry, writeBundle } from "../bundle";
 import { createEncryptStream, deriveKey, generateSalt } from "../crypto";
 import { exportDatabase } from "../db-export";
@@ -44,18 +45,6 @@ import {
 } from "../manifest";
 import { type RestoreOutcome, restore } from "../restore-service";
 import { EXPORT_TABLE_ORDER } from "../table-order";
-
-/**
- * Integration tests for the restore service (U5) — the most safety-critical
- * unit in the backup feature. Every test runs against an ephemeral
- * Testcontainers Postgres (never the ambient dev DB) plus a per-test
- * temporary "UPLOAD_DIR" on the real filesystem, since `restore()` performs
- * real directory renames as part of its stage-then-promote sequence.
- *
- * Same pinned image as `db-roundtrip.test.ts` / `e2e/start-test-server.ts`.
- */
-const POSTGRES_IMAGE =
-  "public.ecr.aws/docker/library/postgres:17@sha256:5c855ad7b85e68e48a62f34662853f38b57c1c1d80f3a927ab58034fd6d31c5e";
 
 const PASSWORD = "correct horse battery staple";
 

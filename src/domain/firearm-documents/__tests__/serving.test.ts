@@ -26,8 +26,6 @@ mock.module("@/src/auth/session", () => ({
   getCurrentUser: async () => (currentUserId ? { id: currentUserId } : null),
 }));
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
 const PDF_BYTES = Buffer.from(
   "%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n",
 );
@@ -51,7 +49,7 @@ async function callRoute(id: string, disposition?: string): Promise<Response> {
   return GET(request, { params: Promise.resolve({ id }) });
 }
 
-live("document serving route (U6)", () => {
+describe("document serving route (U6)", () => {
   let owner = "";
   let grantee = "";
   let firearmId = "";

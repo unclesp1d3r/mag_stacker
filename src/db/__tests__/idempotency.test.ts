@@ -5,9 +5,7 @@ import { db } from "../client";
 import { IDEMPOTENCY_WINDOW_MS, withIdempotency } from "../idempotency";
 import { firearm, idempotency } from "../schema";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-live("withIdempotency (U12, KTD-9)", () => {
+describe("withIdempotency (U12, KTD-9)", () => {
   let userA = "";
   let userB = "";
   beforeAll(async () => {

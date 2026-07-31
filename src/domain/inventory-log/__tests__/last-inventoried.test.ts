@@ -9,9 +9,7 @@ import {
 } from "@/src/test-support/factories";
 import { loadLastInventoriedBatch } from "../last-inventoried";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-live("loadLastInventoriedBatch (U1)", () => {
+describe("loadLastInventoriedBatch (U1)", () => {
   let owner = "";
 
   beforeAll(async () => {

@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/photo-thumbnail";
 import { Select } from "@/components/ui/select";
 import { Card, PageHeader } from "@/components/ui/surface";
+import { Data } from "@/components/ui/typography";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import { useRowFlash } from "@/hooks/use-row-flash";
 import { useTableViewState } from "@/hooks/use-table-view-state";
@@ -169,9 +170,7 @@ export function FirearmsView({
         id: "caliber",
         header: "Caliber",
         meta: { label: "Caliber" },
-        cell: ({ getValue }) => (
-          <span className="tabular">{getValue<string>()}</span>
-        ),
+        cell: ({ getValue }) => <Data>{getValue<string>()}</Data>,
       },
       {
         accessorKey: "type",

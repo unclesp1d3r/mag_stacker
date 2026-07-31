@@ -22,8 +22,6 @@ import {
 } from "@/src/storage";
 import { orphanSweep } from "@/src/storage/orphan-sweep";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
 function blobPath(key: string): string {
   return join(activeStorageRoot(), key);
 }
@@ -45,7 +43,7 @@ async function writeDoc(
   return key;
 }
 
-live("document blob cleanup (U3)", () => {
+describe("document blob cleanup (U3)", () => {
   const ownerId = `test-user-${randomUUID()}`;
   let firearmId: string;
 

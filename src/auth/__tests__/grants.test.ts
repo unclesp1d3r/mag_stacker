@@ -9,9 +9,7 @@ import { NotAuthorizedError } from "../errors";
 import { createGrant, listGrantsForItem, revokeGrant } from "../grants";
 import { resolvePermission } from "../visibility";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-live("grants (U4)", () => {
+describe("grants (U4)", () => {
   let userA = "";
   let userB = "";
   let userC = "";

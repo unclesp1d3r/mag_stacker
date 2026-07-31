@@ -14,7 +14,8 @@
     "test:e2e:ui": "playwright test --ui",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run src/db/migrate.ts",
-    "seed:admin": "bun run scripts/seed-admin.ts"
+    "seed:admin": "bun run scripts/seed-admin.ts",
+    "seed:demo": "bun run scripts/seed-demo.ts"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",

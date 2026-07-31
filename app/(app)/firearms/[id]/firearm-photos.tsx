@@ -10,6 +10,7 @@ import { Field } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/input";
 import { Card } from "@/components/ui/surface";
 import { useToast } from "@/components/ui/toast";
+import { Data, Kicker } from "@/components/ui/typography";
 import {
   PREVIEW_MAX_EDGE,
   THUMB_MAX_EDGE,
@@ -302,8 +303,8 @@ export function FirearmPhotos({
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-foreground">Photos</h2>
-          <p className="text-xs text-muted-foreground tabular">
-            {photos.length} photo{photos.length === 1 ? "" : "s"}
+          <p className="text-xs text-muted-foreground">
+            <Data>{photos.length}</Data> photo{photos.length === 1 ? "" : "s"}
           </p>
         </div>
       </div>
@@ -354,9 +355,9 @@ export function FirearmPhotos({
       ) : null}
 
       <div className="mb-5">
-        <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <Kicker as="h3" className="mb-2">
           Primary photo
-        </h3>
+        </Kicker>
         {primary && primaryDims ? (
           <figure className="w-fit">
             <img

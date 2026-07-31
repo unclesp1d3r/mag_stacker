@@ -108,7 +108,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <output
         aria-live="polite"
         aria-atomic="false"
-        className="pointer-events-none fixed inset-x-0 bottom-0 z-[var(--z-toast)] flex flex-col items-center gap-2 px-4 pb-4 sm:items-end sm:px-6 sm:pb-6"
+        /* `inset-x-0` resolves against the initial containing block, so if any
+           descendant ever overflows horizontally this rail inherits that wider
+           width and drags the toasts off-screen. Capping at 100vw pins it to the
+           viewport regardless of document width. */
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-[var(--z-toast)] flex max-w-[100vw] flex-col items-center gap-2 px-4 pb-4 sm:items-end sm:px-6 sm:pb-6"
       >
         <AnimatePresence initial={false}>
           {items.map((item) => (
