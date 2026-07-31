@@ -163,6 +163,20 @@ body {
   border-radius: var(--radius);
 }
 
+/*
+ * Scroll without a visible scrollbar track — used by the primary nav, which
+ * scrolls horizontally on narrow viewports. The rail is still keyboard- and
+ * swipe-scrollable; only the chrome is hidden, so no affordance is lost that
+ * the overflowing links themselves don't already signal.
+ */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Tabular numerals for dense inventory data. */
 .tabular {
   font-feature-settings: "tnum" 1;

@@ -23,6 +23,20 @@ const SKELETON_ROWS = 6;
 const FRAME_CLASSNAME =
   "flex flex-col overflow-hidden rounded-lg border border-border bg-card shadow-[var(--shadow-raised)]";
 
+/**
+ * Horizontal scroll container for the table itself.
+ *
+ * `relative` is load-bearing, not decoration. `overflow-x-auto` only clips
+ * descendants whose containing block runs through this element, and the header
+ * cells' `.sr-only` spans are `position: absolute`. With a static wrapper their
+ * containing block resolves all the way up to the initial containing block, so
+ * the "Actions" span escapes the scroller and sits at the table's full width in
+ * document space — widening every table route past a phone viewport (measured
+ * 541-629px of document at 393px wide) even though the table itself scrolls
+ * correctly inside this box.
+ */
+const SCROLLER_CLASSNAME = "relative overflow-x-auto";
+
 /** Generic shared table wrapper: sort, column show/hide, and pagination over a flat row set. */
 export function DataTable<TData>({
   columns,
@@ -129,7 +143,7 @@ export function DataTable<TData>({
       {isEmpty && emptyState ? (
         <div className="p-6">{emptyState}</div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className={SCROLLER_CLASSNAME}>
           <table className="w-full border-collapse text-sm">
             <thead className="border-input border-b-2 bg-muted">
               {table.getHeaderGroups().map((headerGroup) => (

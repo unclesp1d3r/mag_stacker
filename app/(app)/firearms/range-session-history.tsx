@@ -18,6 +18,7 @@ import {
 import { EmptyState, Spinner } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/surface";
 import { useToast } from "@/components/ui/toast";
+import { Data } from "@/components/ui/typography";
 import { useTableViewState } from "@/hooks/use-table-view-state";
 import type { RangeSession } from "@/src/domain/range-sessions/service";
 import {
@@ -112,9 +113,7 @@ export function RangeSessionHistory({
         id: "date",
         header: "Date",
         meta: { label: "Date" },
-        cell: ({ getValue }) => (
-          <span className="tabular">{getValue<string>()}</span>
-        ),
+        cell: ({ getValue }) => <Data>{getValue<string>()}</Data>,
       },
       {
         accessorKey: "roundsFired",
@@ -230,8 +229,9 @@ export function RangeSessionHistory({
           <h2 className="text-sm font-semibold text-foreground">
             Range sessions — {firearmName}
           </h2>
-          <p className="text-xs text-muted-foreground tabular">
-            {total} rounds fired over {list.length} session
+          <p className="text-xs text-muted-foreground">
+            <Data>{total}</Data> rounds fired over <Data>{list.length}</Data>{" "}
+            session
             {list.length === 1 ? "" : "s"}
           </p>
         </div>

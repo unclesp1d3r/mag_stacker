@@ -272,9 +272,7 @@ describe("computeSummary — ammo roll-ups (U5)", () => {
   });
 });
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-live("inventorySummary (U7, viewer-relative)", () => {
+describe("inventorySummary (U7, viewer-relative)", () => {
   let userA = "";
   let userB = "";
   beforeAll(async () => {

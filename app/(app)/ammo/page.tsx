@@ -1,11 +1,9 @@
 import { redirect } from "next/navigation";
-import { PageHeader } from "@/components/ui/surface";
 import { getCurrentUser } from "@/src/auth/session";
 import { db } from "@/src/db/client";
 import { listAmmo } from "@/src/domain/ammo/service";
 import { calibersForInput } from "@/src/domain/reference/reference";
 import { type AmmoListItem, AmmoView } from "./ammo-view";
-import { ExportButton } from "./export-button";
 
 export default async function AmmoPage() {
   const user = await getCurrentUser();
@@ -29,17 +27,8 @@ export default async function AmmoPage() {
     notes: a.notes,
   }));
 
-  // Export only makes sense once there's inventory, mirroring the magazines
-  // page: the cold-start empty state carries the one path forward alone.
-  const showControls = items.length > 0;
-
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Ammo"
-        description="Track rounds on hand and low-stock alerts."
-        actions={showControls ? <ExportButton /> : undefined}
-      />
       <AmmoView
         ammo={items}
         currentUserId={user.id}

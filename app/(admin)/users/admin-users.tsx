@@ -147,7 +147,10 @@ export function AdminUsers({ users }: { users: AdminUserRow[] }) {
   );
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[20rem_1fr]">
+    // `min-w-0` on the children keeps the `1fr` track from refusing to shrink
+    // below the table's intrinsic width at `lg` and up, so a wide table scrolls
+    // inside its column instead of stretching the grid.
+    <div className="grid gap-6 [&>*]:min-w-0 lg:grid-cols-[20rem_1fr]">
       <Card className="h-fit">
         <h2 className="text-sm font-semibold text-foreground">
           Create account

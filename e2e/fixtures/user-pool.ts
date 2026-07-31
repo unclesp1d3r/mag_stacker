@@ -42,6 +42,7 @@ export const SPEC_USER_KEYS = [
   "demo-summary",
   "demo-walkthrough",
   "firearm-list-thumbnails",
+  "responsive-overflow",
 ] as const;
 
 export type SpecUserKey = (typeof SPEC_USER_KEYS)[number];

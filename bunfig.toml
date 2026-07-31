@@ -1,0 +1,9 @@
+# Bun configuration.
+#
+# The test preload starts an ephemeral, migrated Postgres via Testcontainers and
+# exports DATABASE_URL before any test module loads, so integration tests never
+# depend on a hand-started database or on its state. See
+# src/test-support/preload.ts for the full rationale. Docker is required to run
+# the suite — which matches the justfile's stated model (no compose stack).
+[test]
+preload = [ "./src/test-support/preload.ts" ]

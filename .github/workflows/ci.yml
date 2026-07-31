@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # ships a Docker daemon for Testcontainers
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,6 +63,17 @@ jobs:
       - name: Type-check
         run: bun run typecheck
 
+      # The unit/integration suite had no CI step at all, and its integration
+      # tests additionally self-skipped whenever DATABASE_URL was unset — which
+      # it always was here. Both halves of that gap are closed: the suite now
+      # runs, and it provisions its own Postgres via Testcontainers, so there is
+      # nothing to configure and nothing to skip.
+      - name: Pre-pull Postgres image
+        uses: ./.github/actions/pre-pull-postgres
+
+      - name: Test
+        run: bun run test
+
       - name: Build
         run: bun run build
 
@@ -104,43 +115,8 @@ jobs:
       - name: Install Playwright browser
         run: bunx playwright install --with-deps chromium
 
-      # Pull Postgres up front so it's cached for Testcontainers and a pull
-      # failure surfaces as a clear step, not a webServer startup timeout.
-      # Must match POSTGRES_IMAGE in e2e/start-test-server.ts.
-      #
-      # Registry choice and retry are two separate concerns:
-      #   - We use the AWS ECR Public mirror of the Docker Official image
-      #     (same bytes) because Docker Hub's unauthenticated per-IP pull
-      #     limit is routinely exhausted on shared runner IPs.
-      #   - ECR Public has its own, far lighter per-IP throttle that still
-      #     trips occasionally ("toomanyrequests: Rate exceeded"). That is
-      #     transient and unrelated to the change under test, so a throttled
-      #     pull is retried. Any other failure (bad digest, auth, no disk)
-      #     will never succeed on retry, so it fails immediately instead of
-      #     burning the full backoff.
       - name: Pre-pull Postgres image
-        env:
-          POSTGRES_IMAGE: public.ecr.aws/docker/library/postgres:17@sha256:5c855ad7b85e68e48a62f34662853f38b57c1c1d80f3a927ab58034fd6d31c5e
-        run: |
-          max_attempts=5
-          for attempt in $(seq 1 "$max_attempts"); do
-            if output=$(docker pull "$POSTGRES_IMAGE" 2>&1); then
-              echo "$output"
-              exit 0
-            fi
-            echo "$output"
-            if ! echo "$output" | grep -qiE "toomanyrequests|rate exceed|timeout|temporarily unavailable|connection reset"; then
-              echo "::error::Pulling $POSTGRES_IMAGE failed for a non-transient reason; not retrying. $(echo "$output" | tail -n 3 | tr '\n' ' ')"
-              exit 1
-            fi
-            if [ "$attempt" -lt "$max_attempts" ]; then
-              delay=$((attempt * 15))
-              echo "::warning::Postgres pull throttled (attempt $attempt/$max_attempts); retrying in ${delay}s"
-              sleep "$delay"
-            fi
-          done
-          echo "::error::Could not pull $POSTGRES_IMAGE after $max_attempts attempts. $(echo "$output" | tail -n 3 | tr '\n' ' ')"
-          exit 1
+        uses: ./.github/actions/pre-pull-postgres
 
       # Build ahead of the suite so the launcher finds .next and skips the cold
       # build inside the webServer startup timeout.

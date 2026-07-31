@@ -16,9 +16,7 @@ import {
 import * as service from "../service";
 import { createLogEntry, listLogForParent, markInventoried } from "../service";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-live("inventory-log service (U3)", () => {
+describe("inventory-log service (U3)", () => {
   let owner = "";
   let editor = "";
   let viewer = "";

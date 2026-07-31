@@ -27,7 +27,7 @@ async function main(): Promise<void> {
     where: (u, { eq }) => eq(u.email, email),
   });
   if (existing) {
-    console.log(`Admin account already exists for ${email}; nothing to do.`);
+    console.log("Admin account already exists; nothing to do.");
     return;
   }
 
@@ -39,7 +39,7 @@ async function main(): Promise<void> {
       role: "admin",
     },
   });
-  console.log(`Created admin account for ${email}.`);
+  console.log("Created the admin account.");
 }
 
 main()

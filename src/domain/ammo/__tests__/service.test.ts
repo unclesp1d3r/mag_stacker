@@ -12,8 +12,6 @@ import {
   updateAmmo,
 } from "../service";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
 /**
  * Asserts a thenable rejects. Drizzle/pg query builders are thenables, not
  * Promises, so bun's `.rejects` matcher is unreliable on them — use this helper
@@ -29,7 +27,7 @@ async function expectRejects(fn: () => Promise<unknown>): Promise<void> {
   expect(threw).toBe(true);
 }
 
-live("ammo service (ammo plan U3)", () => {
+describe("ammo service (ammo plan U3)", () => {
   let userA = "";
   let userB = "";
 

@@ -112,8 +112,8 @@ hardware with tight tolerances. It rejects the two failure modes equally: it is
 identical icon-card grids) and **not** a sterile corporate tool with no point of
 view. It is also not cute — no pastels, mascots, or bounce. Delight is earned
 through craft: tabular figures that line up to the digit, hairline borders that
-hold their edge, a tick-mark stamped on a stat, an accent that lights up only
-where it means something. Personality with a straight face.
+hold their edge, mono labels stamped like a faceplate, an accent that lights up
+only where it means something. Personality with a straight face.
 
 **Key Characteristics:**
 - Two modes, one identity: dark Field Console (default) / light Machined Instrument.
@@ -220,7 +220,7 @@ marks live state.
 - Pill, anodized-soft fill, anodized text, hairline border — the compatible-firearm and permission chips. `ok`/`danger` tones for status.
 
 ### Stat (machined detail)
-- Raised panel with a short **anodized tick-mark stamped at the top edge**, a mono uppercase label, and a large tabular value. The tick is the signature "made by an instrument" mark.
+- Raised panel with a mono uppercase label and a large tabular value. Tonal layering, the hairline border, and the raised shadow provide elevation — the component carries no decorative accent stripe (per the One Accent Rule).
 
 ### Navigation
 - Top bar over a translucent body with a hairline underline. Items are soft-ink; the active item is "lit" (anodized-soft fill + anodized text). Account, theme toggle, and sign-out sit in the right chrome.
@@ -238,7 +238,7 @@ marks live state.
 
 ### Don't:
 - **Don't** build a generic SaaS dashboard: no gradient cards, no big hero-metric template, no identical icon+heading card grids.
-- **Don't** ship a sterile, point-of-view-free corporate panel. Restraint is not the same as boring; the tick-marks, the lit state, and the mono voice are the personality.
+- **Don't** ship a sterile, point-of-view-free corporate panel. Restraint is not the same as boring; the lit state, the tabular figures, and the mono voice are the personality.
 - **Don't** go cute: no pastels, mascots, emoji, bounce, or elastic motion. Motion is exponential ease-out, in service of state.
 - **Don't** use `border-left`/`border-right` > 1px as a colored accent stripe on rows, cards, or callouts. Mark active state with a lit fill + accent dot instead.
 - **Don't** use gradient text, decorative glassmorphism, or the accent as a background fill.

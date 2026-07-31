@@ -82,6 +82,7 @@ import { importDatabase } from "./db-import";
 import {
   enterMaintenance,
   exitMaintenance,
+  nextPreRestoreStamp,
   recordMaintenanceSnapshotSchema,
   SNAPSHOT_SCHEMA_PREFIX,
   STAGING_SCHEMA_PREFIX,
@@ -449,7 +450,15 @@ interface BlobSwapHandle {
 
 /** Moves `uploadDir` aside (if present) so the staged blob directory can take its place. Reversible via `undoBlobSwap`/`commitBlobSwap`. */
 async function beginBlobSwap(uploadDir: string): Promise<BlobSwapHandle> {
-  const movedAsideDir = `${uploadDir}.pre-restore-${randomUUID()}`;
+  // The creation time goes in the NAME, not left to the filesystem. `rename`
+  // does not update a directory's own mtime, so a moved-aside directory keeps
+  // whatever mtime `uploadDir` had — i.e. when blobs were last written, not
+  // when the swap happened. Recovery has to pick the newest of several such
+  // directories after repeated interrupted restores, and mtime cannot answer
+  // that. An explicit epoch-ms stamp can. See
+  // `restoreBlobsFromNewestPreRestoreDir` in maintenance.ts. The stamp comes
+  // from there too, and is monotonic so two swaps cannot collide.
+  const movedAsideDir = `${uploadDir}.pre-restore-${nextPreRestoreStamp()}-${randomUUID()}`;
   const hadExistingDir = await pathExists(uploadDir);
   if (hadExistingDir) {
     await rename(uploadDir, movedAsideDir);

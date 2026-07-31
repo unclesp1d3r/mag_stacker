@@ -40,12 +40,12 @@ describe("requireDatabaseUrl (boundary validation, no DB needed)", () => {
   });
 });
 
-// The live-connection tests require a reachable Postgres (the compose `db`
-// service). They are skipped when DATABASE_URL is not configured so the pure
-// suite still runs in environments without a database.
-const liveDb = process.env.DATABASE_URL ? describe : describe.skip;
+// These tests connect for real. `DATABASE_URL` points at the ephemeral
+// Testcontainers Postgres started by src/test-support/preload.ts, so it is
+// always set and always reachable — there is no compose stack and no ambient
+// dev database involved.
 
-liveDb("live Postgres connection", () => {
+describe("live Postgres connection", () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const db = drizzle(pool);
 

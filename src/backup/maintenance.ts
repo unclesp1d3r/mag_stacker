@@ -391,12 +391,78 @@ async function rollbackLiveFromSnapshot(
  * sibling directory (the directory `restore-service.ts`'s `beginBlobSwap`
  * moves the pre-restore blob store aside to) back into `uploadDir`, mirroring
  * `restore-service.ts`'s own `undoBlobSwap`. If more than one such directory
- * exists (e.g. from more than one interrupted attempt), the newest by mtime
- * wins and every other one is discarded — they're stale artifacts of earlier
+ * exists (e.g. from more than one interrupted attempt), the newest by its
+ * embedded creation stamp wins and every other one is discarded — they're stale artifacts of earlier
  * crashes, not independently recoverable state. A no-op if no such directory
  * exists (the crash happened before any pre-restore directory was created,
  * or blob promotion had already fully completed and cleaned up).
  */
+/**
+ * Monotonic creation stamp for a pre-restore blob directory.
+ *
+ * `Date.now()` alone is not collision-safe: two swaps inside the same
+ * millisecond would produce identical stamps, which compare equal and hand the
+ * ordering back to readdir order — precisely the failure the stamp exists to
+ * prevent. Clamping to `previous + 1` makes the sequence strictly increasing
+ * within a process regardless of clock resolution, without changing the name
+ * format or growing past 13 digits for centuries.
+ *
+ * Across process restarts ordering still relies on the wall clock moving
+ * forward, which is sound here: a restore holds an app-wide advisory lock for
+ * its whole body, so two swaps never interleave between processes.
+ */
+let lastPreRestoreStamp = 0;
+export function nextPreRestoreStamp(): number {
+  const now = Date.now();
+  lastPreRestoreStamp =
+    now > lastPreRestoreStamp ? now : lastPreRestoreStamp + 1;
+  return lastPreRestoreStamp;
+}
+
+/**
+ * The epoch-ms creation stamp `beginBlobSwap` embeds as
+ * `<uploadDir>.pre-restore-<epochMs>-<uuid>`, read from the directory's own name
+ * (`entryName`) relative to `prefix`. Undefined for a directory left by an older
+ * build that named it `<uploadDir>.pre-restore-<uuid>`. Requiring
+ * 13-15 digits before the separator is what distinguishes a stamp from a UUID
+ * whose first group happens to be all digits (that group is only 8 chars); the
+ * upper bound keeps the value inside the safe-integer range.
+ */
+function preRestoreStamp(
+  entryName: string,
+  prefix: string,
+): number | undefined {
+  // Anchored to the character after the known prefix, NOT searched across the
+  // whole path: an unanchored match could find a `.pre-restore-<digits>-`
+  // segment in an ancestor directory's name instead, giving every candidate the
+  // same rank and handing the decision back to readdir order.
+  const match = /^(\d{13,15})-/.exec(entryName.slice(prefix.length));
+  if (!match) return undefined;
+  const stamp = Number(match[1]);
+  // Bounded above as well as below. An unbounded run of digits would pass
+  // through `Number` with silent precision loss past MAX_SAFE_INTEGER, and two
+  // distinct directories could then round to the same value — at which point
+  // ordering falls back to readdir order and the "newest wins" guarantee this
+  // function exists for is quietly gone.
+  return Number.isSafeInteger(stamp) ? stamp : undefined;
+}
+
+/**
+ * Sort key for pre-restore directories, newest first.
+ *
+ * Tier 0 is a stamped directory ranked by its stamp; tier 1 is a legacy
+ * unstamped one ranked by mtime, and always sorts after any stamped directory
+ * (an unstamped directory necessarily predates the build that began stamping
+ * them, so it cannot legitimately be newer). Expressed as a `[tier, key]` pair
+ * so the comparator stays two branches instead of a four-way case analysis.
+ */
+function pruneRank(entry: {
+  stamp: number | undefined;
+  mtimeMs: number;
+}): [0 | 1, number] {
+  return entry.stamp !== undefined ? [0, -entry.stamp] : [1, -entry.mtimeMs];
+}
+
 async function restoreBlobsFromNewestPreRestoreDir(
   uploadDir: string,
 ): Promise<void> {
@@ -414,23 +480,55 @@ async function restoreBlobsFromNewestPreRestoreDir(
 
   const candidates = entries
     .filter((entry) => entry.isDirectory() && entry.name.startsWith(prefix))
-    .map((entry) => join(parentDir, entry.name));
+    .map((entry) => ({ path: join(parentDir, entry.name), name: entry.name }));
   if (candidates.length === 0) return;
 
-  const withMtimes = await Promise.all(
-    candidates.map(async (path) => ({
+  const withOrder = await Promise.all(
+    candidates.map(async ({ path, name }) => ({
       path,
+      stamp: preRestoreStamp(name, prefix),
       mtimeMs: (await stat(path)).mtimeMs,
     })),
   );
-  withMtimes.sort((a, b) => b.mtimeMs - a.mtimeMs);
-  const [newest, ...stale] = withMtimes;
+  // Order by the creation stamp `beginBlobSwap` writes into the name. mtime is
+  // only a fallback for directories left by an older build that did not stamp
+  // them: `rename` does not update a directory's own mtime, so mtime here is
+  // when blobs were last written, not when the directory was moved aside — it
+  // can order two pre-restore directories backwards, and ties silently fall
+  // through to readdir order, which is filesystem-dependent. A stamped
+  // directory always outranks an unstamped one, since any unstamped directory
+  // necessarily predates the upgrade that started stamping them.
+  withOrder.sort((a, b) => {
+    const [aTier, aKey] = pruneRank(a);
+    const [bTier, bKey] = pruneRank(b);
+    return aTier !== bTier ? aTier - bTier : aKey - bKey;
+  });
+  const [newest, ...stale] = withOrder;
   if (!newest) return;
 
-  await rm(uploadDir, { recursive: true, force: true }).catch(() => {});
-  if (await pathExists(newest.path)) {
-    await rename(newest.path, uploadDir);
+  // Confirm the replacement is actually there BEFORE destroying what is live.
+  // Reversed, a candidate that vanished between the readdir above and here would
+  // leave `uploadDir` deleted with nothing restored into it.
+  if (!(await pathExists(newest.path))) {
+    log.error(
+      { candidate: newest.path },
+      "pre-restore blob directory disappeared before it could be restored; leaving the current upload directory untouched",
+    );
+    return;
   }
+
+  // Only "already gone" is safe to ignore here. Swallowing everything (the
+  // previous behavior) meant an EACCES/EBUSY left `uploadDir` in place, the
+  // rename below then failed on a non-empty target, and the caller logged it as
+  // a routine recovery step — while the database had already been rolled back.
+  // That combination silently leaves the DB and the blob store describing
+  // different states, which is worth failing loudly for.
+  try {
+    await rm(uploadDir, { recursive: true, force: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  await rename(newest.path, uploadDir);
 
   for (const { path } of stale) {
     await rm(path, { recursive: true, force: true }).catch(() => {});
@@ -550,18 +648,21 @@ export async function recoverInterruptedRestore(
       try {
         if (await schemaExists(db, snapshotSchema)) {
           await rollbackLiveFromSnapshot(db, snapshotSchema);
-          try {
-            await restoreBlobsFromNewestPreRestoreDir(uploadDir);
-          } catch (err) {
-            logRecoveryFailure("restore blobs from pre-restore directory", err);
-          }
+          // A blob failure escalates exactly like a failed DB rollback: it
+          // rethrows into the handler below, which keeps the maintenance flag
+          // ACTIVE and preserves the snapshot schema. Logging loudly but then
+          // dropping the snapshot and clearing the flag — as this did — tells
+          // the operator to reconcile by hand while deleting the thing they
+          // would reconcile from, and readmits ordinary writes on top of a
+          // database and blob store that describe different states.
+          await restoreBlobsFromNewestPreRestoreDir(uploadDir);
           await dropSchemaIfExists(db, snapshotSchema);
         }
       } catch (err) {
         rollbackFailed = true;
         log.error(
           { err, snapshotSchema },
-          "MANUAL INTERVENTION REQUIRED — rolling back an interrupted restore failed partway; the live database may now be a mix of wiped and restored tables; the maintenance flag is being left ACTIVE (blocking ordinary writes) and the snapshot schema is being preserved so a retry or manual recovery can still use it",
+          "MANUAL INTERVENTION REQUIRED — rolling back an interrupted restore failed partway; the live database may now be a mix of wiped and restored tables, or its rows may disagree with the stored blobs; the maintenance flag is being left ACTIVE (blocking ordinary writes) and the snapshot schema is being preserved so a retry or manual recovery can still use it",
         );
       }
     }

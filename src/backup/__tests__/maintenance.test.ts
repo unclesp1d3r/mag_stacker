@@ -14,6 +14,7 @@ import {
   readdir,
   readFile,
   rm,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -28,6 +29,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import * as schema from "../../db/schema";
 import { firearm, user } from "../../db/schema";
+import { POSTGRES_IMAGE } from "../../test-support/postgres-image";
 import { wipeDatabase } from "../db-import";
 import {
   assertWritesAllowed,
@@ -35,22 +37,13 @@ import {
   exitMaintenance,
   isMaintenanceActive,
   MaintenanceModeError,
+  nextPreRestoreStamp,
   recordMaintenanceSnapshotSchema,
   recoverInterruptedRestore,
   SNAPSHOT_SCHEMA_PREFIX,
   STAGING_SCHEMA_PREFIX,
 } from "../maintenance";
 import { EXPORT_TABLE_ORDER } from "../table-order";
-
-/**
- * Integration tests for the maintenance envelope's crash-recovery and
- * write-blocking primitives (KTD5 hardening). Every test runs against an
- * ephemeral Testcontainers Postgres (never the ambient dev DB) plus a
- * per-test temporary "UPLOAD_DIR" on the real filesystem, matching
- * `restore-service.test.ts`'s harness.
- */
-const POSTGRES_IMAGE =
-  "public.ecr.aws/docker/library/postgres:17@sha256:5c855ad7b85e68e48a62f34662853f38b57c1c1d80f3a927ab58034fd6d31c5e";
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -273,21 +266,33 @@ describe("maintenance envelope (KTD5 hardening)", () => {
       // The pre-restore blob directory `beginBlobSwap` would have moved
       // aside — holds the ORIGINAL blobs, which is what recovery must
       // restore `uploadDir` back to.
-      const staleDir = `${uploadDir}.pre-restore-${randomUUID()}`;
+      // Order comes from the epoch-ms stamp `beginBlobSwap` puts in the name,
+      // so state it explicitly. Creating the directories back to back and
+      // trusting mtime made this test depend on the two mkdir calls landing in
+      // different filesystem ticks — which they do not on a fast runner, and it
+      // failed in CI while passing locally.
+      const stamp = Date.now();
+      const staleDir = `${uploadDir}.pre-restore-${stamp - 60_000}-${randomUUID()}`;
       await mkdir(staleDir, { recursive: true });
       await writeFile(
         join(staleDir, "stale.txt"),
         "stale — from an even older crash",
       );
 
-      const originalDir = `${uploadDir}.pre-restore-${randomUUID()}`;
+      const originalDir = `${uploadDir}.pre-restore-${stamp}-${randomUUID()}`;
       await mkdir(originalDir, { recursive: true });
       await writeFile(
         join(originalDir, "original.txt"),
         "original pre-restore blob",
       );
-      // The newest-by-mtime directory is the one that should win — force a
-      // detectable ordering by writing the "original" (newest) dir last.
+
+      // Force the STALE directory's mtime to be the newest one. Ordering by
+      // mtime would now pick it and destroy the real pre-restore blobs; only
+      // the name stamp gets this right. This is the actual regression guard —
+      // `rename` never updates a directory's own mtime, so in production these
+      // mtimes reflect when blobs were last written, not swap order.
+      const future = new Date(stamp + 60_000);
+      await utimes(staleDir, future, future);
 
       // `uploadDir` itself holds whatever the half-finished force-restore
       // had already swapped in — new, half-promoted blobs.
@@ -312,6 +317,99 @@ describe("maintenance envelope (KTD5 hardening)", () => {
       expect(remaining.some((name) => name.includes(".pre-restore-"))).toBe(
         false,
       );
+    });
+
+    test("prefers a stamped pre-restore directory over an unstamped one left by an older build, whatever their mtimes say", async () => {
+      await seedOwner(db, "Legacy Fallback Owner");
+      const expectedSnapshot = await snapshotTables(db);
+      const snapshotSchema = `${SNAPSHOT_SCHEMA_PREFIX}${randomUUID().replace(/-/g, "")}`;
+      await createSnapshotSchemaFromCurrentState(db, snapshotSchema);
+      await wipeDatabase(db);
+      await seedOwner(db, "Half-Promoted New Owner");
+      await enterMaintenance(db, "force-restore");
+      await recordMaintenanceSnapshotSchema(db, snapshotSchema);
+
+      const stamp = Date.now();
+
+      // An older build named its moved-aside directory with no epoch-ms stamp.
+      // It can only predate the build that started stamping, so it must lose to
+      // a stamped directory — even when its mtime is the newest on disk, which
+      // is what the mtime fallback alone would go on.
+      const legacyDir = `${uploadDir}.pre-restore-${randomUUID()}`;
+      await mkdir(legacyDir, { recursive: true });
+      await writeFile(join(legacyDir, "legacy.txt"), "from a pre-stamp build");
+
+      const stampedDir = `${uploadDir}.pre-restore-${stamp}-${randomUUID()}`;
+      await mkdir(stampedDir, { recursive: true });
+      await writeFile(
+        join(stampedDir, "stamped.txt"),
+        "the real pre-restore blob",
+      );
+
+      const future = new Date(stamp + 60_000);
+      await utimes(legacyDir, future, future);
+
+      await rm(uploadDir, { recursive: true, force: true }).catch(() => {});
+      await mkdir(uploadDir, { recursive: true });
+      await writeFile(join(uploadDir, "half-promoted.txt"), "new blob");
+
+      await recoverInterruptedRestore(db, uploadDir);
+
+      expect(await snapshotTables(db)).toEqual(expectedSnapshot);
+      expect(await readUploadDirKeys(uploadDir)).toEqual(["stamped.txt"]);
+    });
+
+    test("issues a strictly increasing stamp even for swaps inside the same millisecond", () => {
+      // `Date.now()` alone would return the same value for consecutive calls
+      // here, and equal stamps compare equal — which drops the ordering back to
+      // readdir order, the failure the stamp exists to prevent.
+      const stamps = Array.from({ length: 50 }, () => nextPreRestoreStamp());
+      expect(new Set(stamps).size).toBe(stamps.length);
+      for (let i = 1; i < stamps.length; i++) {
+        expect(stamps[i]).toBeGreaterThan(stamps[i - 1]);
+      }
+      // Still a plain epoch-ms-width integer, so the parser's digit bound holds.
+      for (const stamp of stamps) {
+        expect(String(stamp).length).toBeGreaterThanOrEqual(13);
+        expect(String(stamp).length).toBeLessThanOrEqual(15);
+      }
+    });
+
+    test("ranks candidates by their own stamp even when an ancestor directory name looks like a pre-restore directory", async () => {
+      // The stamp is parsed from the candidate's own name. Searching the whole
+      // path instead would match this ancestor's segment for BOTH candidates,
+      // give them an identical rank, and hand the decision to readdir order.
+      const decoyParent = await mkdtemp(
+        join(tmpdir(), "magstacker-x.pre-restore-1700000000000-decoy-"),
+      );
+      const nestedUploadDir = join(decoyParent, "uploads");
+      await mkdir(nestedUploadDir, { recursive: true });
+      await writeFile(join(nestedUploadDir, "half-promoted.txt"), "new blob");
+
+      await seedOwner(db, "Decoy Parent Owner");
+      const expectedSnapshot = await snapshotTables(db);
+      const snapshotSchema = `${SNAPSHOT_SCHEMA_PREFIX}${randomUUID().replace(/-/g, "")}`;
+      await createSnapshotSchemaFromCurrentState(db, snapshotSchema);
+      await wipeDatabase(db);
+      await seedOwner(db, "Half-Promoted New Owner");
+      await enterMaintenance(db, "force-restore");
+      await recordMaintenanceSnapshotSchema(db, snapshotSchema);
+
+      const stamp = Date.now();
+      const older = `${nestedUploadDir}.pre-restore-${stamp - 60_000}-${randomUUID()}`;
+      await mkdir(older, { recursive: true });
+      await writeFile(join(older, "older.txt"), "older crash");
+
+      const newest = `${nestedUploadDir}.pre-restore-${stamp}-${randomUUID()}`;
+      await mkdir(newest, { recursive: true });
+      await writeFile(join(newest, "newest.txt"), "the real pre-restore blob");
+
+      await recoverInterruptedRestore(db, nestedUploadDir);
+
+      expect(await snapshotTables(db)).toEqual(expectedSnapshot);
+      expect(await readUploadDirKeys(nestedUploadDir)).toEqual(["newest.txt"]);
+
+      await rm(decoyParent, { recursive: true, force: true });
     });
 
     test("sweeps leftover restore_staging_*/restore_snapshot_* schemas and restore-staging-* temp directories regardless of flag state", async () => {

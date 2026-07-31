@@ -24,9 +24,7 @@ describe("dedupeFirearmIds (pure, KTD-8/R34)", () => {
   });
 });
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-live("replaceCompatibility (U6)", () => {
+describe("replaceCompatibility (U6)", () => {
   let userA = "";
 
   beforeAll(async () => {

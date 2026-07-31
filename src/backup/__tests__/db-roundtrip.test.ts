@@ -37,6 +37,7 @@ import {
   user,
   verification,
 } from "../../db/schema";
+import { POSTGRES_IMAGE } from "../../test-support/postgres-image";
 import { type ExportedRow, exportDatabase } from "../db-export";
 import {
   InvalidExportRowError,
@@ -45,18 +46,6 @@ import {
   wipeDatabase,
 } from "../db-import";
 import { EPHEMERAL_TABLE_NAMES, EXPORT_TABLE_ORDER } from "../table-order";
-
-/**
- * Round-trip integration test for the NDJSON export/import pair (U3). Runs
- * against an ephemeral Testcontainers Postgres — NOT the ambient dev
- * database — because these tests wipe every table, which would be
- * destructive against a shared/ambient DB.
- *
- * Same pinned image as `e2e/start-test-server.ts` (AWS ECR Public mirror —
- * avoids Docker Hub's unauthenticated per-IP pull limit on shared runners).
- */
-const POSTGRES_IMAGE =
-  "public.ecr.aws/docker/library/postgres:17@sha256:5c855ad7b85e68e48a62f34662853f38b57c1c1d80f3a927ab58034fd6d31c5e";
 
 type Db = NodePgDatabase<typeof schema>;
 

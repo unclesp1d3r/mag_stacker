@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { PageHeader } from "@/components/ui/surface";
 import { getCurrentUser } from "@/src/auth/session";
 import { db } from "@/src/db/client";
 import { listFirearms } from "@/src/domain/firearms/service";
@@ -9,7 +8,6 @@ import {
   calibersForFilter,
   calibersForInput,
 } from "@/src/domain/reference/reference";
-import { ExportButton } from "./export-button";
 import type { FirearmOption } from "./magazine-form";
 import { type MagazineListItem, MagazinesView } from "./magazines-view";
 
@@ -56,18 +54,8 @@ export default async function MagazinesPage() {
       .filter((n): n is string => n !== undefined),
   }));
 
-  // Export only makes sense once there's inventory. On a truly empty account,
-  // the cold-start guidance carries the screen alone — no controls competing
-  // with the one path forward. Filtering now lives in the view's own toolbar.
-  const showControls = items.length > 0;
-
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Magazines"
-        description="Search, filter, add, and export your magazines."
-        actions={showControls ? <ExportButton /> : undefined}
-      />
       <MagazinesView
         magazines={items}
         currentUserId={user.id}

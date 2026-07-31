@@ -12,8 +12,6 @@ import {
 } from "@/src/test-support/factories";
 import { bulkAddMagazines } from "../service";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
 function template() {
   return {
     brandModel: "PMAG",
@@ -31,7 +29,7 @@ async function ownerMagCount(ownerId: string): Promise<number> {
   return rows.length;
 }
 
-live("bulkAddMagazines (U10)", () => {
+describe("bulkAddMagazines (U10)", () => {
   let userA = "";
   let userB = "";
   beforeAll(async () => {
@@ -129,7 +127,7 @@ live("bulkAddMagazines (U10)", () => {
   });
 });
 
-live("bulkAddMagazines — Magpul mode (owner-governed)", () => {
+describe("bulkAddMagazines — Magpul mode (owner-governed)", () => {
   async function magpulOwner(name: string): Promise<string> {
     const id = await createUser(name);
     await db.update(user).set({ magpulMode: true }).where(eq(user.id, id));
@@ -186,7 +184,7 @@ live("bulkAddMagazines — Magpul mode (owner-governed)", () => {
   });
 });
 
-live("bulkAddMagazines — prefix recording (#22)", () => {
+describe("bulkAddMagazines — prefix recording (#22)", () => {
   test("records the batch prefix once, even for count > 1 (R3)", async () => {
     const owner = await createUser("bulk-rec");
     await bulkAddMagazines(owner, template(), 3, "US");

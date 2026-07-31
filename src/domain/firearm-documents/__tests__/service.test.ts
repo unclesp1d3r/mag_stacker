@@ -38,8 +38,6 @@ import {
   listDocuments,
 } from "../service";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
 const PDF_BYTES = Buffer.from(
   "%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n",
 );
@@ -89,7 +87,7 @@ mock.module("file-type", () => ({
   },
 }));
 
-live("firearm-documents service (U5)", () => {
+describe("firearm-documents service (U5)", () => {
   let owner = "";
   let grantee = "";
 

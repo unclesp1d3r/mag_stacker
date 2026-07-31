@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { ShareControl } from "@/app/(app)/grants/share-control";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DetailRow, orDash } from "@/components/ui/detail-row";
 import { Badge } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/surface";
+import { Data } from "@/components/ui/typography";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import type { Permission } from "@/src/auth/visibility";
 import { isLowStock } from "@/src/domain/ammo/validate";
@@ -23,28 +24,6 @@ interface AmmoDetailViewProps {
   ammo: AmmoDetail;
   permission: Permission;
   caliberSuggestions: string[];
-}
-
-/** One read-only label/value row. */
-function DetailRow({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-0.5 border-b border-border py-2 last:border-b-0 sm:flex-row sm:gap-4">
-      <dt className="w-40 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="min-w-0 wrap-break-word text-sm text-foreground">
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-function orDash(value: string): ReactNode {
-  return value.trim() !== "" ? (
-    value
-  ) : (
-    <span className="text-muted-foreground">—</span>
-  );
 }
 
 export function AmmoDetailView({
@@ -150,17 +129,14 @@ export function AmmoDetailView({
             <DetailRow label="Brand" value={orDash(ammo.brand)} />
             <DetailRow label="Caliber" value={ammo.caliber} />
             <DetailRow label="Load type" value={orDash(ammo.type)} />
-            <DetailRow
-              label="Grain"
-              value={<span className="tabular">{ammo.grain}</span>}
-            />
+            <DetailRow label="Grain" value={<Data>{ammo.grain}</Data>} />
             <DetailRow
               label="Quantity (rounds)"
-              value={<span className="tabular">{ammo.quantityRounds}</span>}
+              value={<Data>{ammo.quantityRounds}</Data>}
             />
             <DetailRow
               label="Low-stock threshold"
-              value={<span className="tabular">{ammo.lowStockThreshold}</span>}
+              value={<Data>{ammo.lowStockThreshold}</Data>}
             />
             <DetailRow
               label="Acquired date"

@@ -36,8 +36,6 @@ import {
   setPrimary,
 } from "../service";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
 /** A small solid-color JPEG upload input, real bytes via `sharp`. */
 async function jpegInput(
   overrides: Partial<CreatePhotoInput> = {},
@@ -69,7 +67,7 @@ function expectOk(result: CreatePhotoResult): FirearmPhoto {
   return result.photo;
 }
 
-live("firearm-photo service (#9, U4)", () => {
+describe("firearm-photo service (#9, U4)", () => {
   let owner = "";
   let editor = "";
   let viewer = "";

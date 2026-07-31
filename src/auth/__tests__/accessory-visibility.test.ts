@@ -15,8 +15,6 @@ import {
 import { NotAuthorizedError } from "../errors";
 import { createGrant } from "../grants";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
 /**
  * Asserts a thenable rejects. Drizzle/pg query builders are thenables, not
  * Promises, so bun's `.rejects` matcher is unreliable on them — use this
@@ -53,7 +51,7 @@ async function makeAccessory(
   return row;
 }
 
-live("accessory visibility & mount authorization (U3)", () => {
+describe("accessory visibility & mount authorization (U3)", () => {
   let owner = "";
   let outsider = "";
 

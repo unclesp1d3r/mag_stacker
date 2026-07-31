@@ -7,9 +7,7 @@ import {
 } from "@/src/test-support/factories";
 import { getPrefixData, listPrefixes, recordPrefix } from "../prefixes";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-live("magazine label prefixes (#22)", () => {
+describe("magazine label prefixes (#22)", () => {
   let userA = "";
   let userB = "";
 

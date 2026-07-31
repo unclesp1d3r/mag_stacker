@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Card } from "@/components/ui/surface";
 import { useToast } from "@/components/ui/toast";
+import { Data } from "@/components/ui/typography";
 import {
   DEFAULT_DOC_TYPE,
   DOC_TYPES,
@@ -361,8 +362,9 @@ export function FirearmDocuments({
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-foreground">Documents</h2>
-          <p className="text-xs text-muted-foreground tabular">
-            {documents.length} document{documents.length === 1 ? "" : "s"}
+          <p className="text-xs text-muted-foreground">
+            <Data>{documents.length}</Data> document
+            {documents.length === 1 ? "" : "s"}
           </p>
         </div>
       </div>

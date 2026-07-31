@@ -8,9 +8,7 @@ import {
 } from "@/src/test-support/factories";
 import { buildAmmoCsv } from "../ammo-build";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-live("buildAmmoCsv (ammo plan U6, viewer-relative)", () => {
+describe("buildAmmoCsv (ammo plan U6, viewer-relative)", () => {
   let userA = "";
   let userB = "";
   beforeAll(async () => {
@@ -22,8 +20,17 @@ live("buildAmmoCsv (ammo plan U6, viewer-relative)", () => {
   });
 
   test("an empty inventory yields header only", async () => {
-    const csv = await buildAmmoCsv(userB);
-    expect(csv.split("\n").filter((l) => l.length > 0)).toHaveLength(1);
+    // Its own viewer, not the shared `userB`: a later test in this block grants
+    // `userB` visibility into another owner's row, which would permanently make
+    // this "empty" assertion depend on test declaration order. Same bug class the
+    // firearms ordering test hit.
+    const emptyViewer = await createUser("ammo-empty");
+    try {
+      const csv = await buildAmmoCsv(emptyViewer);
+      expect(csv.split("\n").filter((l) => l.length > 0)).toHaveLength(1);
+    } finally {
+      await deleteUsers(emptyViewer);
+    }
   });
 
   test("includes the actor's own ammo lots with computed low-stock status", async () => {

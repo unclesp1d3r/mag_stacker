@@ -12,8 +12,6 @@ import {
   user,
 } from "../schema";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
 /**
  * Assert an awaitable (incl. a Drizzle query builder, which is thenable but not
  * a real Promise — bun's `expect().rejects` mishandles it) rejects.
@@ -28,7 +26,7 @@ async function expectRejects(awaitable: PromiseLike<unknown>): Promise<void> {
   expect(threw).toBe(true);
 }
 
-live("core inventory schema (U3)", () => {
+describe("core inventory schema (U3)", () => {
   const ownerId = `test-user-${randomUUID()}`;
 
   beforeAll(async () => {

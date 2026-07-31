@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { ReactNode } from "react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DetailRow, orDash } from "@/components/ui/detail-row";
 import { Badge } from "@/components/ui/feedback";
 import { Select } from "@/components/ui/select";
 import { Card } from "@/components/ui/surface";
@@ -34,28 +34,6 @@ interface AccessoryDetailViewProps {
   /** Display names for every firearm visible to the actor, for the read-only
    * "current firearm" link even when it falls outside `editableFirearms`. */
   firearmNames: Record<string, string>;
-}
-
-/** One read-only label/value row. */
-function DetailRow({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-0.5 border-b border-border py-2 last:border-b-0 sm:flex-row sm:gap-4">
-      <dt className="w-40 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="min-w-0 wrap-break-word text-sm text-foreground">
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-function orDash(value: string): ReactNode {
-  return value.trim() !== "" ? (
-    value
-  ) : (
-    <span className="text-muted-foreground">—</span>
-  );
 }
 
 /**

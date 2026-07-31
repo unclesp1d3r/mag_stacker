@@ -10,9 +10,7 @@ import {
 import { createGrant } from "../grants";
 import { getVisibleIds, isVisible, resolvePermission } from "../visibility";
 
-const live = process.env.DATABASE_URL ? describe : describe.skip;
-
-live("visibility (U4)", () => {
+describe("visibility (U4)", () => {
   let userA = "";
   let userB = "";
 
