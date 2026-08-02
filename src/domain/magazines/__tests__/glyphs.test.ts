@@ -66,6 +66,34 @@ describe("parseGlyphTable", () => {
     expect(() => parseGlyphTable(raw)).toThrow();
   });
 
+  test("throws when the glyph key is a lowercase letter", () => {
+    const raw = "a ### ### ### ### ###";
+    expect(() => parseGlyphTable(raw)).toThrow();
+  });
+
+  test("throws when the glyph key is punctuation outside the font", () => {
+    const raw = ". ### ### ### ### ###";
+    expect(() => parseGlyphTable(raw)).toThrow();
+  });
+
+  test("parses a digit glyph key", () => {
+    const raw = "7 ### #.# #.# #.# ###";
+    const table = parseGlyphTable(raw);
+    expect(table.has("7")).toBe(true);
+  });
+
+  test("parses an uppercase letter glyph key", () => {
+    const raw = "Z ### #.# #.# #.# ###";
+    const table = parseGlyphTable(raw);
+    expect(table.has("Z")).toBe(true);
+  });
+
+  test("parses the hyphen glyph key", () => {
+    const raw = "- ### #.# #.# #.# ###";
+    const table = parseGlyphTable(raw);
+    expect(table.has("-")).toBe(true);
+  });
+
   test("parses correctly when fields are separated by multiple spaces", () => {
     const raw = "0  ###  #.#  #.#  #.#  ###";
     const table = parseGlyphTable(raw);

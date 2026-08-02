@@ -18,6 +18,10 @@
  */
 
 import { MAGPUL_GLYPHS_RAW } from "@/src/data/raw";
+import {
+  MAGPUL_LABEL_ALLOWED_DESCRIPTION,
+  MAGPUL_LABEL_ALLOWED_RE,
+} from "@/src/domain/magazines/constants";
 
 /** One row of a glyph cell: `true` = painted dot, `false` = unpainted (R11). */
 export type GlyphRow = readonly boolean[];
@@ -68,9 +72,14 @@ function parseGlyphRow(character: string, rowField: string): GlyphRow {
  * single character followed by a space, and `#` itself is outside R1's font.
  *
  * Throws on any malformed row: wrong row count, wrong row width, a mark
- * outside `#.`, or a duplicate glyph character declared twice. Empty input
- * (or input that is entirely comments/blank lines) yields an empty table —
- * a valid state, not an error (KTD3).
+ * outside `#.`, a glyph key outside the Magpul label character set (R1:
+ * `A-Z`, `0-9`, hyphen — shared with `MAGPUL_LABEL_ALLOWED_RE`), or a
+ * duplicate glyph character declared twice. Rejecting an out-of-set key here
+ * matters beyond transcription hygiene: R9 treats a label containing a
+ * character absent from the font as unrepresentable, and a stray accepted
+ * glyph (e.g. `.` or a lowercase letter) would let a nonconforming label
+ * render instead. Empty input (or input that is entirely comments/blank
+ * lines) yields an empty table — a valid state, not an error (KTD3).
  */
 export function parseGlyphTable(raw: string): GlyphTable {
   const table = new Map<string, GlyphCell>();
@@ -82,6 +91,11 @@ export function parseGlyphTable(raw: string): GlyphTable {
 
     if (character?.length !== 1) {
       throw new Error(`Malformed glyph line (missing character): "${line}"`);
+    }
+    if (!MAGPUL_LABEL_ALLOWED_RE.test(character)) {
+      throw new Error(
+        `Glyph key "${character}" is outside the supported character set (${MAGPUL_LABEL_ALLOWED_DESCRIPTION}).`,
+      );
     }
     if (table.has(character)) {
       throw new Error(`Duplicate glyph declaration for "${character}".`);
