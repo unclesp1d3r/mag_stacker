@@ -86,6 +86,11 @@ magpulTest(
     const brandModel = "Dot Matrix Coverage PMAG";
     const label = "US04";
 
+    // Attached before the magazine is created and before the first
+    // navigation, so it captures console errors from the whole add-magazine
+    // flow and the initial detail render, not just the reload below.
+    const consoleErrors = trackConsoleErrors(page);
+
     try {
       await addMagazineAndOpenDetail(page, brandModel, label);
 
@@ -96,7 +101,6 @@ magpulTest(
         page.getByRole("img", { name: /Dot pattern to paint/ }),
       ).toHaveCount(0);
 
-      const consoleErrors = trackConsoleErrors(page);
       await page.setViewportSize({ width: 320, height: 844 });
       await page.reload();
       await expect(

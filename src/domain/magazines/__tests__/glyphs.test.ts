@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { MAGPUL_GLYPHS_RAW } from "@/src/data/raw";
 import { type GlyphTable, MAGPUL_GLYPHS, parseGlyphTable } from "../glyphs";
+
+const GLYPHS_TXT_PATH = path.join(process.cwd(), "src/data/magpul-glyphs.txt");
 
 // U1 — glyph table fixture and loader (R1, R2). Pure, no DB, no React.
 describe("parseGlyphTable", () => {
@@ -102,8 +106,20 @@ describe("parseGlyphTable", () => {
     expect(table.size).toBe(0);
   });
 
-  test("the shipped src/data/magpul-glyphs.txt parses without throwing", () => {
-    expect(() => parseGlyphTable(MAGPUL_GLYPHS_RAW)).not.toThrow();
+  test("the shipped src/data/magpul-glyphs.txt matches the embedded MAGPUL_GLYPHS_RAW and parses without throwing", () => {
+    // `MAGPUL_GLYPHS_RAW` in src/data/raw.ts is a hand-maintained copy of
+    // src/data/magpul-glyphs.txt (raw.ts exists so the fixture loads without
+    // filesystem access in the Next bundle, standalone output, and Docker —
+    // see its header comment). Nothing regenerates raw.ts from the .txt file,
+    // so editing one and forgetting the other would silently ship the old
+    // embedded string while the .txt file on disk (and in review) shows the
+    // edit. Reading the .txt file directly is what catches that drift; parsing
+    // only `MAGPUL_GLYPHS_RAW` (as the previous version of this test did)
+    // would pass even when the two have diverged.
+    const onDisk = readFileSync(GLYPHS_TXT_PATH, "utf8");
+
+    expect(onDisk).toBe(MAGPUL_GLYPHS_RAW);
+    expect(() => parseGlyphTable(onDisk)).not.toThrow();
   });
 });
 

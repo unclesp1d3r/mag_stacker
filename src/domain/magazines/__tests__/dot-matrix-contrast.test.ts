@@ -64,13 +64,22 @@ function extractThemeBlock(css: string, selectorFragment: string): string {
   );
 }
 
-/** Reads a token declared as a literal hex color, e.g. `--card: #1a1e24;`. */
+/**
+ * Reads a token declared as a literal 6-digit hex color, e.g.
+ * `--card: #1a1e24;`. Matches exactly 6 hex digits — not 3 or 8 — because
+ * `hexToRgb` below only supports the 6-digit form; every token this file
+ * currently reads (`--foreground`, `--muted-foreground`, `--card`) is written
+ * that way in `app/globals.css`, and this is the intended contract, not an
+ * oversight to be worked around by extending `hexToRgb`. A 3- or 8-digit
+ * value fails here with a clear message naming the token, instead of an
+ * opaque throw from `hexToRgb`.
+ */
 function extractHexToken(block: string, tokenName: string): string {
-  const match = block.match(
-    new RegExp(`--${tokenName}:\\s*(#[0-9a-fA-F]{3,8})`),
-  );
+  const match = block.match(new RegExp(`--${tokenName}:\\s*(#[0-9a-fA-F]{6})`));
   if (!match?.[1]) {
-    throw new Error(`Token "--${tokenName}" not found as a hex color.`);
+    throw new Error(
+      `Token "--${tokenName}" not found as a 6-digit hex color (3- and 8-digit hex are unsupported).`,
+    );
   }
   return match[1];
 }
