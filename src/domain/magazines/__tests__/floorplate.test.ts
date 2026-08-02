@@ -36,10 +36,24 @@ describe("resolveCellCount", () => {
     });
   });
 
-  test('"Magpul PMAG 25 7.62x51" resolves to 4 cells, matched via the caliber entry', () => {
+  test('"Magpul PMAG 25 7.62x51" has no LR/SR marker in its model string, so it falls through to the 4-cell unmatched fallback rather than a caliber-only match', () => {
     expect(resolveCellCount("Magpul PMAG 25 7.62x51")).toEqual({
-      cells: 4,
-      matched: true,
+      cells: FALLBACK_CELL_COUNT,
+      matched: false,
+    });
+  });
+
+  test('"PTR-91 7.62X51" (a non-Magpul magazine whose model string happens to contain a caliber) resolves to the 4-cell unmatched fallback, never a confirmed match', () => {
+    expect(resolveCellCount("PTR-91 7.62X51")).toEqual({
+      cells: FALLBACK_CELL_COUNT,
+      matched: false,
+    });
+  });
+
+  test('"DPMS SR-25 7.62x51" likewise does not match — a caliber token must never cause a cross-brand false match', () => {
+    expect(resolveCellCount("DPMS SR-25 7.62x51")).toEqual({
+      cells: FALLBACK_CELL_COUNT,
+      matched: false,
     });
   });
 

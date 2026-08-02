@@ -105,7 +105,13 @@ export function DotMatrixLabel({
   }
 
   const { characters, cells, cellCount, cellCountVerified } = result;
-  const width = cellCount * CELL_WIDTH_PX + (cellCount - 1) * CELL_GAP_PX;
+  // Sized from `cells.length` (how many cell groups are actually drawn by the
+  // .map below), NOT `cellCount` (the floorplate's total capacity, used only
+  // for `buildAriaLabel`). A label shorter than the floorplate's cell count
+  // — the ordinary case — draws fewer groups than the floorplate holds, and
+  // sizing the canvas off the untouched `cellCount` would leave blank,
+  // unexplained space to the right of the drawn dots.
+  const width = cells.length * CELL_WIDTH_PX + (cells.length - 1) * CELL_GAP_PX;
 
   return (
     <div className="space-y-2">

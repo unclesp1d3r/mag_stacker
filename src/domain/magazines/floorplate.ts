@@ -48,11 +48,14 @@ export const MODEL_CELL_COUNTS: readonly ModelCellCountEntry[] = [
     tokens: ["LRSR"],
     cells: 4,
   },
-  {
-    name: "7.62x51 PMAG (caliber spelled into the model string)",
-    tokens: ["762X51"],
-    cells: 4,
-  },
+  // Deliberately no caliber-only entry (e.g. a bare "762X51" token). Matching
+  // is substring containment over the whole free-text `brandModel`, so a
+  // caliber token collides across brands: a non-Magpul magazine like
+  // "PTR-91 7.62X51" or "DPMS SR-25 7.62x51" would satisfy it and resolve a
+  // *confirmed* PMAG cell count for a magazine with no PMAG dot-matrix
+  // floorplate at all. Tokens here must be distinctive Magpul model
+  // designations (like `GL9`, `LRSR`) that do not appear in other brands'
+  // model strings — never a caliber, which is brand-agnostic by definition.
 ];
 
 /** Uppercases and strips every character outside `A-Z0-9` into one dense token. */

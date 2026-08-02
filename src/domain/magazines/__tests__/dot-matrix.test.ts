@@ -20,7 +20,7 @@ const EMPTY_GLYPHS: GlyphTable = parseGlyphTable("");
 // Real brandModel strings resolved through U2's actual MODEL_CELL_COUNTS —
 // dot-matrix.ts calls resolveCellCount internally rather than taking a
 // pre-resolved count (only the glyph table is injected, per KTD2).
-const FOUR_CELL_MODEL = "Magpul PMAG 25 7.62x51";
+const FOUR_CELL_MODEL = "Magpul PMAG 20 LR/SR GEN M3";
 const TWO_CELL_MODEL = "Magpul PMAG 17 GL9";
 const UNMATCHED_MODEL = "Some Unknown Brand 30rd";
 

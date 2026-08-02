@@ -1,5 +1,7 @@
 import type { Page } from "@playwright/test";
 import { authTest, expect } from "./fixtures/auth";
+import { trackConsoleErrors } from "./fixtures/console-errors";
+import { expectNoHorizontalOverflow } from "./fixtures/overflow";
 
 /**
  * Ships-dark coverage for the Magpul dot-matrix label (issue #20, U7; R6,
@@ -34,26 +36,6 @@ magpulTest.describe.configure({ retries: 0 });
 
 const plainTest = authTest("theme");
 plainTest.describe.configure({ retries: 0 });
-
-/** Ignore only the favicon 404 some production builds emit, same allowlist as theme.spec.ts. */
-const BENIGN_CONSOLE_PATTERNS = [/favicon\.ico/i];
-function isBenignConsoleText(text: string): boolean {
-  return BENIGN_CONSOLE_PATTERNS.some((pattern) => pattern.test(text));
-}
-
-/** Attach console/page-error listeners before any navigation the caller wants covered. */
-function trackConsoleErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on("console", (message) => {
-    if (message.type() === "error" && !isBenignConsoleText(message.text())) {
-      errors.push(message.text());
-    }
-  });
-  page.on("pageerror", (error) => {
-    if (!isBenignConsoleText(error.message)) errors.push(error.message);
-  });
-  return errors;
-}
 
 /**
  * Creates one magazine via the real add-magazine form and opens its detail
@@ -104,33 +86,31 @@ magpulTest(
     const brandModel = "Dot Matrix Coverage PMAG";
     const label = "US04";
 
-    await addMagazineAndOpenDetail(page, brandModel, label);
+    try {
+      await addMagazineAndOpenDetail(page, brandModel, label);
 
-    await expect(page.getByText(label, { exact: true })).toBeVisible();
-    // KTD3: an empty glyph table suppresses the matrix entirely — no
-    // img-role graphic is drawn at all, painted or not.
-    await expect(
-      page.getByRole("img", { name: /Dot pattern to paint/ }),
-    ).toHaveCount(0);
+      await expect(page.getByText(label, { exact: true })).toBeVisible();
+      // KTD3: an empty glyph table suppresses the matrix entirely — no
+      // img-role graphic is drawn at all, painted or not.
+      await expect(
+        page.getByRole("img", { name: /Dot pattern to paint/ }),
+      ).toHaveCount(0);
 
-    const consoleErrors = trackConsoleErrors(page);
-    await page.setViewportSize({ width: 320, height: 844 });
-    await page.reload();
-    await expect(
-      page.getByRole("heading", { level: 1, name: brandModel }),
-    ).toBeVisible();
+      const consoleErrors = trackConsoleErrors(page);
+      await page.setViewportSize({ width: 320, height: 844 });
+      await page.reload();
+      await expect(
+        page.getByRole("heading", { level: 1, name: brandModel }),
+      ).toBeVisible();
 
-    const overflow = await page.evaluate(() => ({
-      documentWidth: document.documentElement.scrollWidth,
-      viewportWidth: document.documentElement.clientWidth,
-    }));
-    expect(
-      overflow.documentWidth,
-      `magazine detail page at 320px has a ${overflow.documentWidth}px document in a ${overflow.viewportWidth}px viewport`,
-    ).toBeLessThanOrEqual(overflow.viewportWidth + 1);
-    expect(consoleErrors).toEqual([]);
-
-    await deleteFromDetailPage(page);
+      await expectNoHorizontalOverflow(page, "magazine detail page at 320px");
+      expect(consoleErrors).toEqual([]);
+    } finally {
+      // This persona is shared with magpul-mode.spec.ts, whose first step
+      // requires a zero-magazine cold start; an assertion failure above must
+      // not leak this magazine and cause a confusing failure over there.
+      await deleteFromDetailPage(page);
+    }
   },
 );
 
@@ -140,15 +120,17 @@ plainTest(
     const brandModel = "Non-Magpul Coverage Mag";
     const label = "raw-label";
 
-    await addMagazineAndOpenDetail(page, brandModel, label);
+    try {
+      await addMagazineAndOpenDetail(page, brandModel, label);
 
-    // Off mode never applies the Magpul input mask (magazine-form.tsx
-    // handleLabelChange), so the label round-trips exactly as typed.
-    await expect(page.getByText(label, { exact: true })).toBeVisible();
-    await expect(
-      page.getByRole("img", { name: /Dot pattern to paint/ }),
-    ).toHaveCount(0);
-
-    await deleteFromDetailPage(page);
+      // Off mode never applies the Magpul input mask (magazine-form.tsx
+      // handleLabelChange), so the label round-trips exactly as typed.
+      await expect(page.getByText(label, { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("img", { name: /Dot pattern to paint/ }),
+      ).toHaveCount(0);
+    } finally {
+      await deleteFromDetailPage(page);
+    }
   },
 );

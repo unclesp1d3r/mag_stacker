@@ -57,6 +57,45 @@ describe("parseGlyphTable", () => {
     expect(() => parseGlyphTable(raw)).toThrow();
   });
 
+  test("throws when the leading field is not a single character", () => {
+    const raw = "AB ### ### ### ### ###";
+    expect(() => parseGlyphTable(raw)).toThrow();
+  });
+
+  test("parses correctly when fields are separated by multiple spaces", () => {
+    const raw = "0  ###  #.#  #.#  #.#  ###";
+    const table = parseGlyphTable(raw);
+    expect(table.get("0")).toEqual([
+      [true, true, true],
+      [true, false, true],
+      [true, false, true],
+      [true, false, true],
+      [true, true, true],
+    ]);
+  });
+
+  test("parses correctly with CRLF line endings", () => {
+    const raw = ["0 ### #.# #.# #.# ###", "1 .#. .#. .#. .#. .#."].join("\r\n");
+
+    const table = parseGlyphTable(raw);
+
+    expect(table.size).toBe(2);
+    expect(table.get("0")).toEqual([
+      [true, true, true],
+      [true, false, true],
+      [true, false, true],
+      [true, false, true],
+      [true, true, true],
+    ]);
+    expect(table.get("1")).toEqual([
+      [false, true, false],
+      [false, true, false],
+      [false, true, false],
+      [false, true, false],
+      [false, true, false],
+    ]);
+  });
+
   test("returns an empty table for input that is entirely comments and blank lines", () => {
     const raw = ["# a comment", "", "   ", "# another comment"].join("\n");
     const table = parseGlyphTable(raw);
