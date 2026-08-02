@@ -263,7 +263,13 @@ export async function deleteMagazine(
 export async function getMagazine(
   actorId: string,
   id: string,
-): Promise<{ magazine: MagazineWithCompatibility; permission: Permission }> {
+): Promise<{
+  magazine: MagazineWithCompatibility;
+  permission: Permission;
+  ownerMagpulMode: boolean;
+}> {
+  // Authorization gate stays first: the owner-mode lookup below must never run
+  // for a magazine the actor can't see, or it becomes an oracle for existence.
   const permission = await resolvePermission(db, actorId, "magazine", id);
   if (permission === null) throw new NotFoundError();
   const [row] = await db
@@ -272,10 +278,19 @@ export async function getMagazine(
     .where(eq(magazine.id, id))
     .limit(1);
   if (!row) throw new NotFoundError();
+  const [ownerRow] = await db
+    .select({ magpulMode: user.magpulMode })
+    .from(user)
+    .where(eq(user.id, row.ownerId))
+    .limit(1);
+  // The magazine's FK guarantees a valid owner; a missing row is corrupt
+  // state, not "mode off" — fail loudly rather than silently skipping it.
+  if (!ownerRow) throw new NotFoundError();
+  const ownerMagpulMode = ownerRow.magpulMode ?? false;
   const [withCompat] = await attachCompatibility(db, actorId, [row]);
   // Return the viewer's permission alongside the record so the caller doesn't
   // re-resolve it (one query, no read-vs-permission race between two calls).
-  return { magazine: withCompat, permission };
+  return { magazine: withCompat, permission, ownerMagpulMode };
 }
 
 /**

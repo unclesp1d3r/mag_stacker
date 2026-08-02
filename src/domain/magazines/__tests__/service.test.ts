@@ -346,6 +346,71 @@ describe("createMagazine — prefix recording (#22)", () => {
   });
 });
 
+// U4: getMagazine resolves the magazine OWNER's magpulMode, not the viewer's.
+describe("getMagazine — owner-scoped magpulMode (U4/R6/KTD7)", () => {
+  test("owner reading their own magazine with mode on gets ownerMagpulMode: true", async () => {
+    const owner = await createUser("u4-owner-on");
+    await db.update(user).set({ magpulMode: true }).where(eq(user.id, owner));
+    const mag = await makeMagazine(owner);
+
+    const result = await getMagazine(owner, mag.id);
+
+    expect(result.ownerMagpulMode).toBe(true);
+    await deleteUsers(owner);
+  });
+
+  test("a view-grantee with mode OFF reading an owner's magazine with mode ON gets ownerMagpulMode: true (R6)", async () => {
+    const owner = await createUser("u4-owner-on2");
+    const grantee = await createUser("u4-grantee-off");
+    await db.update(user).set({ magpulMode: true }).where(eq(user.id, owner));
+    // grantee's own magpulMode defaults to off — never set.
+    const mag = await makeMagazine(owner);
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: grantee,
+      parentType: "magazine",
+      parentId: mag.id,
+      permission: "view",
+    });
+
+    const result = await getMagazine(grantee, mag.id);
+
+    expect(result.ownerMagpulMode).toBe(true);
+    await deleteUsers(owner, grantee);
+  });
+
+  test("inverse: owner's flag off, grantee's flag on → ownerMagpulMode: false", async () => {
+    const owner = await createUser("u4-owner-off");
+    const grantee = await createUser("u4-grantee-on");
+    // owner's magpulMode defaults to off — never set.
+    await db.update(user).set({ magpulMode: true }).where(eq(user.id, grantee));
+    const mag = await makeMagazine(owner);
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: grantee,
+      parentType: "magazine",
+      parentId: mag.id,
+      permission: "view",
+    });
+
+    const result = await getMagazine(grantee, mag.id);
+
+    expect(result.ownerMagpulMode).toBe(false);
+    await deleteUsers(owner, grantee);
+  });
+
+  test("still throws NotFoundError for a magazine the actor cannot see — no visibility hole", async () => {
+    const owner = await createUser("u4-owner-hidden");
+    const stranger = await createUser("u4-stranger");
+    const mag = await makeMagazine(owner);
+
+    await expect(getMagazine(stranger, mag.id)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    await deleteUsers(owner, stranger);
+  });
+});
+
 // Action-log wiring at the create/delete seams (U6, R17, R18, KTD-5).
 describe("magazines service — action-log wiring (U6)", () => {
   test("creating a magazine inside runWithContext emits exactly one action line", async () => {

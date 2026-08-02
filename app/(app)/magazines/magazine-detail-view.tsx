@@ -14,6 +14,7 @@ import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import type { Permission } from "@/src/auth/visibility";
 import { InventoryLogHistory } from "../inventory-log/inventory-log-history";
 import { deleteMagazineAction } from "./actions";
+import { DotMatrixLabel } from "./dot-matrix-label";
 import {
   type FirearmOption,
   MagazineForm,
@@ -34,7 +35,7 @@ interface MagazineDetailViewProps {
   caliberSuggestions: string[];
   prefixOptions: string[];
   prefixNextStart: Record<string, number>;
-  magpulMode: boolean;
+  ownerMagpulMode: boolean;
 }
 
 export function MagazineDetailView({
@@ -44,7 +45,7 @@ export function MagazineDetailView({
   caliberSuggestions,
   prefixOptions,
   prefixNextStart,
-  magpulMode,
+  ownerMagpulMode,
 }: MagazineDetailViewProps) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -131,7 +132,7 @@ export function MagazineDetailView({
             caliberSuggestions={caliberSuggestions}
             prefixOptions={prefixOptions}
             prefixNextStart={prefixNextStart}
-            magpulMode={magpulMode}
+            magpulMode={ownerMagpulMode}
             onDone={() => {
               setEditing(false);
               router.refresh();
@@ -194,6 +195,20 @@ export function MagazineDetailView({
               }
             />
           </dl>
+          {/* Below the field list, closest to the Label row it paints
+              (R13/R14). Not spliced mid-<dl>: that would require breaking
+              the list into two <dl>s, which shifts the `last:border-b-0`
+              boundary onto the Label row's own DetailRow and changes its
+              rendered border even when Magpul mode is off — the DetailRow
+              itself must stay exactly as it is (U6 verification: unchanged
+              render when mode is off). Renders neither a caption nor a
+              placeholder when hidden (R10/KTD3), so nothing appears here in
+              the shipped-dark state. */}
+          <DotMatrixLabel
+            label={magazine.label}
+            brandModel={magazine.brandModel}
+            ownerMagpulMode={ownerMagpulMode}
+          />
         </Card>
       )}
 
