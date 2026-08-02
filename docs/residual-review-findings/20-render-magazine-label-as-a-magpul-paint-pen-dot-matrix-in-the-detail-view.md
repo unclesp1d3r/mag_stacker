@@ -58,6 +58,31 @@ same follow-up that transcribes Magpul's diagram.
   swapping in the shared helper would have split one `page.evaluate` into two. A future spec adopting
   the shared helper on the assumption of parity would get the weaker guarantee.
 
+## Deferred to the repo owner (from PR #90 review)
+
+- **`unrepresentable` conflates "unsupported character" with "too long".** `src/domain/magazines/dot-matrix.ts`
+  (CodeRabbit, PR #90, owner: human)
+
+  The `unrepresentable` variant carries only `cellCount` and `cellCountVerified`, so the resolver returns the
+  same shape whether the label overflows the floorplate or merely contains a character outside the glyph
+  table. The view then always renders "This label does not fit this magazine's floorplate" — factually wrong
+  for a short label that fails only on font coverage, which is exactly AE5 (`A.1` on a 4-cell PMAG).
+
+  **Not fixed autonomously**, because the message is specified product behavior: R9 and AE5 both define a
+  single message for both causes. Changing it is a product-copy decision.
+
+  Recommendation: add `reason: "unsupportedCharacter" | "doesNotFit"` to the `unrepresentable` variant, give
+  the unsupported-character case its own message, and amend R9/AE5 to match. The discriminant was **not**
+  added preemptively — with the message unchanged it would have no consumer.
+
+  Nothing is user-visible yet: the empty glyph table short-circuits to `hidden` first, so this surfaces only
+  once the font is transcribed.
+
+- **`src/data/calibers.txt` and `manufacturers.txt` have the same untested drift** that PR #90 fixed for the
+  glyph fixture. `reference.test.ts` asserts against the caches parsed from `raw.ts` and never reads the
+  `.txt` files, so editing one and forgetting to regenerate would pass CI while production used the stale
+  embedded string. Left alone as out of scope; the glyph fixture now has the pattern to copy.
+
 ## Checked and cleared
 
 Recorded so a later reader does not re-derive them:
