@@ -75,7 +75,12 @@ function extractThemeBlock(css: string, selectorFragment: string): string {
  * opaque throw from `hexToRgb`.
  */
 function extractHexToken(block: string, tokenName: string): string {
-  const match = block.match(new RegExp(`--${tokenName}:\\s*(#[0-9a-fA-F]{6})`));
+  // The trailing boundary matters: without it, `{6}` matches the first six
+  // digits of an 8-digit `#RRGGBBAA` value and the helper would then check
+  // contrast for a colour the stylesheet never declares.
+  const match = block.match(
+    new RegExp(`--${tokenName}:\\s*(#[0-9a-fA-F]{6})(?![0-9a-fA-F])`),
+  );
   if (!match?.[1]) {
     throw new Error(
       `Token "--${tokenName}" not found as a 6-digit hex color (3- and 8-digit hex are unsupported).`,
@@ -162,6 +167,22 @@ describe("dot-matrix tokens clear WCAG 1.4.11 (R15, KTD5)", () => {
       });
     });
   }
+});
+
+describe("extractHexToken only accepts a whole 6-digit hex value", () => {
+  test("reads a 6-digit token", () => {
+    expect(extractHexToken("--card: #1a1e24;", "card")).toBe("#1a1e24");
+  });
+
+  test("rejects an 8-digit token instead of matching its first six digits", () => {
+    // Silently returning "#112233" here would check contrast for a colour the
+    // stylesheet never declares, and the assertion would still pass.
+    expect(() => extractHexToken("--card: #11223344;", "card")).toThrow();
+  });
+
+  test("rejects a 3-digit token", () => {
+    expect(() => extractHexToken("--card: #abc;", "card")).toThrow();
+  });
 });
 
 describe("dot-matrix geometry carries R15's visual-distinctness clause (KTD6)", () => {
