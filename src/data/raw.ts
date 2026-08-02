@@ -116,6 +116,32 @@ Handgun Cartridge
 9mm Makarov
 `;
 
+export const MAGPUL_GLYPHS_RAW = `# Magpul PMAG Gen M3 dot-matrix glyph font (#20).
+#
+# Format: one glyph per line —
+#   <character> <row1> <row2> <row3> <row4> <row5>
+# where each row is exactly 3 characters wide: \`#\` marks a painted dot, \`.\`
+# marks an unpainted position. Example shape (illustrative only, not an
+# authoritative transcription):
+#   4 #.# #.# ### ..# ..#
+#
+# Source of truth: Magpul's published PMAG Gen M3 dot-matrix diagram —
+# https://magpul.com/media/wysiwyg/Instructions/Magpul_Dot_Matrix.pdf
+# Cross-check every transcribed row against the community reference below
+# before treating it as authoritative; resolve any discrepancy against the
+# Magpul PDF, which wins ties —
+# https://www.ar15.com/media/viewFile.html?i=36785
+#
+# This file ships with zero glyph rows until the diagram is transcribed
+# (KTD3 of docs/plans/2026-08-02-001-feat-magazine-dot-matrix-label-plan.md).
+# An empty table is what makes the feature ship dark: the dot-matrix label
+# renders nothing rather than a guessed or wrong pattern. Blank lines and
+# lines beginning with \`#\` in column zero are comments and are skipped by
+# the parser (src/domain/magazines/glyphs.ts).
+#
+# Covers R1 (glyph coverage: 0-9, A-Z, hyphen) and R2 (fixed 3x5 dot cell).
+`;
+
 export const MANUFACTURERS_RAW = `2A Armament
 Accuracy International
 Adams Arms
