@@ -53,6 +53,15 @@
   --danger-soft: #2c1816;
   --ok: #57d98a;
 
+  /* Dot-matrix paint-pen glyph tokens (KTD5) — aliases, not new colors, so a
+     future retune of --foreground/--muted-foreground tracks automatically
+     and the R15 contrast guard has a stable name to assert against.
+     --border reads as this theme's "faint but present" token but fails
+     WCAG 1.4.11's 3:1 floor against --card (1.26:1); --muted-foreground
+     clears it (5.32:1). */
+  --dot-painted: var(--foreground);
+  --dot-unpainted: var(--muted-foreground);
+
   --radius: 0.375rem;
   --radius-lg: 0.625rem;
   --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.35), 0 2px 10px rgb(0 0 0 / 0.3);
@@ -83,6 +92,12 @@
   --muted-foreground: #716d66;
   --border: #dcdad3;
   --input: #cbc8bf;
+
+  /* Dot-matrix paint-pen glyph tokens (KTD5) — aliases, see the dark theme
+     block above. --border fails WCAG 1.4.11's 3:1 floor against --card
+     (1.40:1); --muted-foreground clears it (5.15:1). */
+  --dot-painted: var(--foreground);
+  --dot-unpainted: var(--muted-foreground);
 
   /* Deepened a touch from #bd4620 so accent text on --accent (active nav,
      badges) clears AA 4.5:1; still the anodized burnt-orange. */
@@ -132,6 +147,8 @@
   --color-steel: var(--steel);
   --color-danger-soft: var(--danger-soft);
   --color-ok: var(--ok);
+  --color-dot-painted: var(--dot-painted);
+  --color-dot-unpainted: var(--dot-unpainted);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --radius: var(--radius);
