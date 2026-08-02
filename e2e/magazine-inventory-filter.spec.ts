@@ -59,7 +59,13 @@ async function navigateCalendarMonths(page: Page, delta: number) {
  * responsible for the month already being in view (`navigateCalendarMonths`).
  */
 async function selectCalendarDay(page: Page, date: Date) {
+  // Scope to the grid for `date`'s own month. The range picker shows two
+  // months at once and react-day-picker renders outside-days, so a day near a
+  // month boundary carries the same accessible name in both grids — a
+  // page-wide lookup is a strict-mode violation on those dates, and which
+  // dates those are depends on when the suite runs.
   await page
+    .getByRole("grid", { name: format(date, "MMMM") })
     .getByRole("button", { name: format(date, "PPPP"), exact: true })
     .click();
 }
