@@ -25,22 +25,43 @@ import {
 
 const CSS_PATH = path.join(process.cwd(), "app/globals.css");
 
-/** Finds the `{ ... }` block whose selector list contains `selectorFragment`. */
+/** Strips `/* ... *\/` comments so they can't be mistaken for selector text or braces. */
+function stripCssComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+/**
+ * Finds the `{ ... }` block whose selector list contains `selectorFragment`.
+ *
+ * Locates the closing brace by tracking nesting depth rather than grabbing
+ * the first `}`, so a nested at-rule (`@media`, `@supports`) inside the theme
+ * block doesn't truncate the match early.
+ */
 function extractThemeBlock(css: string, selectorFragment: string): string {
-  const selectorIndex = css.indexOf(selectorFragment);
+  const uncommented = stripCssComments(css);
+  const selectorIndex = uncommented.indexOf(selectorFragment);
   if (selectorIndex === -1) {
     throw new Error(
       `Selector fragment "${selectorFragment}" not found in ${CSS_PATH}.`,
     );
   }
-  const braceStart = css.indexOf("{", selectorIndex);
-  const braceEnd = css.indexOf("}", braceStart);
-  if (braceStart === -1 || braceEnd === -1) {
+  const braceStart = uncommented.indexOf("{", selectorIndex);
+  if (braceStart === -1) {
     throw new Error(
       `Could not find a { ... } block following "${selectorFragment}".`,
     );
   }
-  return css.slice(braceStart + 1, braceEnd);
+  let depth = 0;
+  for (let i = braceStart; i < uncommented.length; i++) {
+    if (uncommented[i] === "{") depth++;
+    else if (uncommented[i] === "}") {
+      depth--;
+      if (depth === 0) return uncommented.slice(braceStart + 1, i);
+    }
+  }
+  throw new Error(
+    `No matching closing brace found for "${selectorFragment}" block.`,
+  );
 }
 
 /** Reads a token declared as a literal hex color, e.g. `--card: #1a1e24;`. */
