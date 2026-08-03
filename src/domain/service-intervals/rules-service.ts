@@ -80,8 +80,10 @@ export interface ItemRuleInput {
 }
 
 // ---- row <-> pure-domain-shape mapping (U2's `derive.ts` types) ----
+// Exported so U4's `due-service.ts` maps rows the same way rather than
+// re-deriving this shape a second time (DRY).
 
-function toDefaultRule(row: ServiceRuleDefaultRow): DefaultRule {
+export function toDefaultRule(row: ServiceRuleDefaultRow): DefaultRule {
   return {
     name: row.name,
     intervalDays: row.intervalDays,
@@ -90,7 +92,7 @@ function toDefaultRule(row: ServiceRuleDefaultRow): DefaultRule {
   };
 }
 
-function toItemRule(row: ServiceRuleRow): ItemRule {
+export function toItemRule(row: ServiceRuleRow): ItemRule {
   return {
     name: row.name,
     suppressed: row.suppressed,
@@ -101,8 +103,14 @@ function toItemRule(row: ServiceRuleRow): ItemRule {
 }
 
 // ---- shared loaders ----
+// `loadDefaults` and `loadItemRules` are exported for reuse by U4's
+// `due-service.ts`, whose per-item due lookup needs exactly the same
+// owner+scope+category / parent-scoped queries this file already defines
+// (DRY) — the batched, collection-wide loaders due-service also needs are
+// new (KTD4: bounded query count over the whole visible set), so only the
+// single-item shape is shared here.
 
-async function loadDefaults(
+export async function loadDefaults(
   tx: DbOrTx,
   ownerId: string,
   scope: ServiceScope,
@@ -127,7 +135,7 @@ function itemRuleParentWhere(parentType: ServiceParentType, parentId: string) {
     : eq(serviceRule.accessoryId, parentId);
 }
 
-async function loadItemRules(
+export async function loadItemRules(
   tx: DbOrTx,
   parentType: ServiceParentType,
   parentId: string,
@@ -169,8 +177,10 @@ function assertNameAvailable(
  * Resolve a firearm's owner and category (its `type`) for defaults lookup,
  * authorized through the firearm's own visibility (R6) so a view-grantee can
  * READ a shared firearm's rules. `NotFoundError` for an unseen firearm.
+ * Exported for reuse by U4's `due-service.ts` (per-item due lookup needs the
+ * exact same owner+category resolution, gated the same way).
  */
-async function requireFirearmVisible(
+export async function requireFirearmVisible(
   tx: DbOrTx,
   actorId: string,
   firearmId: string,
@@ -193,9 +203,10 @@ async function requireFirearmVisible(
  * never see or touch configuration reserved to the accessory's own owner.
  * Not-owner and not-found are deliberately indistinguishable — this path
  * intentionally never consults the visibility layer that would tell them
- * apart.
+ * apart. Exported for reuse by U4's `due-service.ts` (same accessory
+ * owner-only resolution, KTD3).
  */
-async function requireAccessoryOwner(
+export async function requireAccessoryOwner(
   tx: DbOrTx,
   actorId: string,
   accessoryId: string,
