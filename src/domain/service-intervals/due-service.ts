@@ -591,3 +591,26 @@ export async function listDueForVisibleCollection(
 
   return [...firearmEntries, ...accessoryEntries];
 }
+
+/**
+ * Parent ids (of one family) with at least one due rule, from
+ * `listDueForVisibleCollection`'s output — the shared filter behind the
+ * firearm and accessory list markers (R20). Firearm and accessory entries
+ * are independent in `entries` (never merged), so an item due only because
+ * of an accessory mounted to it never appears here on the firearm's account
+ * — only the accessory's own entry does.
+ */
+export function dueParentIds(
+  entries: ItemDueEntry[],
+  parentType: ServiceParentType,
+): Set<string> {
+  return new Set(
+    entries
+      .filter(
+        (entry) =>
+          entry.parentType === parentType &&
+          entry.rules.some((rule) => rule.due),
+      )
+      .map((entry) => entry.parentId),
+  );
+}

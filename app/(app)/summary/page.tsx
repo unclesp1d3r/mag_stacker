@@ -42,6 +42,8 @@ export default async function SummaryPage() {
             byCaliber={summary.byCaliber}
             firearmCounts={summary.firearmCounts}
             caliberCoverage={summary.caliberCoverage}
+            itemsDue={summary.itemsDue}
+            rulesDue={summary.rulesDue}
           />
         </>
       )}

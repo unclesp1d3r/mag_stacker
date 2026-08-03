@@ -5,6 +5,10 @@ import { db } from "@/src/db/client";
 import { listAccessories } from "@/src/domain/accessories/service";
 import { buildFirearmMountContext } from "@/src/domain/firearms/mount-options";
 import { listFirearms } from "@/src/domain/firearms/service";
+import {
+  dueParentIds,
+  listDueForVisibleCollection,
+} from "@/src/domain/service-intervals/due-service";
 import { AccessoriesView, type AccessoryListItem } from "./accessories-view";
 
 interface PageProps {
@@ -17,11 +21,16 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
 
   const { mountFirearm } = await searchParams;
 
-  const [accessories, firearms, permissions] = await Promise.all([
+  const [accessories, firearms, permissions, dueEntries] = await Promise.all([
     listAccessories(user.id),
     listFirearms(user.id),
     visibleFirearmPermissions(db, user.id),
+    // U9/R20: bounded (never per-item, KTD4) — marks rows with at least one
+    // due service rule of their own (never merely because a mounting firearm
+    // is due).
+    listDueForVisibleCollection(user.id),
   ]);
+  const dueAccessoryIds = dueParentIds(dueEntries, "accessory");
 
   // On create, the accessory's owner is the actor themself (KTD5's
   // same-owner mount guard), so a firearm the actor merely has an edit GRANT
@@ -53,6 +62,7 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
     notes: a.notes,
     isNfa: a.isNfa,
     currentFirearmId: a.currentFirearmId,
+    serviceDue: dueAccessoryIds.has(a.id),
   }));
 
   return (

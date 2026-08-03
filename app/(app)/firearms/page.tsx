@@ -9,6 +9,10 @@ import {
   calibersForInput,
   manufacturers,
 } from "@/src/domain/reference/reference";
+import {
+  dueParentIds,
+  listDueForVisibleCollection,
+} from "@/src/domain/service-intervals/due-service";
 import { inventorySummary } from "@/src/domain/summary/summary";
 import { type FirearmListItem, FirearmsView } from "./firearms-view";
 
@@ -20,16 +24,25 @@ export default async function FirearmsPage() {
   // still a single batched query (R18), just sequenced after the list fetch
   // rather than run per row.
   const firearms = await listFirearms(user.id);
-  const [summary, caliberSuggestions, permissions, primaryThumbnails] =
-    await Promise.all([
-      inventorySummary(user.id),
-      calibersForInput(db, user.id),
-      visibleFirearmPermissions(db, user.id),
-      primaryThumbnailsFor(
-        user.id,
-        firearms.map((f) => f.id),
-      ),
-    ]);
+  const [
+    summary,
+    caliberSuggestions,
+    permissions,
+    primaryThumbnails,
+    dueEntries,
+  ] = await Promise.all([
+    inventorySummary(user.id),
+    calibersForInput(db, user.id),
+    visibleFirearmPermissions(db, user.id),
+    primaryThumbnailsFor(
+      user.id,
+      firearms.map((f) => f.id),
+    ),
+    // U9/R20: bounded (never per-item, KTD4) — reused to mark rows with at
+    // least one due service rule, independent of `summary`'s roll-up counts.
+    listDueForVisibleCollection(user.id),
+  ]);
+  const dueFirearmIds = dueParentIds(dueEntries, "firearm");
   // Reuse the permission map's keys (the visible firearm set) so the round-total
   // aggregation doesn't re-derive owned∪granted a second time.
   const roundTotals = await lifetimeRoundTotals(
@@ -63,6 +76,7 @@ export default async function FirearmsPage() {
     magazineCount: counts.get(f.id) ?? 0,
     roundTotal: roundTotals.get(f.id) ?? 0,
     primaryPhoto: primaryThumbnails.get(f.id) ?? null,
+    serviceDue: dueFirearmIds.has(f.id),
   }));
   // Serial column shows only when at least one visible firearm has a serial (R71).
   const showSerial = firearms.some((f) => f.serialNumber.trim() !== "");

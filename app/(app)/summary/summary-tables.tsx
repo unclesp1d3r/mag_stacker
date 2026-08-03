@@ -24,6 +24,10 @@ interface SummaryTablesProps {
   byCaliber: CaliberSummary[];
   firearmCounts: FirearmCount[];
   caliberCoverage: CaliberCoverage[];
+  /** Visible items with at least one due service rule (U9, R19). */
+  itemsDue: number;
+  /** Total due service rules across the visible collection (U9, R19). */
+  rulesDue: number;
 }
 
 /** Visible text for each `CaliberCoverage.reason` (R12) — never color alone. */
@@ -36,6 +40,8 @@ export function SummaryTables({
   byCaliber,
   firearmCounts,
   caliberCoverage,
+  itemsDue,
+  rulesDue,
 }: SummaryTablesProps) {
   const caliberColumns = useMemo<ColumnDef<CaliberSummary>[]>(
     () => [
@@ -123,6 +129,23 @@ export function SummaryTables({
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
+      {/* U9/R19: breadth (items) and volume (rules) from one line, beside the
+          ammo low-stock roll-up below — never re-derives due state, only
+          reads the counts `computeServiceRollup` already folded into
+          `Summary`. */}
+      <section
+        aria-labelledby="service-due"
+        className="space-y-3 lg:col-span-2"
+      >
+        <h2 id="service-due" className="text-sm font-semibold text-foreground">
+          Service
+        </h2>
+        <Data>
+          {itemsDue} {itemsDue === 1 ? "item" : "items"} due for service across{" "}
+          {rulesDue} {rulesDue === 1 ? "rule" : "rules"}
+        </Data>
+      </section>
+
       <section aria-labelledby="by-caliber" className="space-y-3">
         <h2 id="by-caliber" className="text-sm font-semibold text-foreground">
           By caliber

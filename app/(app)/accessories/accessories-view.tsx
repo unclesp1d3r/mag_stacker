@@ -39,6 +39,12 @@ export interface AccessoryListItem {
   notes: string;
   isNfa: boolean;
   currentFirearmId: string | null;
+  /**
+   * True when this accessory itself has at least one due service rule (U9,
+   * R20) — never true merely because the firearm it's mounted to is due.
+   * Advisory only (R21): a marker, not a gate.
+   */
+  serviceDue: boolean;
 }
 
 interface AccessoriesViewProps {
@@ -156,6 +162,16 @@ export function AccessoriesView({
         enableSorting: false,
         cell: ({ row }) =>
           row.original.isNfa ? <Badge tone="destructive">NFA</Badge> : null,
+      },
+      {
+        id: "serviceDue",
+        header: "Service",
+        meta: { label: "Service" },
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.serviceDue ? (
+            <Badge tone="destructive">Service due</Badge>
+          ) : null,
       },
       {
         id: "cost",

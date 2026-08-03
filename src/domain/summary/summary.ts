@@ -3,10 +3,15 @@ import { isLowStock } from "@/src/domain/ammo/validate";
 import { listFirearms } from "@/src/domain/firearms/service";
 import { listMagazines } from "@/src/domain/magazines/service";
 import { effectiveCapacity } from "@/src/domain/magazines/validate";
+import {
+  type ItemDueEntry,
+  listDueForVisibleCollection,
+} from "@/src/domain/service-intervals/due-service";
 
 /**
  * Inventory summary (U7, parity §7; ammo roll-ups added in the ammo plan's
- * U5). Computed in memory over the requester's VISIBLE inventory snapshot only
+ * U5; the service due roll-up added in the service-intervals plan's U9).
+ * Computed in memory over the requester's VISIBLE inventory snapshot only
  * (R41). The pure `computeSummary` is the parity aggregation; `inventorySummary`
  * loads the viewer-relative snapshot and applies it. Empty inventory yields an
  * all-zero summary, never null (R68).
@@ -75,6 +80,10 @@ export interface Summary {
   ammoCalibersLow: number;
   /** Firearm calibers with no ammo, or only low ammo — all-lots rule (R12), sorted alphabetically. */
   caliberCoverage: CaliberCoverage[];
+  /** Visible firearms/accessories with at least one due service rule (R19). */
+  itemsDue: number;
+  /** Total due service rules across the visible collection (R19). */
+  rulesDue: number;
 }
 
 /**
@@ -96,6 +105,7 @@ export function computeSummary(
   firearms: FirearmIdentity[],
   magazines: MagazineSnapshot[],
   ammo: AmmoSnapshot[] = [],
+  dueEntries: ItemDueEntry[] = [],
 ): Summary {
   // Keyed by the normalized caliber (trim + case-fold) so "9mm" and "9MM " group
   // as one row — the same matching `computeAmmoRollups` uses (#52), keeping a
@@ -140,6 +150,7 @@ export function computeSummary(
 
   const { ammoEntriesLow, ammoCalibersLow, caliberCoverage } =
     computeAmmoRollups(firearms, ammo);
+  const { itemsDue, rulesDue } = computeServiceRollup(dueEntries);
 
   return {
     totalMagazines: magazines.length,
@@ -149,6 +160,8 @@ export function computeSummary(
     ammoEntriesLow,
     ammoCalibersLow,
     caliberCoverage,
+    itemsDue,
+    rulesDue,
   };
 }
 
@@ -206,17 +219,42 @@ function computeAmmoRollups(
   };
 }
 
+/**
+ * Service due roll-up (service-intervals plan U9, R19/R20/R21, KTD4). Folds
+ * `listDueForVisibleCollection`'s per-item, per-rule due state — already
+ * derived in a bounded number of queries, never re-derived here — into two
+ * counts: breadth (`itemsDue`, items with at least one due rule) and volume
+ * (`rulesDue`, total due rules across the visible collection). An item that
+ * is due only because of an accessory mounted to it does NOT contribute here
+ * on the firearm's account — `listDueForVisibleCollection` already returns
+ * the firearm and the accessory as separate entries, so the accessory's due
+ * rule only ever counts toward the accessory's own entry.
+ */
+function computeServiceRollup(
+  entries: ItemDueEntry[],
+): Pick<Summary, "itemsDue" | "rulesDue"> {
+  let itemsDue = 0;
+  let rulesDue = 0;
+  for (const entry of entries) {
+    const dueRuleCount = entry.rules.filter((rule) => rule.due).length;
+    if (dueRuleCount > 0) itemsDue += 1;
+    rulesDue += dueRuleCount;
+  }
+  return { itemsDue, rulesDue };
+}
+
 /** Load the requester's viewer-relative visible inventory and summarize it. */
 export async function inventorySummary(actorId: string): Promise<Summary> {
-  const [firearms, magazines, ammoLots] = await Promise.all([
+  const [firearms, magazines, ammoLots, dueEntries] = await Promise.all([
     listFirearms(actorId),
     listMagazines(actorId),
     listAmmo(actorId),
+    listDueForVisibleCollection(actorId),
   ]);
   const ammo: AmmoSnapshot[] = ammoLots.map((lot) => ({
     caliber: lot.caliber,
     quantityRounds: lot.quantityRounds,
     lowStockThreshold: lot.lowStockThreshold,
   }));
-  return computeSummary(firearms, magazines, ammo);
+  return computeSummary(firearms, magazines, ammo, dueEntries);
 }
