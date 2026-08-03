@@ -59,6 +59,7 @@ export default async function FirearmsPage() {
     serialNumber: f.serialNumber,
     notes: f.notes,
     isNfa: f.isNfa,
+    acquiredDate: f.acquiredDate ?? "",
     magazineCount: counts.get(f.id) ?? 0,
     roundTotal: roundTotals.get(f.id) ?? 0,
     primaryPhoto: primaryThumbnails.get(f.id) ?? null,

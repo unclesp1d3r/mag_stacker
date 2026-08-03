@@ -16,6 +16,7 @@ export const VALIDATION_MESSAGES: Record<string, string> = {
   invalidAction: "Select a valid firearm action",
   typeRequired: "Choose a firearm type",
   actionRequired: "Choose a firearm action",
+  invalidAcquiredDate: "Enter a valid acquired date",
   emptyBrandModel: "Brand/model is required",
   baseCapacityTooLow: "Base capacity must be at least 1",
   baseCapacityInvalid:

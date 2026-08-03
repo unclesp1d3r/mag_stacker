@@ -100,3 +100,93 @@ describe("validateFirearm — taxonomy (U3)", () => {
     }
   });
 });
+
+// Acquired date (U6, service-intervals plan R22/R10, KTD9).
+describe("validateFirearm — acquiredDate (U6)", () => {
+  test("omitted acquiredDate is valid (unset)", () => {
+    expect(
+      validateFirearm({ name: "Glock 19", caliber: "9mm", ...CLASS }),
+    ).toEqual([]);
+  });
+
+  test("null acquiredDate is valid (explicit unset/clear)", () => {
+    expect(
+      validateFirearm({
+        name: "Glock 19",
+        caliber: "9mm",
+        ...CLASS,
+        acquiredDate: null,
+      }),
+    ).toEqual([]);
+  });
+
+  test("a real ISO calendar date is valid", () => {
+    expect(
+      validateFirearm({
+        name: "Glock 19",
+        caliber: "9mm",
+        ...CLASS,
+        acquiredDate: "2026-06-14",
+      }),
+    ).toEqual([]);
+  });
+
+  test("a malformed date string returns invalidAcquiredDate", () => {
+    expect(
+      validateFirearm({
+        name: "Glock 19",
+        caliber: "9mm",
+        ...CLASS,
+        acquiredDate: "not-a-date",
+      }),
+    ).toEqual(["invalidAcquiredDate"]);
+  });
+
+  test("an empty string is treated as malformed, not unset (the caller normalizes '' to null)", () => {
+    expect(
+      validateFirearm({
+        name: "Glock 19",
+        caliber: "9mm",
+        ...CLASS,
+        acquiredDate: "",
+      }),
+    ).toEqual(["invalidAcquiredDate"]);
+  });
+
+  test("an impossible calendar day (day overflow) returns invalidAcquiredDate", () => {
+    expect(
+      validateFirearm({
+        name: "Glock 19",
+        caliber: "9mm",
+        ...CLASS,
+        acquiredDate: "2026-02-31",
+      }),
+    ).toEqual(["invalidAcquiredDate"]);
+  });
+
+  test("a future acquired date is accepted (no future-date restriction, mirrors the magazine/ammo path)", () => {
+    expect(
+      validateFirearm({
+        name: "Glock 19",
+        caliber: "9mm",
+        ...CLASS,
+        acquiredDate: "2099-01-01",
+      }),
+    ).toEqual([]);
+  });
+
+  test("combines with other failures rather than short-circuiting (R20)", () => {
+    expect(
+      validateFirearm({
+        name: "",
+        caliber: "9mm",
+        ...CLASS,
+        acquiredDate: "nope",
+      }),
+    ).toEqual(["emptyName", "invalidAcquiredDate"]);
+  });
+
+  test("messageForCode returns a non-default string for invalidAcquiredDate", () => {
+    expect(messageForCode("invalidAcquiredDate")).not.toBe("Invalid value");
+  });
+});

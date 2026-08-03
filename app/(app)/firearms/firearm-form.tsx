@@ -34,6 +34,8 @@ export interface FirearmFormValues {
   serialNumber: string;
   notes: string;
   isNfa: boolean;
+  /** ISO date, or `""` when unset — mirrors magazine/ammo's acquired date. */
+  acquiredDate: string;
 }
 
 interface FirearmFormProps {
@@ -57,6 +59,7 @@ const EMPTY: FirearmFormValues = {
   serialNumber: "",
   notes: "",
   isNfa: false,
+  acquiredDate: "",
 };
 
 const TYPE_CODES: FirearmValidationCode[] = ["invalidType", "typeRequired"];
@@ -139,6 +142,7 @@ export function FirearmForm({
   const subtypeId = useId();
   const notesId = useId();
   const serialId = useId();
+  const dateId = useId();
 
   function set<K extends keyof FirearmFormValues>(key: K, value: string) {
     setValues((v) => ({ ...v, [key]: value }));
@@ -151,11 +155,16 @@ export function FirearmForm({
     { codes: ["emptyCaliber"], id: calId },
     { codes: TYPE_CODES, id: typeId },
     { codes: ACTION_CODES, id: actionId },
+    { codes: ["invalidAcquiredDate"], id: dateId },
   ];
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const found = validateFirearm(values);
+    // Empty means unset (null), not "" — mirrors the magazine/accessory
+    // acquired/installed-date fields, so a cleared field persists as null
+    // rather than failing validation on an empty string.
+    const input = { ...values, acquiredDate: values.acquiredDate || null };
+    const found = validateFirearm(input);
     setCodes(found);
     setServerError(null);
     if (found.length > 0) {
@@ -168,8 +177,8 @@ export function FirearmForm({
     startTransition(async () => {
       const result =
         isEdit && initial?.id
-          ? await updateFirearmAction(initial.id, values)
-          : await createFirearmAction(values);
+          ? await updateFirearmAction(initial.id, input)
+          : await createFirearmAction(input);
       if (result.ok) {
         toast({
           message: isEdit ? "Changes saved" : "Firearm logged",
@@ -298,13 +307,29 @@ export function FirearmForm({
           onChange={(e) => set("serialNumber", e.target.value)}
         />
       </Field>
-      <Field label="Notes" controlId={notesId}>
-        <Textarea
-          id={notesId}
-          value={values.notes}
-          onChange={(e) => set("notes", e.target.value)}
-        />
-      </Field>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label="Acquired date"
+          controlId={dateId}
+          hint="Optional"
+          error={firstMessage(codes, ["invalidAcquiredDate"])}
+        >
+          <Input
+            id={dateId}
+            type="date"
+            value={values.acquiredDate}
+            onChange={(e) => set("acquiredDate", e.target.value)}
+            aria-invalid={codes.includes("invalidAcquiredDate")}
+          />
+        </Field>
+        <Field label="Notes" controlId={notesId}>
+          <Textarea
+            id={notesId}
+            value={values.notes}
+            onChange={(e) => set("notes", e.target.value)}
+          />
+        </Field>
+      </div>
       <label className="flex cursor-pointer items-center gap-3">
         <input
           type="checkbox"

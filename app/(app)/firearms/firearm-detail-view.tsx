@@ -169,6 +169,10 @@ export function FirearmDetailView({
             />
             <DetailRow label="Subtype" value={orDash(firearm.subtype)} />
             <DetailRow
+              label="Acquired date"
+              value={orDash(firearm.acquiredDate)}
+            />
+            <DetailRow
               label="Serial number"
               value={
                 <span className="font-mono text-xs">

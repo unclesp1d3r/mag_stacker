@@ -10,6 +10,13 @@
  * request), and the `unspecified` sentinel yields `typeRequired`/`actionRequired`
  * (R7 — a real category must be chosen on every write, including edits of a
  * backfilled row).
+ *
+ * `acquiredDate` is nullable and, when present, must be a real ISO calendar
+ * date (service-intervals plan R22, mirrors `accessories.installedDate` /
+ * range-sessions' `date` check). Unlike `magazine`/`ammo`'s acquired date —
+ * which the service layer persists unvalidated — a firearm's feeds the
+ * service-interval origin date (KTD9), so a malformed value is rejected here
+ * rather than left to the Postgres `date` cast.
  */
 
 import { isFirearmAction, isFirearmType, UNSPECIFIED } from "./constants";
@@ -20,13 +27,30 @@ export type FirearmValidationCode =
   | "invalidType"
   | "invalidAction"
   | "typeRequired"
-  | "actionRequired";
+  | "actionRequired"
+  | "invalidAcquiredDate";
 
 export interface FirearmInput {
   name: string;
   caliber: string;
   type: string;
   action: string;
+  /** ISO calendar date (`YYYY-MM-DD`), or null/undefined when unset. */
+  acquiredDate?: string | null;
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * True only for a real calendar date. `Date.parse` NORMALIZES day overflow
+ * (e.g. `2026-02-31` → Mar 3) instead of returning NaN, so a round-trip
+ * compare against the UTC-normalized ISO date is what rejects impossible
+ * days — the Postgres `date` cast would otherwise reject them downstream.
+ */
+function isRealCalendarDate(date: string): boolean {
+  const parsed = Date.parse(date);
+  if (Number.isNaN(parsed)) return false;
+  return new Date(parsed).toISOString().slice(0, 10) === date;
 }
 
 export function validateFirearm(input: FirearmInput): FirearmValidationCode[] {
@@ -37,5 +61,11 @@ export function validateFirearm(input: FirearmInput): FirearmValidationCode[] {
   else if (input.type === UNSPECIFIED) codes.push("typeRequired");
   if (!isFirearmAction(input.action)) codes.push("invalidAction");
   else if (input.action === UNSPECIFIED) codes.push("actionRequired");
+  if (input.acquiredDate !== null && input.acquiredDate !== undefined) {
+    const date = input.acquiredDate.trim();
+    if (date === "" || !ISO_DATE.test(date) || !isRealCalendarDate(date)) {
+      codes.push("invalidAcquiredDate");
+    }
+  }
   return codes;
 }

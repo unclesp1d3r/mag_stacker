@@ -95,6 +95,7 @@ export default async function FirearmDetailPage({ params }: PageProps) {
         serialNumber: row.serialNumber,
         notes: row.notes,
         isNfa: row.isNfa,
+        acquiredDate: row.acquiredDate ?? "",
       }}
       permission={permission}
       magazineCount={magazineCount}
