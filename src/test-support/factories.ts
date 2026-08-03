@@ -12,8 +12,20 @@ import {
   magazine,
   magazineFirearm,
   rangeSession,
+  serviceEvent,
+  serviceRule,
+  serviceRuleDefault,
   user,
 } from "@/src/db/schema";
+
+/**
+ * `service_rule` and `service_event` each attach to exactly one of a firearm
+ * or an accessory (KTD2) — narrower than `ParentType`
+ * (`@/src/auth/visibility`), which excludes accessory (it isn't a grantable
+ * parent type). Callers pass one variant; the factory spreads it onto the
+ * insert alongside the other fixed defaults.
+ */
+type ServiceParent = { firearmId: string } | { accessoryId: string };
 
 /**
  * DB factories for integration tests (U4+). Each test creates isolated users
@@ -196,6 +208,80 @@ export async function makeFirearmPhoto(
  * a caller can't accidentally insert a row for a different parent than the
  * one it passed explicitly.
  */
+/**
+ * Insert a service-rule-default row directly (service-intervals plan, U1).
+ * Owner-scoped configuration, no parent item — defaults to a firearm-scope
+ * "rifle" category "Cleaning" rule with a single rounds threshold, since at
+ * least one threshold must be set (R2).
+ */
+export async function makeServiceRuleDefault(
+  ownerId: string,
+  overrides: Partial<typeof serviceRuleDefault.$inferInsert> = {},
+): Promise<typeof serviceRuleDefault.$inferSelect> {
+  const [row] = await db
+    .insert(serviceRuleDefault)
+    .values({
+      ownerId,
+      scope: "firearm",
+      category: "rifle",
+      name: "Cleaning",
+      intervalRounds: 500,
+      ...overrides,
+    })
+    .returning();
+  return row;
+}
+
+/**
+ * Insert a service-rule row directly (service-intervals plan, U1). `parent`
+ * carries exactly one of `firearmId`/`accessoryId` (KTD2); `overrides`
+ * excludes both so a caller can't accidentally attach the row to a different
+ * parent than the one passed explicitly. Defaults to an unsuppressed
+ * "Cleaning" rule with a single rounds threshold.
+ */
+export async function makeServiceRule(
+  parent: ServiceParent,
+  overrides: Partial<
+    Omit<typeof serviceRule.$inferInsert, "firearmId" | "accessoryId">
+  > = {},
+): Promise<typeof serviceRule.$inferSelect> {
+  const [row] = await db
+    .insert(serviceRule)
+    .values({
+      name: "Cleaning",
+      intervalRounds: 500,
+      ...overrides,
+      ...parent,
+    })
+    .returning();
+  return row;
+}
+
+/**
+ * Insert a service-event row directly (service-intervals plan, U1). `parent`
+ * carries exactly one of `firearmId`/`accessoryId` (KTD2), matching
+ * `makeServiceRule`. `actorId` is a nullable FK (`ON DELETE SET NULL`), so
+ * unlike `makeLogEntry` it has no required override — omit it to test the
+ * "acting user later deleted" case directly.
+ */
+export async function makeServiceEvent(
+  parent: ServiceParent,
+  overrides: Partial<
+    Omit<typeof serviceEvent.$inferInsert, "firearmId" | "accessoryId">
+  > = {},
+): Promise<typeof serviceEvent.$inferSelect> {
+  const [row] = await db
+    .insert(serviceEvent)
+    .values({
+      ruleName: "Cleaning",
+      servicedOn: "2026-01-01",
+      ...overrides,
+      ...parent,
+    })
+    .returning();
+  return row;
+}
+
 export async function makeLogEntry(
   parentType: ParentType,
   parentId: string,
