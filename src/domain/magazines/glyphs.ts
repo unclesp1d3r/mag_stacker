@@ -12,9 +12,11 @@
  * shallow `Object.freeze` would not protect a glyph cell's nested row arrays
  * anyway, so none is applied here — readonly types are the contract.
  *
- * The fixture ships with zero glyph rows until Magpul's diagram is
- * transcribed (KTD3) — an empty `GlyphTable` is a valid, expected state, not
- * an error, and is exactly what makes the feature ship dark.
+ * The fixture now carries all 36 glyphs transcribed from Magpul's diagram.
+ * An empty `GlyphTable` remains a valid, expected state rather than an error
+ * — it is what KTD3 relies on to suppress the feature entirely, and the
+ * parser must keep honoring it even though the shipped font is no longer
+ * empty.
  */
 
 import { MAGPUL_GLYPHS_RAW } from "@/src/data/raw";

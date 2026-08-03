@@ -5,6 +5,7 @@ import { Callout } from "@/components/ui/feedback";
 import {
   type DotMatrixResult,
   resolveDotMatrix,
+  type UnrepresentableReason,
 } from "@/src/domain/magazines/dot-matrix";
 import { MAGPUL_GLYPHS } from "@/src/domain/magazines/glyphs";
 
@@ -13,9 +14,9 @@ import { MAGPUL_GLYPHS } from "@/src/domain/magazines/glyphs";
  * glyphs (U5/U6; R4, R9, R11-R15; KTD1, KTD5, KTD6, KTD8, KTD9). Resolves
  * `resolveDotMatrix` itself and branches once on the result, so the caller
  * (`magazine-detail-view.tsx`) only ever places this component — it never
- * needs to know which of the three outcomes applies. Ships against
- * `MAGPUL_GLYPHS`, which is empty until the glyph table is transcribed
- * (KTD3), so `hidden` is the shipped outcome today.
+ * needs to know which of the three outcomes applies. Renders against the
+ * shipped `MAGPUL_GLYPHS`, which now carries all 36 transcribed glyphs, so
+ * every outcome is reachable in production.
  */
 
 // --- Geometry (KTD6): fixed, no responsive scaling. Named constants, not
@@ -45,6 +46,22 @@ export const LABEL_DOES_NOT_FIT_MESSAGE =
   "This label does not fit this magazine's floorplate.";
 export const UNVERIFIED_CELL_COUNT_SUFFIX =
   " The model was not recognized, so the 4-cell count is unverified.";
+/** R9's other cause: nothing in the label has a glyph, so there is no
+ * pattern to offer. Distinct from the overflow message because "does not
+ * fit" would be false — the label never reached the length check. */
+export const LABEL_NOT_PAINTABLE_MESSAGE =
+  "None of this label's characters can be painted on a Magpul floorplate.";
+
+/** R9a: names the characters silently dropped from the drawn pattern, so a
+ * sighted owner comparing the dots against the label text above them is not
+ * left to guess why the two differ. */
+export function buildOmittedCharactersCaveat(
+  omitted: readonly string[],
+): string {
+  const list = omitted.map((character) => `"${character}"`).join(", ");
+  const pronoun = omitted.length === 1 ? "it" : "them";
+  return `Left out of the pattern: ${list} — the Magpul floorplate font has no glyph for ${pronoun}.`;
+}
 
 /** KTD8: names the cell count, then the drawn characters — phrased so it
  * cannot be mistaken for a duplicate of the stored label or a truncation
@@ -56,9 +73,17 @@ function buildAriaLabel(
   return `Dot pattern to paint on a ${cellCount}-cell floorplate: ${characters.join(" ")}`;
 }
 
-/** R9, extended with the unverified clause when the cell count came from
- * R4's unrecognized-model fallback rather than a matched entry. */
-function buildDoesNotFitMessage(cellCountVerified: boolean): string {
+/**
+ * R9's message for each cause. The unverified clause is appended only to the
+ * overflow case: it exists so an owner can tell a true overflow from one
+ * inferred off a guessed capacity, and the cell count plays no part at all
+ * when the label simply has no paintable characters.
+ */
+export function buildUnrepresentableMessage(
+  reason: UnrepresentableReason,
+  cellCountVerified: boolean,
+): string {
+  if (reason === "unsupportedCharacter") return LABEL_NOT_PAINTABLE_MESSAGE;
   return cellCountVerified
     ? LABEL_DOES_NOT_FIT_MESSAGE
     : `${LABEL_DOES_NOT_FIT_MESSAGE}${UNVERIFIED_CELL_COUNT_SUFFIX}`;
@@ -99,12 +124,12 @@ export function DotMatrixLabel({
   if (result.kind === "unrepresentable") {
     return (
       <Callout tone="destructive">
-        {buildDoesNotFitMessage(result.cellCountVerified)}
+        {buildUnrepresentableMessage(result.reason, result.cellCountVerified)}
       </Callout>
     );
   }
 
-  const { characters, cells, cellCount, cellCountVerified } = result;
+  const { characters, cells, cellCount, cellCountVerified, omitted } = result;
   // Sized from `cells.length` (how many cell groups are actually drawn by the
   // .map below), NOT `cellCount` (the floorplate's total capacity, used only
   // for `buildAriaLabel`). A label shorter than the floorplate's cell count
@@ -148,6 +173,11 @@ export function DotMatrixLabel({
           );
         })}
       </svg>
+      {omitted.length > 0 ? (
+        <Callout tone="neutral">
+          {buildOmittedCharactersCaveat(omitted)}
+        </Callout>
+      ) : null}
       {!cellCountVerified ? (
         <Callout tone="neutral">{MODEL_NOT_RECOGNIZED_CAVEAT}</Callout>
       ) : null}

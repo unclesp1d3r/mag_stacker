@@ -16,6 +16,14 @@ import { expectNoHorizontalOverflow } from "./fixtures/overflow";
  *    drawn, and the stored label still reads in full as text.
  *  - AE6 — Magpul mode off suppresses the matrix entirely, whatever the
  *    label contains.
+ *  - R9a — a hyphenated label drops the hyphen (Magpul's sheet has no glyph
+ *    for it) and says so.
+ *  - R4 / R9 message wording, which is asserted nowhere else as *rendered*
+ *    text in its Callout.
+ *
+ * AE1 also reads the drawn dots back out of the SVG, which is the only check
+ * anywhere that spans the whole chain — fixture file, parser, resolver, and
+ * the geometry that turns a glyph cell into circles.
  *
  * Two personas, both reused rather than newly seeded:
  *  - "magpul-mode" (already seeded with `magpulMode: true` by the launcher)
@@ -34,6 +42,41 @@ import { expectNoHorizontalOverflow } from "./fixtures/overflow";
 
 const magpulTest = authTest("magpul-mode");
 magpulTest.describe.configure({ retries: 0 });
+
+/**
+ * The dots AE1's `US04` must produce, restated here from Magpul's sheet
+ * rather than imported from the fixture — an assertion built out of the same
+ * data it is checking would pass no matter how wrong that data became.
+ * Row-major within each cell, cells left to right, matching the render order
+ * in `dot-matrix-label.tsx`.
+ */
+const EXPECTED_US04_DOTS = [
+  ["#.#", "#.#", "#.#", "#.#", "###"], // U
+  ["###", "#..", "###", "..#", "###"], // S
+  ["###", "#.#", "#.#", "#.#", "###"], // 0
+  ["#.#", "#.#", "###", "..#", "..#"], // 4
+]
+  .flat()
+  .join("");
+
+/** Painted dots render at r=5, unpainted at r=3 (KTD6); 4 splits them. */
+const PAINTED_RADIUS_THRESHOLD = 4;
+
+/** Reads the rendered matrix back as a `#`/`.` string, in DOM order. */
+async function readDrawnDots(page: Page): Promise<string> {
+  return await page
+    .getByRole("img", { name: /^Dot pattern to paint/ })
+    .locator("circle")
+    .evaluateAll(
+      (circles, threshold) =>
+        circles
+          .map((circle) =>
+            Number(circle.getAttribute("r")) > threshold ? "#" : ".",
+          )
+          .join(""),
+      PAINTED_RADIUS_THRESHOLD,
+    );
+}
 
 const plainTest = authTest("theme");
 plainTest.describe.configure({ retries: 0 });
@@ -106,6 +149,11 @@ magpulTest(
         }),
       ).toBeVisible();
 
+      // The accessible name above proves which characters were chosen; this
+      // proves the dots actually drawn for them are the right shape. A row
+      // shift anywhere between the fixture file and the SVG fails here.
+      expect(await readDrawnDots(page)).toBe(EXPECTED_US04_DOTS);
+
       await page.setViewportSize({ width: 320, height: 844 });
       await page.reload();
       await expect(
@@ -143,6 +191,89 @@ magpulTest(
           name: "Dot pattern to paint on a 2-cell floorplate: 0 4",
           exact: true,
         }),
+      ).toBeVisible();
+    } finally {
+      await deleteFromDetailPage(page);
+    }
+  },
+);
+
+magpulTest(
+  "R9a: a hyphenated label drops the hyphen from the drawn pattern and says which character was left out",
+  async ({ page }) => {
+    // Magpul's sheet carries no hyphen glyph, but #21's validator permits one
+    // in a stored label — so this is ordinary user input typed through the
+    // real form, not legacy data.
+    const brandModel = "Magpul PMAG 20 LR/SR GEN M3";
+    const label = "A-1";
+
+    try {
+      await addMagazineAndOpenDetail(page, brandModel, label);
+
+      // The stored label still reads in full (R13); only the pattern drops it.
+      await expect(page.getByText(label, { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("img", {
+          name: "Dot pattern to paint on a 4-cell floorplate: A 1",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(
+          'Left out of the pattern: "-" — the Magpul floorplate font has no glyph for it.',
+        ),
+      ).toBeVisible();
+    } finally {
+      await deleteFromDetailPage(page);
+    }
+  },
+);
+
+magpulTest(
+  "AE3/R4: an unrecognized model renders every character and tells the owner to confirm the cell count first",
+  async ({ page }) => {
+    const brandModel = "Some Unknown Brand 30rd";
+    const label = "AR12";
+
+    try {
+      await addMagazineAndOpenDetail(page, brandModel, label);
+
+      await expect(
+        page.getByRole("img", {
+          name: "Dot pattern to paint on a 4-cell floorplate: A R 1 2",
+          exact: true,
+        }),
+      ).toBeVisible();
+      // R4's caveat wording, as actually rendered — the fallback cell count is
+      // a guess, and this is the only thing telling the owner so before they
+      // put permanent paint on a floorplate.
+      await expect(
+        page.getByText(
+          "Model not recognized — confirm this floorplate has 4 dot cells before painting.",
+        ),
+      ).toBeVisible();
+    } finally {
+      await deleteFromDetailPage(page);
+    }
+  },
+);
+
+magpulTest(
+  "AE9/R9: an all-digit label longer than the floorplate renders no matrix and states that it does not fit",
+  async ({ page }) => {
+    // GL9 is a *matched* 2-cell model, so the message carries no unverified
+    // clause — that pairing is what makes the exact wording assertable here.
+    const brandModel = "Magpul GL9";
+    const label = "1234";
+
+    try {
+      await addMagazineAndOpenDetail(page, brandModel, label);
+
+      await expect(
+        page.getByRole("img", { name: /Dot pattern to paint/ }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByText("This label does not fit this magazine's floorplate."),
       ).toBeVisible();
     } finally {
       await deleteFromDetailPage(page);

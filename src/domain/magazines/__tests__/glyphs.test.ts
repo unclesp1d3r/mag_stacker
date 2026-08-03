@@ -151,6 +151,67 @@ describe("parseGlyphTable", () => {
   });
 });
 
+/**
+ * The independently-recorded shape of every glyph on Magpul's sheet, in the
+ * sheet's own order (digits `1`-`9` then `0`, then `A`-`Z`).
+ *
+ * This is the point of the whole test file. `magpul-glyphs.txt` was produced
+ * by rendering Magpul's PDF at 300 DPI, recovering the dot lattice, and
+ * sampling all 600 positions; the result was then checked against the sheet
+ * by eye and confirmed correct. Without this table, a row shift or a bad crop
+ * in any single letter would pass every other assertion here — the fixture
+ * would still parse, still hold 36 entries, and still render *something*.
+ * The consequence of a wrong glyph is not a failed render: it is an owner
+ * putting a permanent paint mark on hardware in the wrong pattern.
+ *
+ * Kept in the sheet's ordering rather than the fixture's so the two are not
+ * trivially diffable line-for-line — a regeneration that shifts rows has to
+ * survive a comparison written from the source, not from the artifact.
+ */
+const EXPECTED_GLYPHS: Readonly<Record<string, string>> = {
+  "1": "##.|.#.|.#.|.#.|###",
+  "2": "###|..#|###|#..|###",
+  "3": "###|..#|###|..#|###",
+  "4": "#.#|#.#|###|..#|..#",
+  "5": "###|#..|###|..#|###",
+  "6": "###|#..|###|#.#|###",
+  "7": "###|..#|..#|..#|..#",
+  "8": "###|#.#|###|#.#|###",
+  "9": "###|#.#|###|..#|..#",
+  "0": "###|#.#|#.#|#.#|###",
+  A: "###|#.#|###|#.#|#.#",
+  B: "##.|#.#|##.|#.#|##.",
+  C: "###|#..|#..|#..|###",
+  D: "##.|#.#|#.#|#.#|##.",
+  E: "###|#..|###|#..|###",
+  F: "###|#..|###|#..|#..",
+  G: ".##|#..|###|#.#|.#.",
+  H: "#.#|#.#|###|#.#|#.#",
+  I: "###|.#.|.#.|.#.|###",
+  J: "..#|..#|..#|#.#|.#.",
+  K: "#.#|#.#|##.|#.#|#.#",
+  L: "#..|#..|#..|#..|###",
+  M: "#.#|###|#.#|#.#|#.#",
+  N: "##.|#.#|#.#|#.#|#.#",
+  O: ".#.|#.#|#.#|#.#|.#.",
+  P: "###|#.#|###|#..|#..",
+  Q: "###|#.#|#.#|###|..#",
+  R: "###|#.#|##.|#.#|#.#",
+  S: "###|#..|###|..#|###",
+  T: "###|.#.|.#.|.#.|.#.",
+  U: "#.#|#.#|#.#|#.#|###",
+  V: "#.#|#.#|#.#|#.#|.#.",
+  W: "#.#|#.#|#.#|###|#.#",
+  X: "#.#|#.#|.#.|#.#|#.#",
+  Y: "#.#|#.#|.#.|.#.|.#.",
+  Z: "###|..#|.#.|#..|###",
+};
+
+/** `"###|#.#"` -> `[[true,true,true],[true,false,true]]`. */
+function toCell(pattern: string): boolean[][] {
+  return pattern.split("|").map((row) => [...row].map((mark) => mark === "#"));
+}
+
 describe("MAGPUL_GLYPHS", () => {
   test("covers every character in 0-9 and A-Z, and carries no hyphen (the transcribed Magpul sheet has 36 glyphs, no punctuation)", () => {
     const table: GlyphTable = MAGPUL_GLYPHS;
@@ -167,22 +228,17 @@ describe("MAGPUL_GLYPHS", () => {
     expect(table.has("-")).toBe(false);
   });
 
-  test("spot-checks '0' and '1' against known glyph patterns, to catch a bad regeneration", () => {
-    const table: GlyphTable = MAGPUL_GLYPHS;
-
-    expect(table.get("0")).toEqual([
-      [true, true, true],
-      [true, false, true],
-      [true, false, true],
-      [true, false, true],
-      [true, true, true],
-    ]);
-    expect(table.get("1")).toEqual([
-      [true, true, false],
-      [false, true, false],
-      [false, true, false],
-      [false, true, false],
-      [true, true, true],
-    ]);
+  test("the expected table itself covers all 36 characters, so a deleted row cannot quietly shrink the guard below", () => {
+    // Without this, dropping an entry from EXPECTED_GLYPHS would silently
+    // stop checking that glyph while every assertion still passed.
+    expect(Object.keys(EXPECTED_GLYPHS).sort().join("")).toBe(
+      [..."0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"].sort().join(""),
+    );
   });
+
+  for (const [character, pattern] of Object.entries(EXPECTED_GLYPHS)) {
+    test(`glyph "${character}" matches the transcribed Magpul pattern exactly`, () => {
+      expect(MAGPUL_GLYPHS.get(character)).toEqual(toCell(pattern));
+    });
+  }
 });

@@ -4,19 +4,22 @@ Branch: `20-render-magazine-label-as-a-magpul-paint-pen-dot-matrix-in-the-detail
 Plan: `docs/plans/2026-08-02-001-feat-magazine-dot-matrix-label-plan.md`
 Source: `ce-code-review` (7 reviewers) + `ce-simplify-code` (3 reviewers), 2026-08-02.
 
-These are the findings that were **not** applied. Everything else the review surfaced landed in
-commits `85f2575` (simplification) and `83cc002` (review fixes). No tracker tickets were filed;
+These are the findings that were **not** applied at the time of each review. Everything else landed
+in commits `85f2575` (simplification) and `83cc002` (review fixes). No tracker tickets were filed;
 this committed record is the durable sink.
 
-Almost all of it converges on one thing: **the glyph table ships empty, so the render path has no
-production or test exercise at all.** These items become both testable and worth revisiting in the
-same follow-up that transcribes Magpul's diagram.
+The sections below are in the order they were written, so this file reads as a history rather than a
+snapshot. Most of the early findings converged on one thing — **the glyph table shipped empty, so the
+render path had no production or test exercise at all** — and were closed once the font was
+transcribed and the verification work landed on `glyph-font-verification`. Each is marked below.
+**Jump to "Still open" for what actually remains.**
 
 ---
 
 ## Not applied
 
-- **P1 — The ships-dark e2e cannot tell "suppressed" from "unwired".** `e2e/magazine-dot-matrix.spec.ts:94`
+- ~~**P1 — The ships-dark e2e cannot tell "suppressed" from "unwired".**~~ **RESOLVED** — AE1 now asserts the drawn dot pattern, so removing the component fails the spec.
+  Original finding: `e2e/magazine-dot-matrix.spec.ts:94`
   (adversarial, advisory, owner: human)
 
   The only matrix-specific assertion is `getByRole("img", { name: /Dot pattern to paint/ })` having
@@ -27,7 +30,8 @@ same follow-up that transcribes Magpul's diagram.
   means a wiring regression between now and the transcription PR would ship silently, and this spec is
   exactly the safety net that PR will lean on.
 
-- **P2 — The rendered output is entirely unverified.** `app/(app)/magazines/dot-matrix-label.tsx`
+- ~~**P2 — The rendered output is entirely unverified.**~~ **RESOLVED** — see the post-transcription section below.
+  Original finding: `app/(app)/magazines/dot-matrix-label.tsx`
   (adversarial + correctness testing gaps, owner: human)
 
   No test at any level exercises the component's markup: the SVG geometry, the per-dot keys, the
@@ -60,28 +64,84 @@ same follow-up that transcribes Magpul's diagram.
 
 ## Deferred to the repo owner (from PR #90 review)
 
-- **`unrepresentable` conflates "unsupported character" with "too long".** `src/domain/magazines/dot-matrix.ts`
-  (CodeRabbit, PR #90, owner: human)
-
-  The `unrepresentable` variant carries only `cellCount` and `cellCountVerified`, so the resolver returns the
-  same shape whether the label overflows the floorplate or merely contains a character outside the glyph
-  table. The view then always renders "This label does not fit this magazine's floorplate" — factually wrong
-  for a short label that fails only on font coverage, which is exactly AE5 (`A.1` on a 4-cell PMAG).
-
-  **Not fixed autonomously**, because the message is specified product behavior: R9 and AE5 both define a
-  single message for both causes. Changing it is a product-copy decision.
-
-  Recommendation: add `reason: "unsupportedCharacter" | "doesNotFit"` to the `unrepresentable` variant, give
-  the unsupported-character case its own message, and amend R9/AE5 to match. The discriminant was **not**
-  added preemptively — with the message unchanged it would have no consumer.
-
-  Nothing is user-visible yet: the empty glyph table short-circuits to `hidden` first, so this surfaces only
-  once the font is transcribed.
+- ~~**`unrepresentable` conflates "unsupported character" with "too long".**~~ **RESOLVED** — the
+  `reason` discriminant landed, and the underlying product question was settled by dropping
+  unpaintable characters instead. See "Hyphen question" below.
 
 - **`src/data/calibers.txt` and `manufacturers.txt` have the same untested drift** that PR #90 fixed for the
   glyph fixture. `reference.test.ts` asserts against the caches parsed from `raw.ts` and never reads the
   `.txt` files, so editing one and forgetting to regenerate would pass CI while production used the stale
   embedded string. Left alone as out of scope; the glyph fixture now has the pattern to copy.
+
+## From the post-transcription review (commit `aa47489`) — now resolved
+
+Two reviewers (code-quality, test-coverage) over the increment that transcribed the glyph font and
+turned the feature on. No functional bugs. Everything they raised has since been closed on
+`glyph-font-verification`:
+
+- **The glyph font was 34/36 unverified.** `glyphs.test.ts` now asserts all 36 against
+  `EXPECTED_GLYPHS`, an independently-recorded table written in Magpul's own sheet ordering
+  (digits `1`-`9` then `0`) rather than the fixture's, so a regeneration that shifts rows cannot
+  pass by matching the artifact it was derived from. A companion test asserts the expected table
+  itself still covers all 36 characters, so deleting a row from it cannot quietly shrink the guard.
+  Verified by corrupting a single dot in glyph `G` and confirming two tests go red.
+
+- **`resolveDotMatrix` was never exercised against the real `MAGPUL_GLYPHS`.** A second describe
+  block re-runs the acceptance examples against the shipped font. This immediately proved its own
+  worth: AE4 (`AR-X`) takes a *different path* under the two tables — the synthetic fixture has a
+  hyphen, so it overflows; the real font does not, so the hyphen drops and the remaining `ARX`
+  overflows. Same verdict, different rule.
+
+- **R4/R9 message text was asserted nowhere.** New `dot-matrix-messages.test.ts` covers every
+  exported string and both composition branches; the e2e now asserts R4's caveat and R9's
+  does-not-fit message as *rendered* text.
+
+- **Nothing inspected rendered SVG dot positions.** AE1's e2e now reads the `r` attribute off every
+  circle and compares the whole 60-dot pattern against an expected string restated from Magpul's
+  sheet. This is the only assertion anywhere that spans fixture file -> parser -> resolver ->
+  geometry.
+
+- **Stale "feature is off" comments** in `dot-matrix-label.tsx`, `glyphs.ts`, `dot-matrix.ts`, the
+  resolver test header, and plan U1 are corrected.
+
+Also closed from the earlier lists above: the P1 "ships-dark e2e cannot tell suppressed from
+unwired" (AE1 now positively asserts drawn dots, so deleting the `<DotMatrixLabel />` line fails),
+and the P2 "rendered output entirely unverified".
+
+## Hyphen question — resolved by dropping, not by rejecting
+
+The parked CodeRabbit finding (`unrepresentable` conflating "unsupported character" with "too long")
+and the open hyphen product question turned out to be the same question, and the owner resolved both
+in one direction: **a character with no glyph is dropped from the pattern, not fatal to it** (R9a).
+
+The reasoning that settled it: R8 already drops characters — `US04` on a 2-cell GL9 paints `04` and
+discards `US` — so "the painted mark differs from the stored label" was established behavior, and
+refusing to paint `A-1` over one hyphen while happily painting `04` for `US04` was the inconsistent
+position. Magpul's floorplate has no hyphen cell, so a hyphen is unpaintable as physical fact, which
+is the same class of constraint that justifies R8. The collision risk (`A-1` and `A1` paint alike)
+already exists under R8 (`US04` and `XY04` both paint `04`).
+
+Rejected: narrowing #21's allowed character set to remove the hyphen, which would invalidate stored
+labels and need a migration.
+
+`unrepresentable` still gained the `reason` discriminant, because it is still reachable — a label
+with *nothing* paintable in it (`--`) has no pattern to offer — and that case gets its own message
+rather than the false "does not fit".
+
+## Still open
+
+- **Per-model cell counts.** `MODEL_CELL_COUNTS` carries only the GL9 and LR/SR seeds; everything
+  else renders under R4's unverified 4-cell fallback. This is now the largest unverified area in the
+  feature, and the plan's Verification Contract says so. A count added without a physical or
+  cross-checked source would render as though confirmed — worse than an unrecognized model, since
+  the caveat only attaches to misses.
+
+- **`src/data/calibers.txt` and `manufacturers.txt` have the same untested drift** the glyph fixture
+  had before PR #90 fixed it. `reference.test.ts` asserts against the caches parsed from `raw.ts` and
+  never reads the `.txt` files. Out of scope here; the glyph fixture now has the pattern to copy.
+
+- **The shared overflow fixture is weaker than the check it was extracted from** (`e2e/fixtures/overflow.ts`),
+  unchanged from the earlier list above.
 
 ## Checked and cleared
 
