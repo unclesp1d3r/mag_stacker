@@ -4,26 +4,27 @@ import { trackConsoleErrors } from "./fixtures/console-errors";
 import { expectNoHorizontalOverflow } from "./fixtures/overflow";
 
 /**
- * Ships-dark coverage for the Magpul dot-matrix label (issue #20, U7; R6,
- * R13, R14).
+ * Coverage for the Magpul dot-matrix label (issue #20, U7; R6, R13, R14).
  *
- * `src/data/magpul-glyphs.txt` carries zero glyph rows until Magpul's
- * diagram is transcribed, so `resolveDotMatrix` returns `hidden` for every
- * magazine today (KTD3) and `DotMatrixLabel` renders nothing. That suppressed
- * state IS the shipped behavior, not a placeholder — these assertions prove
- * it holds through the real render path rather than skipping coverage until
- * the transcription lands. Once a matrix can render, its accessible name
- * will read `Dot pattern to paint on a <N>-cell floorplate: <chars>`; the
- * transcription PR should extend this file with that assertion rather than
- * rewrite it.
+ * `src/data/magpul-glyphs.txt` now carries all 36 transcribed Magpul glyphs
+ * (`0`-`9`, `A`-`Z`), so `resolveDotMatrix` renders a real matrix and
+ * `DotMatrixLabel` draws it. These assertions exercise the acceptance
+ * examples from `docs/plans/2026-08-02-001-feat-magazine-dot-matrix-label-plan.md`:
+ *  - AE1 — a 4-cell magazine renders every character of a label that fits.
+ *  - AE2 / AE8 — a 2-cell GL9 magazine renders only the trailing digits when
+ *    the label overflows, with an accessible name naming exactly what was
+ *    drawn, and the stored label still reads in full as text.
+ *  - AE6 — Magpul mode off suppresses the matrix entirely, whatever the
+ *    label contains.
  *
  * Two personas, both reused rather than newly seeded:
  *  - "magpul-mode" (already seeded with `magpulMode: true` by the launcher)
- *    for the on case. That account is also used by `magpul-mode.spec.ts`,
+ *    for the on cases. That account is also used by `magpul-mode.spec.ts`,
  *    whose first step depends on a cold-start "Start with a magazine" empty
  *    state (no firearms, no magazines). This spec restores that invariant by
- *    deleting the magazine it creates before the test ends, so the two specs
- *    stay compatible regardless of which runs first in a full-suite run.
+ *    deleting every magazine it creates before each test ends, so the two
+ *    specs stay compatible regardless of which runs first in a full-suite
+ *    run.
  *  - "theme" (plain, `magpulMode` off by default) for the off case — chosen
  *    because `theme.spec.ts` only needs the theme toggle to be visible on
  *    `/magazines` and never asserts on magazine/firearm counts, so a
@@ -81,9 +82,12 @@ async function deleteFromDetailPage(page: Page): Promise<void> {
 }
 
 magpulTest(
-  "magazine detail page with Magpul mode on shows the label as text and no dot-matrix graphic while the glyph table is empty",
+  "AE1: a 4-cell magazine with Magpul mode on renders every character of a label that fits, and the label still reads as text",
   async ({ page }) => {
-    const brandModel = "Dot Matrix Coverage PMAG";
+    // "LR/SR" normalizes to a substring containing the floorplate.ts "LRSR"
+    // token, so this brandModel resolves to a *matched* (verified) 4-cell
+    // floorplate rather than the unrecognized-model fallback.
+    const brandModel = "Magpul PMAG 20 LR/SR GEN M3";
     const label = "US04";
 
     // Attached before the magazine is created and before the first
@@ -95,11 +99,12 @@ magpulTest(
       await addMagazineAndOpenDetail(page, brandModel, label);
 
       await expect(page.getByText(label, { exact: true })).toBeVisible();
-      // KTD3: an empty glyph table suppresses the matrix entirely — no
-      // img-role graphic is drawn at all, painted or not.
       await expect(
-        page.getByRole("img", { name: /Dot pattern to paint/ }),
-      ).toHaveCount(0);
+        page.getByRole("img", {
+          name: "Dot pattern to paint on a 4-cell floorplate: U S 0 4",
+          exact: true,
+        }),
+      ).toBeVisible();
 
       await page.setViewportSize({ width: 320, height: 844 });
       await page.reload();
@@ -118,8 +123,35 @@ magpulTest(
   },
 );
 
+magpulTest(
+  "AE2/AE8: a 2-cell GL9 magazine with Magpul mode on renders only the trailing digits of an overflowing label, with an accessible name naming exactly what was drawn",
+  async ({ page }) => {
+    // "GL9" matches the floorplate.ts GL9-family token, resolving to a
+    // matched 2-cell floorplate. The 4-character label overflows it, so only
+    // the trailing digit run ("04") is drawn (R8).
+    const brandModel = "Magpul GL9";
+    const label = "US04";
+
+    try {
+      await addMagazineAndOpenDetail(page, brandModel, label);
+
+      // The stored label still renders in full as text (R13) even though
+      // the matrix draws only its trailing digits.
+      await expect(page.getByText(label, { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("img", {
+          name: "Dot pattern to paint on a 2-cell floorplate: 0 4",
+          exact: true,
+        }),
+      ).toBeVisible();
+    } finally {
+      await deleteFromDetailPage(page);
+    }
+  },
+);
+
 plainTest(
-  "magazine detail page with Magpul mode off is unaffected by the dot-matrix feature",
+  "AE6: magazine detail page with Magpul mode off is unaffected by the dot-matrix feature",
   async ({ page }) => {
     const brandModel = "Non-Magpul Coverage Mag";
     const label = "raw-label";

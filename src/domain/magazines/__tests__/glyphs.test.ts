@@ -152,8 +152,37 @@ describe("parseGlyphTable", () => {
 });
 
 describe("MAGPUL_GLYPHS", () => {
-  test("is empty until the diagram is transcribed — ships dark (KTD3)", () => {
+  test("covers every character in 0-9 and A-Z, and carries no hyphen (the transcribed Magpul sheet has 36 glyphs, no punctuation)", () => {
     const table: GlyphTable = MAGPUL_GLYPHS;
-    expect(table.size).toBe(0);
+
+    const expectedCharacters = [
+      ..."0123456789",
+      ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    ];
+
+    expect(table.size).toBe(36);
+    for (const character of expectedCharacters) {
+      expect(table.has(character)).toBe(true);
+    }
+    expect(table.has("-")).toBe(false);
+  });
+
+  test("spot-checks '0' and '1' against known glyph patterns, to catch a bad regeneration", () => {
+    const table: GlyphTable = MAGPUL_GLYPHS;
+
+    expect(table.get("0")).toEqual([
+      [true, true, true],
+      [true, false, true],
+      [true, false, true],
+      [true, false, true],
+      [true, true, true],
+    ]);
+    expect(table.get("1")).toEqual([
+      [true, true, false],
+      [false, true, false],
+      [false, true, false],
+      [false, true, false],
+      [true, true, true],
+    ]);
   });
 });

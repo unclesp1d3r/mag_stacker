@@ -15,7 +15,7 @@ execution: code
 
 - **Objective:** Render a magazine's `label` in the detail view as Magpul PMAG dot-matrix glyphs, so an owner can copy the mark onto a floorplate with a paint pen and recognize a painted magazine from its record. Resolves GitHub issue #20.
 - **Product authority:** Owner (`unclesp1d3r`), via brainstorm. Decisions below are pinned unless planning surfaces a conflict.
-- **Ships dark.** The authoritative glyph patterns have not been transcribed from Magpul's diagram, and the model-to-cell-count list covers only the two seed families R5 names. This plan builds the whole machinery against an empty glyph table, which suppresses the matrix (KTD3) — so merging it changes nothing an owner sees. Transcribing `src/data/magpul-glyphs.txt` and extending the model list are follow-ups that turn the feature on; both are data-only *if* the transcription confirms R2's 3-column cell, which the Dependencies section flags as unverified.
+- **Font transcribed; feature live.** `src/data/magpul-glyphs.txt` now carries all 36 glyphs (`0`-`9`, `A`-`Z`) transcribed from Magpul's diagram, so KTD3's suppression no longer applies and the matrix renders for any magazine whose owner has Magpul mode on. The model-to-cell-count list still covers only the two seed families R5 names; a `brandModel` outside them renders under R4's unverified 4-cell fallback until more counts are sourced.
 - **Stop conditions:** Stop and surface a blocker if the owner's `magpulMode` cannot be resolved server-side without a second round trip, or if `--muted-foreground` fails the 3:1 contrast assertion in U5 (that would mean a token was retuned since planning and R15 needs a new token, which is a product-visible choice).
 - **Tail ownership:** The caller owns branch, commit, and PR. Do not open a PR from inside implementation.
 
@@ -51,7 +51,7 @@ Floorplate capacity is not uniform. A 7.62x51 PMAG carries 4 dot cells; a GL9 ca
 
 **Glyph font**
 
-- R1. The glyph font covers `0`-`9`, `A`-`Z`, and hyphen, one glyph per character, transcribed from Magpul's published PMAG Gen M3 dot-matrix diagram.
+- R1. The glyph font covers `0`-`9` and `A`-`Z`, one glyph per character, transcribed from Magpul's published PMAG Gen M3 dot-matrix diagram. Magpul's sheet carries no hyphen and no punctuation. Consequence: #21 still permits a hyphen in a stored label, so a label containing one is unrepresentable under R9. Open product question, not decided here — drop hyphen from the allowed character set, or accept that behavior.
 - R2. Each glyph occupies a fixed dot cell of 3 columns by 5 rows. A hyphen occupies one cell like any other glyph.
 
 **Cell count**
@@ -121,16 +121,16 @@ flowchart TB
 
 #### Deferred to follow-up work
 
-- **Transcribing the glyph table** into `src/data/magpul-glyphs.txt`. Data-only *provided the diagram confirms a 3-column cell*; a 4-column font instead forces rework of U1's row format, the `GlyphCell` type, and KTD6's geometry. Confirm the column count first.
 - **Extending the model-to-cell-count list** in `src/domain/magazines/floorplate.ts` beyond the two seed families. Data-only.
-- **E2E assertions on a rendered matrix.** Until the glyph table has rows, no matrix can render in a real browser, so U7 covers the suppressed state. The rendering assertions land with the transcription.
+
+The glyph table transcription and the rendered-matrix E2E assertions this section previously deferred are both done — see Dependencies and U7.
 
 ### Dependencies / Assumptions
 
-- **Blocking prerequisite: the transcribed glyph table.** The dot patterns for R1 exist only in Magpul's diagram (`https://magpul.com/media/wysiwyg/Instructions/Magpul_Dot_Matrix.pdf`). The owner transcribes them into a checked-in fixture, which becomes the source of truth. Before the fixture is treated as authoritative it is cross-checked against the community matrix reference listed in Sources, with any discrepancy resolved against the Magpul PDF. This blocks the *feature being visible*, not this plan's implementation — see KTD2 and KTD3.
+- **Transcribed glyph table (done).** The dot patterns for R1 were transcribed by the owner from Magpul's diagram (`https://magpul.com/media/wysiwyg/Instructions/Magpul_Dot_Matrix.pdf`) into `src/data/magpul-glyphs.txt`, cross-checked against the community matrix reference listed in Sources, with the Magpul PDF winning ties. All 36 glyphs (`0`-`9`, `A`-`Z`) are present; no hyphen, per R1. No longer blocking — KTD3's suppression is now a no-op.
 - **Blocking prerequisite: cell counts, sourced separately.** The Magpul PDF carries only the character font, not per-model floorplate capacity, so R5's list cannot be derived from it. Counts come from counting dot cells on physical floorplates or from a per-model source, and are needed for common 4-cell models as much as for the ones that differ — an unlisted 4-cell model still renders under R4's fallback caveat. An entry taken from a published per-model source is cross-checked against a second independent source before it is treated as authoritative, mirroring the glyph-table cross-check above; a count taken by counting dot cells on the physical floorplate is authoritative on its own. A wrong count on a matched model is worse than an unrecognized one, because R4's unverified caveat attaches only to models that miss the list — a miscounted entry renders as though it were confirmed.
 - **Depends on #21 (shipped) and needs new read-path wiring.** Reuses the per-account `magpulMode` flag and the shared constants in `src/domain/magazines/constants.ts`. R6 keys on the magazine **owner's** flag, but `app/(app)/magazines/[id]/page.tsx` currently passes the *viewer's* session flag under the same `magpulMode` name; resolving the owner's flag is a new server-side lookup, not reuse of the existing prop.
-- **Grid dimensions are asserted, not verified.** R2's 3x5 follows the shipped #21 plan; issue #20 describes "approximately 4 columns x 5 rows". The transcription settles it, and R2 is corrected if the diagram disagrees. If it comes back 4 columns wide, the transcription is **not** a data-only change: U1's row-width format, the `GlyphCell` type, and KTD6's geometry all assume 3 columns, and a fourth column widens the 4-cell matrix past the viewport budget KTD6 sizes to. Confirming the column count before transcribing the full font is the cheap way to avoid that rework.
+- **Grid dimensions confirmed by the sheet.** R2's 3x5 cell is no longer an assumption carried over from #21 — Magpul's diagram confirms a 3-column x 5-row cell for every transcribed glyph, matching U1's row-width format, the `GlyphCell` type, and KTD6's geometry as shipped.
 - **A trailing digit run that still overflows is treated as unrepresentable** (R9) rather than truncated further. This is reachable by ordinary input, not only by pre-existing labels: #21's length cap is a flat 4 characters and is not scoped per floorplate, so a freshly entered all-digit label such as `1234` on a 2-cell GL9 has a trailing digit run longer than the magazine's cell count.
 - **Matching is against a normalized `brandModel`.** Exact normalization and matching are planning decisions — see KTD4. A miss is not harmless — it produces a 4-cell render for a magazine that may hold fewer — which is why R4 marks the fallback unverified rather than presenting it as known.
 
@@ -483,10 +483,10 @@ Requirement-to-proof map:
 - R6 — U4's integration test where the grantee's flag and the owner's flag disagree.
 - R7, R8, R9, R10 — U3's tests, one per acceptance example plus the boundary and combined cases. These prove the resolver's structured output. R9's **message wording** is not covered.
 - R11, R12, R15 — U5's contrast guard over `app/globals.css`, in both themes, plus the differing-diameter assertion.
-- R13 — **not verified by this plan.** U7 can only assert that no `img`-role graphic exists while the glyph table is empty; the accessible-name wording KTD8 specifies is verifiable only once a matrix can render, and lands with the transcription.
+- R13 — U7 asserts the exact accessible name KTD8 specifies (`Dot pattern to paint on a 2-cell floorplate: 0 4`) against a rendered matrix, and that the stored label still reads as text alongside it.
 - R14 — verified structurally: `app/(app)/magazines/magazines-view.tsx` appears in no unit's Files list.
 
-The three unverified items above are all message or accessible-name copy, and all become testable in the same follow-up that transcribes the glyph table. Do not read a green `just ci-check` as proof that R4's caveat, R9's message, or R13's alternative reads correctly.
+R4's caveat wording and R9's message wording remain unverified by an automated test. Do not read a green `just ci-check` as proof that either reads correctly.
 
 ---
 
@@ -495,7 +495,7 @@ The three unverified items above are all message or accessible-name copy, and al
 Global:
 
 - `just ci-check` passes.
-- The glyph fixture ships with zero glyph rows, and a fresh detail-view render shows no matrix, no empty grid, and no caption for any magazine.
+- The glyph fixture ships with all 36 glyphs (`0`-`9`, `A`-`Z`) transcribed; a fresh detail-view render shows the matrix wherever the Product Contract's R6-R10 rules say it should, and nothing otherwise — no matrix, no empty grid, no caption when mode is off, the label is empty, or the label is unrepresentable.
 - No `data-testid` was added anywhere in the app.
 - No test was skipped, disabled, or gated behind an environment variable. In particular, no `process.env.DATABASE_URL ? describe : describe.skip` idiom was reintroduced.
 - Dead ends from abandoned approaches are removed from the diff, not left commented out.
@@ -503,7 +503,7 @@ Global:
 
 Per unit:
 
-- U1 — `parseGlyphTable` throws on every malformed shape listed; the shipped fixture parses; `MAGPUL_GLYPHS` is empty.
+- U1 — `parseGlyphTable` throws on every malformed shape listed; the shipped fixture parses; `MAGPUL_GLYPHS` holds all 36 transcribed glyphs.
 - U2 — both seed families resolve as *matched*, and an unknown model resolves to 4 cells *unmatched*.
 - U3 — every acceptance example AE1-AE9 has a named test, plus the unverified-and-unrepresentable combination and both R7/R8 and R8/R9 boundaries.
 - U4 — `bun run typecheck` passes after the prop rename, and the owner-versus-viewer integration test passes in both directions.
