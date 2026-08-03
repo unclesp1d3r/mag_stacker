@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, count, eq } from "drizzle-orm";
 import { authorizeOwnerOnlyUpdate } from "@/src/auth/authorize";
 import { NotFoundError } from "@/src/auth/errors";
 import { resolvePermission } from "@/src/auth/visibility";
@@ -556,4 +556,63 @@ export async function listOwnerAccessoryCategories(
     .where(eq(accessory.ownerId, actorId))
     .orderBy(asc(accessory.category));
   return rows.map((row) => row.category);
+}
+
+/**
+ * Every category the owner has configured at least one default for, in one
+ * scope (U7) — alongside `listOwnerAccessoryCategories`, this is what lets
+ * the defaults settings surface keep showing a category once it has been
+ * armed (KTD8), even after its only matching accessory is deleted, or before
+ * one ever existed. Firearm categories never need this: `FIREARM_TYPES` is
+ * the fixed, already-known list.
+ */
+export async function listConfiguredCategories(
+  actorId: string,
+  scope: ServiceScope,
+): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ category: serviceRuleDefault.category })
+    .from(serviceRuleDefault)
+    .where(
+      and(
+        eq(serviceRuleDefault.ownerId, actorId),
+        eq(serviceRuleDefault.scope, scope),
+      ),
+    )
+    .orderBy(asc(serviceRuleDefault.category));
+  return rows.map((row) => row.category);
+}
+
+/**
+ * Count of the owner's items in one category — firearms of a `type`, or
+ * accessories of a `category` (U7). Surfaced next to each category on the
+ * defaults settings screen so editing or deleting a default states plainly
+ * how many items it reaches (R4's live-inheritance consequence) before the
+ * owner saves. A plain per-category count, not a per-rule one: every item in
+ * the category resolves some version of every rule in the set (its own
+ * override, or the default), so "how many items does this category's default
+ * set reach" is answered at the category level, one step up from any single
+ * rule's override state.
+ */
+export async function countItemsInCategory(
+  actorId: string,
+  scope: ServiceScope,
+  category: string,
+): Promise<number> {
+  const [row] =
+    scope === "firearm"
+      ? await db
+          .select({ total: count() })
+          .from(firearm)
+          .where(and(eq(firearm.ownerId, actorId), eq(firearm.type, category)))
+      : await db
+          .select({ total: count() })
+          .from(accessory)
+          .where(
+            and(
+              eq(accessory.ownerId, actorId),
+              eq(accessory.category, category),
+            ),
+          );
+  return row?.total ?? 0;
 }

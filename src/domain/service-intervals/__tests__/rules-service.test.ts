@@ -13,10 +13,13 @@ import {
   makeServiceEvent,
 } from "@/src/test-support/factories";
 import {
+  countItemsInCategory,
   createItemRule,
   createServiceRuleDefault,
   deleteItemRule,
+  deleteServiceRuleDefault,
   getEffectiveRules,
+  listConfiguredCategories,
   listItemRules,
   listOwnerAccessoryCategories,
   listServiceRuleDefaults,
@@ -395,5 +398,86 @@ describe("service-intervals rules-service (U3)", () => {
 
     const categories = await listOwnerAccessoryCategories(owner);
     expect(categories).toEqual(["Grip", "Optic", "Sling"]);
+  });
+
+  test("covers U7: countItemsInCategory counts only the owner's items of that scope+category", async () => {
+    const owner = await newOwner("u7count");
+    const other = await newOwner("u7countOther");
+    await makeFirearm(owner, { type: "rifle" });
+    await makeFirearm(owner, { type: "rifle" });
+    await makeFirearm(owner, { type: "pistol" });
+    await makeFirearm(other, { type: "rifle" });
+    await makeAccessory(owner, { category: "Optic" });
+
+    expect(await countItemsInCategory(owner, "firearm", "rifle")).toBe(2);
+    expect(await countItemsInCategory(owner, "firearm", "pistol")).toBe(1);
+    expect(await countItemsInCategory(owner, "firearm", "shotgun")).toBe(0);
+    expect(await countItemsInCategory(owner, "accessory", "Optic")).toBe(1);
+    expect(await countItemsInCategory(owner, "accessory", "Sling")).toBe(0);
+  });
+
+  test("covers U7: listConfiguredCategories surfaces a category armed ahead of any accessory, and stays after the accessory is gone", async () => {
+    const owner = await newOwner("u7configured");
+    await createServiceRuleDefault(owner, {
+      scope: "accessory",
+      category: "Muzzle Device",
+      name: "Cleaning",
+      intervalRounds: 500,
+    });
+
+    const configured = await listConfiguredCategories(owner, "accessory");
+    expect(configured).toEqual(["Muzzle Device"]);
+
+    const existing = await listOwnerAccessoryCategories(owner);
+    expect(existing).toEqual([]);
+  });
+
+  test("covers U7: deleting a default removes the inherited rule from every item that had not overridden it", async () => {
+    const owner = await newOwner("u7deleteDefault");
+    const overridden = await makeFirearm(owner, { type: "rifle" });
+    const plain = await makeFirearm(owner, { type: "rifle" });
+    const def = await createServiceRuleDefault(owner, {
+      scope: "firearm",
+      category: "rifle",
+      name: "Cleaning",
+      intervalRounds: 500,
+    });
+    await createItemRule(owner, "firearm", overridden.id, {
+      name: "Cleaning",
+      intervalRounds: 300,
+    });
+
+    await deleteServiceRuleDefault(owner, def.id);
+
+    const overriddenRules = await getEffectiveRules(
+      owner,
+      "firearm",
+      overridden.id,
+    );
+    const plainRules = await getEffectiveRules(owner, "firearm", plain.id);
+    // The override row still stands (it's the item's own row, untouched by
+    // the default's deletion) — with no default left to match it against, it
+    // now resolves item-only rather than overridden. The item with no
+    // override of its own loses the rule entirely.
+    expect(overriddenRules.find((r) => r.name === "Cleaning")).toMatchObject({
+      intervalRounds: 300,
+      inheritanceState: "item-only",
+    });
+    expect(plainRules.find((r) => r.name === "Cleaning")).toBeUndefined();
+  });
+
+  test("covers U7: listConfiguredCategories drops a category once its only default is deleted", async () => {
+    const owner = await newOwner("u7configuredDelete");
+    const def = await createServiceRuleDefault(owner, {
+      scope: "accessory",
+      category: "Sling",
+      name: "Cleaning",
+      intervalRounds: 500,
+    });
+
+    await deleteServiceRuleDefault(owner, def.id);
+
+    const configured = await listConfiguredCategories(owner, "accessory");
+    expect(configured).toEqual([]);
   });
 });
