@@ -86,6 +86,24 @@ function scalarFields(
   };
 }
 
+/**
+ * Resolves an owner's magpulMode by id. Fails loudly rather than treating a
+ * missing owner row as mode-off — a magazine always carries a valid owner FK,
+ * so a miss means corrupt state, not a disabled setting.
+ */
+async function resolveOwnerMagpulMode(
+  database: DbOrTx,
+  ownerId: string,
+): Promise<boolean> {
+  const [ownerRow] = await database
+    .select({ magpulMode: user.magpulMode })
+    .from(user)
+    .where(eq(user.id, ownerId))
+    .limit(1);
+  if (!ownerRow) throw new NotFoundError();
+  return ownerRow.magpulMode ?? false;
+}
+
 /** Attach viewer-relative compatibility (ordinal order, unseen firearms dropped). */
 async function attachCompatibility(
   database: DbOrTx,
@@ -112,16 +130,7 @@ export async function createMagazine(
   const row = await db.transaction(async (tx) => {
     const ownerId = await resolveCreateOwner(tx, actorId, input.ownerId);
 
-    const [ownerRow] = await tx
-      .select({ magpulMode: user.magpulMode })
-      .from(user)
-      .where(eq(user.id, ownerId))
-      .limit(1);
-    // The owner was just resolved/authorized; a missing row means corrupt
-    // state, not "mode off" — fail loudly rather than silently skipping the
-    // constraint.
-    if (!ownerRow) throw new NotFoundError();
-    const ownerMagpulMode = ownerRow.magpulMode ?? false;
+    const ownerMagpulMode = await resolveOwnerMagpulMode(tx, ownerId);
 
     const codes = validateMagazine(input, 1, {
       ownerMagpulMode,
@@ -183,15 +192,7 @@ export async function updateMagazine(
       .limit(1);
     if (!existing) throw new NotFoundError();
 
-    const [ownerRow] = await tx
-      .select({ magpulMode: user.magpulMode })
-      .from(user)
-      .where(eq(user.id, existing.ownerId))
-      .limit(1);
-    // A magazine always has a valid owner (FK); a missing row is corrupt state,
-    // not "mode off" — fail loudly rather than silently skipping the check.
-    if (!ownerRow) throw new NotFoundError();
-    const ownerMagpulMode = ownerRow.magpulMode ?? false;
+    const ownerMagpulMode = await resolveOwnerMagpulMode(tx, existing.ownerId);
 
     const codes = validateMagazine(input, 1, {
       ownerMagpulMode,
@@ -263,7 +264,13 @@ export async function deleteMagazine(
 export async function getMagazine(
   actorId: string,
   id: string,
-): Promise<{ magazine: MagazineWithCompatibility; permission: Permission }> {
+): Promise<{
+  magazine: MagazineWithCompatibility;
+  permission: Permission;
+  ownerMagpulMode: boolean;
+}> {
+  // Authorization gate stays first: the owner-mode lookup below must never run
+  // for a magazine the actor can't see, or it becomes an oracle for existence.
   const permission = await resolvePermission(db, actorId, "magazine", id);
   if (permission === null) throw new NotFoundError();
   const [row] = await db
@@ -272,10 +279,15 @@ export async function getMagazine(
     .where(eq(magazine.id, id))
     .limit(1);
   if (!row) throw new NotFoundError();
-  const [withCompat] = await attachCompatibility(db, actorId, [row]);
+  // Independent once the authorization/existence gates above have passed —
+  // run concurrently.
+  const [ownerMagpulMode, [withCompat]] = await Promise.all([
+    resolveOwnerMagpulMode(db, row.ownerId),
+    attachCompatibility(db, actorId, [row]),
+  ]);
   // Return the viewer's permission alongside the record so the caller doesn't
   // re-resolve it (one query, no read-vs-permission race between two calls).
-  return { magazine: withCompat, permission };
+  return { magazine: withCompat, permission, ownerMagpulMode };
 }
 
 /**

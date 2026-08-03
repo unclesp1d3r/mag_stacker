@@ -116,6 +116,71 @@ Handgun Cartridge
 9mm Makarov
 `;
 
+export const MAGPUL_GLYPHS_RAW = `# Magpul PMAG Gen M3 dot-matrix glyph font (#20).
+#
+# Format: one glyph per line —
+#   <character> <row1> <row2> <row3> <row4> <row5>
+# where each row is exactly 3 characters wide: \`#\` marks a painted dot, \`.\`
+# marks an unpainted position. Example shape (illustrative only, not an
+# authoritative transcription):
+#   4 #.# #.# ### ..# ..#
+#
+# Source of truth: Magpul's published PMAG Gen M3 dot-matrix diagram —
+# https://magpul.com/media/wysiwyg/Instructions/Magpul_Dot_Matrix.pdf
+# Cross-check every transcribed row against the community reference below
+# before treating it as authoritative; resolve any discrepancy against the
+# Magpul PDF, which wins ties —
+# https://www.ar15.com/media/viewFile.html?i=36785
+#
+# Transcribed from the Magpul PDF by rendering it at 300 DPI, recovering the
+# dot lattice, and sampling every position -- then verified against the sheet
+# by eye. Magpul's own sheet orders the digits 1-9 then 0; order here is
+# irrelevant since the parser keys on the character. The sheet carries NO
+# hyphen and no punctuation, so a stored label containing one is
+# unrepresentable (R9). Blank lines and lines beginning with \`#\` in column
+# zero are comments and are skipped by the parser
+# (src/domain/magazines/glyphs.ts).
+#
+# Covers R1 (glyph coverage: 0-9, A-Z, hyphen) and R2 (fixed 3x5 dot cell).
+
+0 ### #.# #.# #.# ###
+1 ##. .#. .#. .#. ###
+2 ### ..# ### #.. ###
+3 ### ..# ### ..# ###
+4 #.# #.# ### ..# ..#
+5 ### #.. ### ..# ###
+6 ### #.. ### #.# ###
+7 ### ..# ..# ..# ..#
+8 ### #.# ### #.# ###
+9 ### #.# ### ..# ..#
+A ### #.# ### #.# #.#
+B ##. #.# ##. #.# ##.
+C ### #.. #.. #.. ###
+D ##. #.# #.# #.# ##.
+E ### #.. ### #.. ###
+F ### #.. ### #.. #..
+G .## #.. ### #.# .#.
+H #.# #.# ### #.# #.#
+I ### .#. .#. .#. ###
+J ..# ..# ..# #.# .#.
+K #.# #.# ##. #.# #.#
+L #.. #.. #.. #.. ###
+M #.# ### #.# #.# #.#
+N ##. #.# #.# #.# #.#
+O .#. #.# #.# #.# .#.
+P ### #.# ### #.. #..
+Q ### #.# #.# ### ..#
+R ### #.# ##. #.# #.#
+S ### #.. ### ..# ###
+T ### .#. .#. .#. .#.
+U #.# #.# #.# #.# ###
+V #.# #.# #.# #.# .#.
+W #.# #.# #.# ### #.#
+X #.# #.# .#. #.# #.#
+Y #.# #.# .#. .#. .#.
+Z ### ..# .#. #.. ###
+`;
+
 export const MANUFACTURERS_RAW = `2A Armament
 Accuracy International
 Adams Arms

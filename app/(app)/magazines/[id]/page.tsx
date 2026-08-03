@@ -25,12 +25,14 @@ export default async function MagazineDetailPage({ params }: PageProps) {
   // getMagazine throws NotFoundError for a record not owned or shared — the
   // not-found path never reveals existence (R9). It returns the permission so we
   // don't re-resolve it.
-  const { magazine: row, permission } = await getMagazine(user.id, id).catch(
-    (error: unknown) => {
-      if (error instanceof NotFoundError) notFound();
-      throw error;
-    },
-  );
+  const {
+    magazine: row,
+    permission,
+    ownerMagpulMode,
+  } = await getMagazine(user.id, id).catch((error: unknown) => {
+    if (error instanceof NotFoundError) notFound();
+    throw error;
+  });
 
   const [firearms, caliberSuggestions, prefixData] = await Promise.all([
     listFirearms(user.id),
@@ -76,7 +78,7 @@ export default async function MagazineDetailPage({ params }: PageProps) {
       caliberSuggestions={caliberSuggestions}
       prefixOptions={prefixData.prefixes}
       prefixNextStart={prefixData.nextStart}
-      magpulMode={user.magpulMode}
+      ownerMagpulMode={ownerMagpulMode}
     />
   );
 }

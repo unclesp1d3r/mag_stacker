@@ -1,4 +1,5 @@
 import { authTest, expect } from "./fixtures/auth";
+import { trackConsoleErrors } from "./fixtures/console-errors";
 
 /**
  * Three-way theme toggle (R8). next-themes resolves data-theme to only light or
@@ -23,18 +24,7 @@ test("theme toggle cycles the three modes without console errors", async ({
 }) => {
   // Ignore only the specific favicon 404 some production builds emit — a
   // narrow allowlist so genuine runtime errors (incl. net::ERR_*) still fail.
-  const BENIGN = [/favicon\.ico/i];
-  const isBenign = (text: string) =>
-    BENIGN.some((pattern) => pattern.test(text));
-  const consoleErrors: string[] = [];
-  page.on("console", (message) => {
-    if (message.type() === "error" && !isBenign(message.text())) {
-      consoleErrors.push(message.text());
-    }
-  });
-  page.on("pageerror", (error) => {
-    if (!isBenign(error.message)) consoleErrors.push(error.message);
-  });
+  const consoleErrors = trackConsoleErrors(page);
 
   await page.emulateMedia({ colorScheme: "light" });
   await page.goto("/magazines");
