@@ -42,6 +42,7 @@ Floorplate capacity is not uniform. A 7.62x51 PMAG carries 4 dot cells; a GL9 ca
 - **An unrecognized model falls back to 4 cells, shown as unverified.** Rendering nothing would disable the feature for every model absent from a deliberately small list, but a silent 4-cell mark is confidently wrong guidance for a permanent painted mark on a smaller floorplate. Marking the fallback unverified keeps the feature useful and puts the uncertainty where the owner acts on it. This is why R5's list carries known 4-cell models rather than only the models that differ: without them a genuinely 4-cell magazine could never be a match, so the caveat would fire on the common case and stop carrying any signal. Governs R4.
 - **An over-long label renders its number component only.** The prefix is what an owner drops when the floorplate is short; the number is what distinguishes one magazine from the next. Because numbering runs per prefix, this makes a short-floorplate mark unique within a prefix but not across the whole inventory — `US04` and `EU04` both paint `04`. Accepted as a limitation of the hardware rather than designed around. Governs R8.
 - **A label that cannot be represented renders nothing and says so.** Chosen over truncating to leading or trailing characters, either of which would paint a mark that is not the magazine's label. Governs R9.
+- **A character the font cannot draw is dropped, not fatal.** Reversed in session from "renders nothing": the floorplate has no hyphen cell, so a hyphen is unpaintable as a matter of physical fact, and withholding the whole pattern over it denies the owner a mark they could otherwise apply. R8 already accepts that the painted mark can differ from the stored label — it drops an entire prefix — so refusing to drop one hyphen was the inconsistent position. The residual collision risk (`A-1` and `A1` paint alike) already exists under R8, where `US04` and `XY04` both paint `04`. Rejected alternative: narrowing #21's allowed character set to remove the hyphen, which would invalidate stored labels and need a migration. Governs R1, R9a. *(session-settled: user-directed)*
 - **Unpainted dot positions stay visible.** Weighed against drawing painted dots alone and against outlining each character cell. Showing the whole cell is what helps while aiming a paint pen. Governs R11.
 - **Rendering the glyphs, rather than linking Magpul's diagram beside the label.** A link is far cheaper and carries none of the matching or transcription risk, but leaves the owner doing the character-to-dot translation by hand in both directions — which is the friction this feature exists to remove. This release removes that friction in the painting direction only. Recognizing an unidentified painted magazine still means opening records one at a time, because the list-row glyph that would let an owner scan for a matching pattern is deferred. Governs R1, R2, R14.
 - **A floorplate's cell count means one face.** A magazine that carries a matrix on both faces is marked with the same characters twice, not with one mark split across the two sides — a mark you have to turn the magazine over to finish reading defeats the at-a-glance recognition this feature is for. This matters only where a single face holds fewer than 4 cells, since #21 caps labels at 4 characters and no floorplate of 4 or more is ever the binding constraint. Governs R3, R5. (session-settled: user-directed)
@@ -51,8 +52,8 @@ Floorplate capacity is not uniform. A 7.62x51 PMAG carries 4 dot cells; a GL9 ca
 
 **Glyph font**
 
-- R1. The glyph font covers `0`-`9` and `A`-`Z`, one glyph per character, transcribed from Magpul's published PMAG Gen M3 dot-matrix diagram. Magpul's sheet carries no hyphen and no punctuation. Consequence: #21 still permits a hyphen in a stored label, so a label containing one is unrepresentable under R9. Open product question, not decided here — drop hyphen from the allowed character set, or accept that behavior.
-- R2. Each glyph occupies a fixed dot cell of 3 columns by 5 rows. A hyphen occupies one cell like any other glyph.
+- R1. The glyph font covers `0`-`9` and `A`-`Z`, one glyph per character, transcribed from Magpul's published PMAG Gen M3 dot-matrix diagram. Magpul's sheet carries no hyphen and no punctuation. #21 still permits a hyphen in a stored label, so a hyphenated label is ordinary user data that the font cannot spell; R9a resolves this by dropping the hyphen from the drawn pattern rather than by narrowing #21's character set. *(session-settled: user-directed)*
+- R2. Each glyph occupies a fixed dot cell of 3 columns by 5 rows. There is no hyphen glyph, so a hyphen occupies no cell at all — see R9a.
 
 **Cell count**
 
@@ -65,7 +66,8 @@ Floorplate capacity is not uniform. A 7.62x51 PMAG carries 4 dot cells; a GL9 ca
 - R6. The matrix renders only when the magazine owner's Magpul mode is on, per R10 of `docs/plans/2026-07-01-001-feat-magpul-mode-label-constraint-plan.md`.
 - R7. When the label's length is within the magazine's cell count, every character renders as its glyph.
 - R8. When the label exceeds the cell count, only its trailing run of digits renders.
-- R9. When the label cannot be represented, no matrix renders and the view states that the label does not fit this magazine's floorplate. A label cannot be represented when it contains a character absent from the glyph font, or when it exceeds the cell count and its trailing digit run is absent or itself exceeds the cell count. When the cell count came from R4's unrecognized-model fallback rather than a matched entry, the message also states that the cell count is unverified, so the owner can tell a true overflow from one inferred off a guessed capacity.
+- R9. When the label cannot be represented, no matrix renders and the view says why. A label cannot be represented when *no* character in it has a glyph, or when the paintable characters exceed the cell count and their trailing digit run is absent or itself exceeds the cell count. The overflow case states that the label does not fit this magazine's floorplate; the no-glyph case states that none of the label's characters can be painted, because "does not fit" would be false for a label that never reached the length check. When the cell count came from R4's unrecognized-model fallback rather than a matched entry, the overflow message also states that the cell count is unverified, so the owner can tell a true overflow from one inferred off a guessed capacity. The no-glyph message carries no such clause — the cell count played no part in it.
+- R9a. A character with no glyph is dropped from the drawn pattern rather than suppressing the pattern entirely, and the view names the dropped characters so the owner is not left to work out why the dots and the label text differ. Magpul's floorplate physically has no hyphen cell, so a hyphen can never be painted whatever the app does — the same class of hard constraint that already makes R8 drop a prefix that will not fit. Dropping is measured before the R7/R8 length checks, so it is the paintable label that is sized against the floorplate. Once R8 has dropped a prefix the omission is not named, because the accessible alternative already states exactly what was drawn. *(session-settled: user-directed)*
 - R10. An empty label renders no matrix and no placeholder grid.
 
 ```mermaid
@@ -76,7 +78,7 @@ flowchart TB
   C -->|yes| Z
   C -->|no| D[Cell count from brandModel; unmatched falls back to 4]
   D --> E{Every character in the glyph font?}
-  E -->|no| Y[No matrix; state that the label does not fit]
+  E -->|no| Y[No matrix; state why it cannot be drawn]
   E -->|yes| F{Label within cell count?}
   F -->|yes| G[Render every character]
   F -->|no| H{Trailing digit run fits?}
@@ -97,8 +99,9 @@ flowchart TB
 - AE1. **Covers R3, R7.** Magpul mode on; a 4-cell PMAG labeled `US04` renders four glyphs: `U`, `S`, `0`, `4`.
 - AE2. **Covers R3, R8.** Magpul mode on; a 2-cell GL9 labeled `US04` renders two glyphs: `0`, `4`. The prefix is not drawn.
 - AE3. **Covers R4, R7.** Magpul mode on; a magazine whose `brandModel` matches no entry, labeled `AR12`, renders four glyphs alongside a statement that the model was not recognized and the floorplate should be confirmed before painting.
-- AE4. **Covers R9.** Magpul mode on; a 2-cell GL9 whose stored label is `AR-X` renders no matrix and states that the label does not fit this magazine's floorplate.
-- AE5. **Covers R9.** Magpul mode on; a 4-cell PMAG whose stored label is `A.1` (a pre-existing label containing an unsupported character) renders no matrix and states that the label does not fit.
+- AE4. **Covers R9, R9a.** Magpul mode on; a 2-cell GL9 whose stored label is `AR-X` drops the hyphen to `ARX`, which still exceeds two cells and has no trailing digit run, so no matrix renders and the view states that the label does not fit this magazine's floorplate.
+- AE5. **Covers R9a.** Magpul mode on; a 4-cell PMAG whose stored label is `A-1` renders `A` and `1` and states that `"-"` was left out of the pattern because the floorplate font has no glyph for it. The stored label still reads in full as text.
+- AE5b. **Covers R9.** Magpul mode on; a 4-cell PMAG whose stored label is `--` renders no matrix and states that none of the label's characters can be painted — nothing survived R9a's drop.
 - AE6. **Covers R6.** Magpul mode off; no matrix renders, whatever the label contains.
 - AE7. **Covers R10.** Magpul mode on; a magazine with an empty label renders no matrix.
 - AE8. **Covers R8, R13.** A 2-cell GL9 labeled `US04` exposes an accessible alternative naming `04` as the pattern to paint, distinguishable from the stored label rather than reading as a bare duplicate of it, and the detail view still shows `US04` as text.
@@ -167,7 +170,7 @@ The glyph table transcription and the rendered-matrix E2E assertions this sectio
 - KTD5. **Painted dots use `--foreground`; unpainted dots use `--muted-foreground`.** Measured against `--card` in `app/globals.css`: `--border` fails R15's 3:1 floor in both themes (1.26:1 dark, 1.40:1 light) despite being the repo's "faint but present" token, while `--muted-foreground` clears it (5.32:1 dark, 5.15:1 light). The anodized-orange accent was considered — `CONCEPTS.md` gives it the "active / lit / marked" semantic — and rejected because the accent marks interactive state, and a painted dot is static content the owner copies in black ink. **R15's "visually distinct from one another" clause rests on radius, not on colour contrast between the two tokens.** Painted-against-unpainted measures 2.67:1 in the dark theme and 3.30:1 in light — enough to tell apart, but too little headroom in dark to make a colour threshold the guarantee. KTD6's smaller unpainted dot carries the distinction instead, and it survives any future retune of either token. Governs R11, R12, R15.
 - KTD6. **Fixed dot geometry, no responsive scaling: 16px pitch, 10px painted diameter, 6px unpainted diameter, 16px gap between cells.** A 4-cell matrix is then 216 x 74 px. The budget it has to fit is 248px: a 320px viewport, less the app shell's horizontal padding, less the 20px-per-side `p-5` on the `Card` in `components/ui/surface.tsx`. The 32px of slack absorbs shell-padding variation. Published guidance for "minimum size to hand-transcribe a dot pattern" does not exist; the floor is derived from dot-peen marking practice (MIL-STD-130 sets ~2mm minimum human-readable character height for exactly this read-and-reproduce task) and from dot-matrix display convention, where dot diameter stays near half the pitch so adjacent lit dots read as discrete marks rather than merging. That yields a floor of roughly 6px diameter and 12-14px pitch; the painted dot sits above it and the unpainted dot sits at it, which is right for a positioning aid rather than the mark being traced. Fluid `vw` scaling is rejected because a component inside a narrow card can breach the floor even on a wide viewport. Governs R11, R15; resolves the deferred minimum-dot-size question.
 - KTD7. **The owner's `magpulMode` is resolved by extending `getMagazine`'s return, not by a second call from the page.** The page cannot join a separate owner lookup into its existing `Promise.all` because `ownerId` only exists after `getMagazine` resolves; extending the return keeps one round-trip shape and is additive for existing destructuring callers. Mirrors the write-path lookup already in `src/domain/magazines/service.ts`. Governs R6.
-- KTD8. **Copy is defined here, once, and imported.** The accessible alternative names the cell count alongside the characters — `Dot pattern to paint on a 2-cell floorplate: 0 4` — spaced characters, prefixed so it cannot be mistaken for a duplicate of the label or a truncation error, and carrying the cell count because that is the context a sighted owner reads off the magazine in their hand and a screen-reader user otherwise has no way to recover when R8 drops a prefix (R13). The unrecognized-model caveat reads `Model not recognized — confirm this floorplate has 4 dot cells before painting.` (R4). The overflow message reads `This label does not fit this magazine's floorplate.`, extended with `The model was not recognized, so the 4-cell count is unverified.` when the count came from the fallback (R9). Governs R4, R9, R13.
+- KTD8. **Copy is defined here, once, and imported.** The accessible alternative names the cell count alongside the characters — `Dot pattern to paint on a 2-cell floorplate: 0 4` — spaced characters, prefixed so it cannot be mistaken for a duplicate of the label or a truncation error, and carrying the cell count because that is the context a sighted owner reads off the magazine in their hand and a screen-reader user otherwise has no way to recover when R8 drops a prefix (R13). The unrecognized-model caveat reads `Model not recognized — confirm this floorplate has 4 dot cells before painting.` (R4). The overflow message reads `This label does not fit this magazine's floorplate.`, extended with `The model was not recognized, so the 4-cell count is unverified.` when the count came from the fallback (R9). The no-glyph message reads `None of this label's characters can be painted on a Magpul floorplate.` and is never extended, since no cell count was consulted (R9). The dropped-character caveat reads `Left out of the pattern: "-" — the Magpul floorplate font has no glyph for it.`, pluralized when more than one character was dropped (R9a). Governs R4, R9, R9a, R13.
 - KTD9. **Resolution runs in the client component inside a `useMemo` keyed on primitives.** Chosen to keep `resolveDotMatrix` a pure call co-located with the only thing that consumes it, rather than threading a resolved result across the RSC boundary for no gain — the parsed table is under a kilobyte, and freshness is not the differentiator, since `magazine-detail-view.tsx` already calls `router.refresh()` on save, which would re-run a server-side resolution just as promptly. This repo runs `reactCompiler: true`, where a freshly-built array handed to a memoized child renders stale — so the memo is keyed on `label`, `brandModel`, and `ownerMagpulMode` (primitives), never on a parent-owned object. Governs R11, R14.
 
 ### High-Level Technical Design
@@ -205,8 +208,8 @@ flowchart LR
 | Case | Meaning | Rs |
 |---|---|---|
 | `hidden` | Owner's mode off, label empty, or glyph table empty | R6, R10, KTD3 |
-| `matrix` | Renderable; carries drawn characters, cells, cell count, and whether the count was verified | R7, R8, R4 |
-| `unrepresentable` | Carries cell count and whether it was verified, so the caller picks the R9 wording | R9 |
+| `matrix` | Renderable; carries drawn characters, cells, cell count, whether the count was verified, and any characters dropped for lack of a glyph | R7, R8, R4, R9a |
+| `unrepresentable` | Carries the reason (no glyph at all vs. does not fit), plus cell count and whether it was verified, so the caller picks the R9 wording | R9 |
 
 ### Assumptions
 
@@ -224,7 +227,7 @@ U1, U2, and U4 are independent and can land in any order. U3 needs U1 and U2 for
 
 ### U1. Glyph table fixture and loader
 
-**Goal:** A checked-in, hand-editable glyph source and a parsed, frozen lookup exposed to the domain layer — shipping with zero glyph rows until the transcription lands.
+**Goal:** A checked-in, hand-editable glyph source and a parsed, frozen lookup exposed to the domain layer. Shipped initially with zero glyph rows; now carries all 36 transcribed glyphs.
 
 **Requirements:** R1, R2. Implements KTD2, KTD3.
 
@@ -254,7 +257,7 @@ U1, U2, and U4 are independent and can land in any order. U3 needs U1 and U2 for
 - Returns an empty table for input that is entirely comments and blank lines.
 - The shipped `src/data/magpul-glyphs.txt` parses without throwing. This is the guard that makes a bad future transcription fail CI.
 
-**Verification:** `bun run test` passes; `MAGPUL_GLYPHS` is empty and importing it does not throw.
+**Verification:** `bun run test` passes; `MAGPUL_GLYPHS` holds all 36 glyphs and every one is asserted against an independently-recorded expected pattern.
 
 ---
 
@@ -311,9 +314,9 @@ U1, U2, and U4 are independent and can land in any order. U3 needs U1 and U2 for
 
 1. Signature takes `{ label, brandModel, ownerMagpulMode, glyphs }`. The glyph table is a parameter, not an import (KTD2), so the tests below run against a synthetic table today.
 2. Resolve in the order the Product Contract's flowchart specifies: mode off -> `hidden`; empty label -> `hidden`; empty glyph table -> `hidden` (KTD3); then cell count via `resolveCellCount`; then font coverage; then length; then trailing-digit fallback.
-3. Font coverage is checked against the *whole stored label* before truncation, per R9's first clause — a label containing an unsupported character is unrepresentable even when its trailing digits would have fit.
+3. Characters with no glyph are dropped from the *whole stored label* before either length check (R9a), so the floorplate is sized against the paintable label. Only a label with nothing paintable left is `unrepresentable` on font grounds.
 4. The trailing digit run is the maximal run of `0-9` at the end of the label. Absent, or longer than the cell count, yields `unrepresentable` (AE9) rather than a further truncation.
-5. `matrix` and `unrepresentable` both carry `cellCount` and `cellCountVerified`, so the caller can compose R9's two-part wording without re-deriving anything.
+5. `matrix` and `unrepresentable` both carry `cellCount` and `cellCountVerified`, so the caller can compose R9's two-part wording without re-deriving anything. `unrepresentable` also carries `reason`, and `matrix` carries `omitted`.
 
 **Patterns to follow:** `src/domain/magazines/validate.ts` — pure, exhaustively unit-tested, doc-comment banner, test comments citing the requirement or AE each case covers (`// covers AE2`).
 
@@ -325,8 +328,9 @@ U1, U2, and U4 are independent and can land in any order. U3 needs U1 and U2 for
 - Covers AE1. `US04` on a 4-cell model returns `matrix` with drawn characters `U`,`S`,`0`,`4` and `cellCountVerified: true`.
 - Covers AE2. `US04` on a 2-cell GL9 returns `matrix` with drawn characters `0`,`4`.
 - Covers AE3. `AR12` on an unmatched model returns `matrix` with four characters and `cellCountVerified: false`.
-- Covers AE4. `AR-X` on a 2-cell GL9 returns `unrepresentable` — the label is within the font but exceeds 2 cells and has no trailing digit run.
-- Covers AE5. `A.1` returns `unrepresentable` because `.` is absent from the font, even on a 4-cell model where the length would have fit.
+- Covers AE4. `AR-X` on a 2-cell GL9 returns `unrepresentable` with reason `doesNotFit` — the hyphen drops out and the remaining `ARX` still exceeds 2 cells with no trailing digit run.
+- Covers AE5. `A-1` returns a `matrix` of `A` and `1` with `omitted` naming the hyphen. AE5b: `--` returns `unrepresentable` with reason `unsupportedCharacter`, since nothing survives the drop.
+- Every acceptance example is re-run against the shipped `MAGPUL_GLYPHS`, not only the synthetic fixture. The two tables disagree wherever a label uses a character Magpul never drew, so a rule proven against the fixture alone is not proven.
 - Covers AE9. `1234` on a 2-cell GL9 returns `unrepresentable` — the trailing digit run is the whole label and still overflows.
 - Combined case, no AE: an *unmatched* model whose label is unrepresentable returns `unrepresentable` with `cellCountVerified: false`, so U6 can add R9's "the 4-cell count is unverified" clause. R9 specifies this but no AE exercises it.
 - A label exactly equal to the cell count renders every character — the boundary between R7 and R8.
@@ -479,14 +483,14 @@ Never run bare `bun test`: it mis-loads the Playwright specs in `e2e/` and repor
 Requirement-to-proof map:
 
 - R1, R2 — U1's parser tests, plus the test that parses the shipped fixture.
-- R3, R4, R5 — U2's lookup tests, including a 4-cell model resolving as *matched*. R4's **caveat wording** is not covered; no test in this plan renders it.
+- R3, R4, R5 — U2's lookup tests, including a 4-cell model resolving as *matched*. R4's caveat wording is asserted as a string in `dot-matrix-messages.test.ts` and as rendered text in the e2e.
 - R6 — U4's integration test where the grantee's flag and the owner's flag disagree.
-- R7, R8, R9, R10 — U3's tests, one per acceptance example plus the boundary and combined cases. These prove the resolver's structured output. R9's **message wording** is not covered.
+- R7, R8, R9, R9a, R10 — U3's tests, one per acceptance example plus the boundary and combined cases, run against both the synthetic fixture and the shipped font. R9's message wording is asserted in `dot-matrix-messages.test.ts` and rendered in the e2e.
 - R11, R12, R15 — U5's contrast guard over `app/globals.css`, in both themes, plus the differing-diameter assertion.
 - R13 — U7 asserts the exact accessible name KTD8 specifies (`Dot pattern to paint on a 2-cell floorplate: 0 4`) against a rendered matrix, and that the stored label still reads as text alongside it.
 - R14 — verified structurally: `app/(app)/magazines/magazines-view.tsx` appears in no unit's Files list.
 
-R4's caveat wording and R9's message wording remain unverified by an automated test. Do not read a green `just ci-check` as proof that either reads correctly.
+R4's and R9's wording are now asserted at the builder level and rendered in the e2e. The remaining unverified area is the per-model cell-count data itself: `MODEL_CELL_COUNTS` covers only the two seed families, and a count added without a physical or cross-checked source would render as though confirmed.
 
 ---
 
