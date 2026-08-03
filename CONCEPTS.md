@@ -95,6 +95,16 @@ A short string an owner has used to start Magazine labels. Recorded per owner an
 
 An owner setting that, when on, constrains Magazine labels to what can physically be written in the dot cells of a Magpul magazine floorplate — a limited character set and length. When off, labels are free text.
 
+## Service intervals
+
+### Service Rule
+
+A named maintenance concern tracked against a Firearm or Accessory — Cleaning, Barrel, Recoil spring, and so on — that sets at least one of three thresholds: elapsed days, range sessions, or rounds fired. An item's Service Rules come from its owner's category defaults, live: each is *inherited*, *overridden* with the item's own thresholds, or *suppressed* (removed from the item entirely); an item may also carry *item-only* rules no default defines. A Service Rule belongs to its item's Owner, so a shared item's rules come from the owner's defaults, never the viewer's.
+
+### Service Event
+
+A single logged act of service against one Service Rule — the date it happened, the acting user, and optional notes. Logging a Service Event sets that rule's measurement point: elapsed days, sessions, and rounds all start counting fresh from it. A Firearm or Accessory's service history is every Service Event against it, newest first.
+
 ## Derived values
 
 ### Total Capacity
@@ -112,6 +122,10 @@ The derived state of an **Ammo** lot whose quantity in rounds is at or under its
 ### Last Inventoried
 
 A Magazine's most recent physical-count date: the `occurredAt` of the latest **Inventory Log** entry with **Event Type** `inventoried`. Derived, not stored — and blank (a first-class state) when the Magazine has never been inventoried. Respects owner-scoping: derived only from entries visible through the parent Magazine.
+
+### Due
+
+The derived state of a **Service Rule** whose elapsed days, sessions, or rounds fired — measured since its last **Service Event**, or the item's origin date when none exists — meets or exceeds any threshold it sets. Binary, never a severity tier: distance past a threshold is shown as the raw counts, not a "due soon" gradation. Never stored — computed from the resolved rule and its elapsed counts wherever it is shown (item detail panel, `/summary` roll-up, list indicators).
 
 ## Design identity
 
