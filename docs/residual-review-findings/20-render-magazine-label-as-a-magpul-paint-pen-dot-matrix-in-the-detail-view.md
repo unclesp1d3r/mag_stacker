@@ -83,6 +83,40 @@ same follow-up that transcribes Magpul's diagram.
   `.txt` files, so editing one and forgetting to regenerate would pass CI while production used the stale
   embedded string. Left alone as out of scope; the glyph fixture now has the pattern to copy.
 
+## From the post-transcription review (commit `aa47489`)
+
+Two reviewers (code-quality, test-coverage) over the increment that transcribed the glyph font and
+turned the feature on. No functional bugs — the `.txt`/`raw.ts` pair, both cell-count tokens, and the
+`exact: true` accessible-name assertions were all verified against the real code. These are open:
+
+- **The glyph font is 34/36 unverified.** `glyphs.test.ts` spot-checks the exact dot pattern for `0`
+  and `1` only; the other 34 are checked for presence (`table.has`), not shape. Nothing anywhere
+  inspects rendered SVG dot positions — AE1's e2e assertion reads the accessible name (`U S 0 4`),
+  not the pattern. A row shift or bad PDF crop in any letter passes every test today. Highest risk,
+  because the transcription is the thing that just changed. Fix: assert all 36 against a checked-in
+  expected table (~20 lines, turns the blind spot into a hard guard).
+
+- **`resolveDotMatrix` is never exercised against the real `MAGPUL_GLYPHS`.** Every resolver test
+  uses the synthetic 37-char fixture; e2e reaches only AE1/AE2/AE6/AE8. So AE3, AE4, AE5, AE7 and
+  AE9 are proven only against a font that no longer ships. That distinction already bit once — the
+  font swap flipped four expected results.
+
+- **The real font's missing hyphen changes an untested path.** The synthetic fixture *has* a `-`, so
+  AE4 (`AR-X`) exercises the overflow branch. Against the real font it fails font-coverage *first* —
+  a different branch, untested. Related to the open hyphen product question above.
+
+- **R4/R9 message text is asserted nowhere.** `MODEL_NOT_RECOGNIZED_CAVEAT`,
+  `LABEL_DOES_NOT_FIT_MESSAGE`, and `UNVERIFIED_CELL_COUNT_SUFFIX` are exported and now renderable,
+  but no test reads them. A swapped Callout tone or wrong branch ships silently.
+
+- **Stale "feature is off" comments.** `app/(app)/magazines/dot-matrix-label.tsx:16-18` still says
+  `MAGPUL_GLYPHS` "is empty until the glyph table is transcribed, so `hidden` is the shipped outcome
+  today." Two matching spots in the plan: U1's Verification (`"MAGPUL_GLYPHS is empty"`) and U7's
+  Goal (`"inert while the glyph table is empty"`). Three one-line edits; pure staleness.
+
+Scope caveat: two reviewers on the last increment, not the full roster over the whole PR. Earlier
+commits did get the seven-reviewer pass.
+
 ## Checked and cleared
 
 Recorded so a later reader does not re-derive them:
