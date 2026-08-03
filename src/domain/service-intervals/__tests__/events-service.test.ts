@@ -140,6 +140,31 @@ describe("service-intervals events-service (U4)", () => {
     expect(rows).toHaveLength(0);
   });
 
+  test("a future servicedOn throws ValidationError and writes no row (U8 log-service form contract)", async () => {
+    const owner = await newOwner("u4evFutureOwner");
+    const fa = await makeFirearm(owner, { type: "rifle" });
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isoTomorrow = [
+      tomorrow.getFullYear(),
+      String(tomorrow.getMonth() + 1).padStart(2, "0"),
+      String(tomorrow.getDate()).padStart(2, "0"),
+    ].join("-");
+
+    await expect(
+      logServiceEvent(owner, "firearm", fa.id, {
+        ruleName: "Cleaning",
+        servicedOn: isoTomorrow,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    const rows = await db
+      .select()
+      .from(serviceEvent)
+      .where(eq(serviceEvent.firearmId, fa.id));
+    expect(rows).toHaveLength(0);
+  });
+
   test("covers R16: a bulk mark-serviced call across several items writes one event per item-and-rule pair with the given date", async () => {
     const owner = await newOwner("u4bulkOwner");
     const fa1 = await makeFirearm(owner, { type: "rifle" });

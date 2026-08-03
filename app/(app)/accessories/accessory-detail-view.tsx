@@ -17,6 +17,12 @@ import {
   formatCostCents,
   parseCostInputToCents,
 } from "@/src/domain/accessories/display";
+import type { RuleDueState } from "@/src/domain/service-intervals/due-service";
+import {
+  ServiceHistory,
+  type ServiceHistoryEntry,
+} from "../firearms/service-history";
+import { ServiceRulesPanel } from "../firearms/service-rules-panel";
 import type { EditableFirearmOption } from "./accessory-form";
 import { AccessoryForm, type AccessoryFormValues } from "./accessory-form";
 import { deleteAccessoryAction, mountAccessoryAction } from "./actions";
@@ -34,6 +40,16 @@ interface AccessoryDetailViewProps {
   /** Display names for every firearm visible to the actor, for the read-only
    * "current firearm" link even when it falls outside `editableFirearms`. */
   firearmNames: Record<string, string>;
+  /**
+   * Service data (U8) — owner-only throughout for accessories (KTD3), so
+   * these are `null` for a non-owner viewer rather than empty: the page
+   * never even loads them in that case (`requireAccessoryOwner` would throw
+   * for a non-owner), and `null` is what tells this view not to render the
+   * section at all, rather than rendering an always-empty panel.
+   */
+  serviceRules: RuleDueState[] | null;
+  suppressedServiceRuleNames: string[] | null;
+  serviceHistory: ServiceHistoryEntry[] | null;
 }
 
 /**
@@ -100,6 +116,9 @@ export function AccessoryDetailView({
   permission,
   editableFirearms,
   firearmNames,
+  serviceRules,
+  suppressedServiceRuleNames,
+  serviceHistory,
 }: AccessoryDetailViewProps) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -253,6 +272,24 @@ export function AccessoryDetailView({
           </dl>
         </Card>
       )}
+
+      {isOwner &&
+      serviceRules !== null &&
+      suppressedServiceRuleNames !== null ? (
+        <ServiceRulesPanel
+          parentType="accessory"
+          parentId={accessory.id}
+          rules={serviceRules}
+          suppressedRuleNames={suppressedServiceRuleNames}
+          canManageRules={isOwner}
+          canLogService={isOwner}
+          onChange={() => router.refresh()}
+        />
+      ) : null}
+
+      {isOwner && serviceHistory !== null ? (
+        <ServiceHistory entries={serviceHistory} />
+      ) : null}
 
       <ConfirmDialog
         open={del.target !== null}

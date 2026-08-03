@@ -7,6 +7,14 @@ import { type DbOrTx, db } from "@/src/db/client";
 import { accessory, serviceEvent } from "@/src/db/schema";
 import { ValidationError } from "../errors";
 import type { ServiceParentType } from "./rules-service";
+import {
+  type ServiceEventInput,
+  type ServiceEventValidationCode,
+  validateServicedOn,
+  validateServiceEventInput,
+} from "./validate-event";
+
+export type { ServiceEventInput, ServiceEventValidationCode };
 
 /**
  * Service-events layer (service-intervals plan, U4). Logging one event, the
@@ -33,54 +41,6 @@ import type { ServiceParentType } from "./rules-service";
  */
 
 export type ServiceEventRow = typeof serviceEvent.$inferSelect;
-
-export interface ServiceEventInput {
-  ruleName: string;
-  servicedOn: string;
-  notes?: string;
-}
-
-export type ServiceEventValidationCode =
-  | "emptyRuleName"
-  | "emptyServicedOn"
-  | "invalidServicedOn";
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * True only for a real calendar date (mirrors
- * `range-sessions/validate.ts`'s `isRealCalendarDate`) — `Date.parse`
- * normalizes day overflow (e.g. `2026-02-31` -> Mar 3) instead of returning
- * `NaN`, so the round-trip compare against the normalized ISO date is what
- * actually rejects an impossible day.
- */
-function isRealCalendarDate(date: string): boolean {
-  const parsed = Date.parse(date);
-  if (Number.isNaN(parsed)) return false;
-  return new Date(parsed).toISOString().slice(0, 10) === date;
-}
-
-function validateServicedOn(
-  servicedOn: string,
-): Array<"emptyServicedOn" | "invalidServicedOn"> {
-  const codes: Array<"emptyServicedOn" | "invalidServicedOn"> = [];
-  const trimmed = (servicedOn ?? "").trim();
-  if (trimmed === "") {
-    codes.push("emptyServicedOn");
-  } else if (!ISO_DATE.test(trimmed) || !isRealCalendarDate(trimmed)) {
-    codes.push("invalidServicedOn");
-  }
-  return codes;
-}
-
-function validateServiceEventInput(
-  input: ServiceEventInput,
-): ServiceEventValidationCode[] {
-  const codes: ServiceEventValidationCode[] = [];
-  if (input.ruleName.trim() === "") codes.push("emptyRuleName");
-  codes.push(...validateServicedOn(input.servicedOn));
-  return codes;
-}
 
 /**
  * Authorize an event WRITE for one item, per family (KTD3): firearms accept

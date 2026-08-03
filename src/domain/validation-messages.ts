@@ -49,6 +49,10 @@ export const VALIDATION_MESSAGES: Record<string, string> = {
   duplicateName: "A rule with this name already exists in this category",
   thresholdTooLow: "Thresholds must be at least 1",
   missingThreshold: "Set at least one threshold (days, sessions, or rounds)",
+  emptyRuleName: "Rule name is required",
+  emptyServicedOn: "Date is required",
+  invalidServicedOn: "Enter a valid date",
+  servicedOnInFuture: "Date cannot be in the future",
 };
 
 export function messageForCode(code: string): string {
