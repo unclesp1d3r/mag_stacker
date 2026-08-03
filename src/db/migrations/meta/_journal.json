@@ -141,6 +141,13 @@
       "when": 1785731323900,
       "tag": "0019_perfect_nebula",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1785737503751,
+      "tag": "0020_naive_scarlet_spider",
+      "breakpoints": true
     }
   ]
 }

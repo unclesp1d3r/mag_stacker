@@ -17,9 +17,10 @@ import type { ServiceParentType } from "./rules-service";
  * Authorization mirrors `rules-service.ts`'s split (KTD3), but for WRITES
  * only, and deliberately looser on firearms than rule configuration: logging
  * a firearm service event takes `authorizeUpdate` (an edit-grantee may log
- * service — this is exactly what `cleaned` permits today via
- * `authorizeUpdate` in `inventory-log/service.ts`, so the eventual R15
- * conversion preserves capability an edit-grantee already had). Accessory
+ * service — this is exactly what the now-retired `cleaned`/`lubed` inventory
+ * log entries permitted via `authorizeUpdate` in `inventory-log/service.ts`,
+ * so U5's conversion preserved capability an edit-grantee already had rather
+ * than silently revoking it). Accessory
  * events are owner-only throughout (accessories have no `authorize.ts` gate
  * and are never a grant `ParentType`). `actorId` is always the parameter the
  * caller authorized with — never a separate, caller-suppliable field on the

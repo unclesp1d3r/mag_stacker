@@ -22,7 +22,7 @@ import { logEventAction } from "./log-actions";
 const EVENT_TYPE_CODES = ["invalidEventType", "invalidParentType"];
 const OCCURRED_AT_CODES = ["occurredAtInFuture", "invalidOccurredAt"];
 
-/** Display label for a stored event type ("cleaned" -> "Cleaned"). */
+/** Display label for a stored event type ("inventoried" -> "Inventoried"). */
 export function eventTypeLabel(value: string): string {
   return value.length > 0 ? value[0].toUpperCase() + value.slice(1) : value;
 }

@@ -157,8 +157,8 @@ describe("service-intervals due-service (U4)", () => {
       name: "Cleaning",
       intervalRounds: 500,
     });
-    // Stands in for a U5-converted `cleaned` entry (that migration lands in a
-    // later unit) — the resulting service_event row is identical either way.
+    // Stands in for a U5-converted `cleaned` entry — the resulting
+    // service_event row is identical either way.
     await makeServiceEvent(
       { firearmId: fa.id },
       { ruleName: "Cleaning", servicedOn: "2026-01-01" },

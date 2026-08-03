@@ -29,11 +29,11 @@ A single logged range trip for one Firearm — the date and the rounds fired tha
 
 ### Inventory Log
 
-An append-only history of physical-handling events on a single Firearm or Magazine — each **Log Entry** records an **Event Type**, the acting user, when it happened, and optional notes. A **child record** family: entries inherit their parent's owner and grants, cannot be shared on their own, and are removed with the parent. Entries are created and listed but not edited or deleted.
+An append-only history of physical-handling events on a single Firearm or Magazine — each **Log Entry** records an **Event Type**, the acting user, when it happened, and optional notes. A **child record** family: entries inherit their parent's owner and grants, cannot be shared on their own, and are removed with the parent. Entries are created and listed but not edited or deleted. `cleaned` and `lubed` were retired as Firearm Event Types once **Service Event** shipped (service-intervals plan, U5) — logging service against a **Service Rule** is now the single way to record either act; every prior `cleaned`/`lubed` entry converted to a Service Event and the Inventory Log now carries only `inventoried` for both parent families.
 
 ### Event Type
 
-The controlled kind of a **Log Entry** (*inventoried* for any item; *cleaned*, *lubed* for Firearms), drawn from a fixed value set whose valid members depend on the parent family. Deliberately not called an "action" — that name already means a Firearm's operating mechanism (see **Firearm Action**).
+The controlled kind of a **Log Entry** — currently *inventoried*, the only member for either parent family — drawn from a fixed value set whose valid members depend on the parent family. Deliberately not called an "action" — that name already means a Firearm's operating mechanism (see **Firearm Action**).
 
 ### Child record
 

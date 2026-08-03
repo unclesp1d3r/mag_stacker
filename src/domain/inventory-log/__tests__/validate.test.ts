@@ -9,10 +9,8 @@ const base: LogEntryInput = {
 };
 
 describe("validateLogEntry", () => {
-  test("firearm accepts inventoried, cleaned, and lubed", () => {
-    for (const eventType of ["inventoried", "cleaned", "lubed"]) {
-      expect(validateLogEntry({ ...base, eventType })).toEqual([]);
-    }
+  test("firearm accepts inventoried", () => {
+    expect(validateLogEntry({ ...base, eventType: "inventoried" })).toEqual([]);
   });
 
   test("magazine accepts inventoried", () => {
@@ -25,8 +23,14 @@ describe("validateLogEntry", () => {
     ).toEqual([]);
   });
 
-  test("magazine rejects cleaned and lubed", () => {
+  // Covers R13/KTD1/KTD7 (service-intervals plan, U5): cleaned/lubed are
+  // retired firearm event types, converted to service events. Neither parent
+  // family accepts them any more.
+  test("firearm and magazine both reject cleaned and lubed (retired, U5)", () => {
     for (const eventType of ["cleaned", "lubed"]) {
+      expect(validateLogEntry({ ...base, eventType })).toContain(
+        "invalidEventType",
+      );
       expect(
         validateLogEntry({ ...base, parentType: "magazine", eventType }),
       ).toContain("invalidEventType");

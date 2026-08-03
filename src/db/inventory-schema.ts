@@ -665,7 +665,9 @@ export const grant = pgTable(
 
 /**
  * Inventory event log (U2/U3) — an append-only audit trail of actions taken
- * against a firearm or magazine (inventoried, cleaned, lubed). Polymorphic
+ * against a firearm or magazine (`inventoried`, the only event type either
+ * parent family carries — `cleaned` and `lubed` were retired and converted to
+ * `service_event` rows by the service-intervals plan's U5). Polymorphic
  * `parent_type`/`parent_id` mirrors `grant`: no FK on `parent_id` (it spans
  * two parent tables), with a `parent_type` CHECK plus a parent-gated
  * `event_type` CHECK sourced from `domain/inventory-log/constants.ts` (R3
