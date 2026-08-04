@@ -354,6 +354,201 @@ describe("service-intervals rules-service (U3)", () => {
     ]);
   });
 
+  // PR #99 review (P2): renaming a category default silently stranded the
+  // service history of every item inheriting or overriding it, since
+  // everything is keyed by rule NAME (KTD1) — the same bug class already
+  // fixed above for an item-rule rename, applied one level up.
+  test("renaming a default carries an inheriting item's service history to the new name and it still measures from the last service event, not the origin", async () => {
+    const owner = await newOwner("u3defRenameInherit");
+    const fa = await makeFirearm(owner, {
+      type: "rifle",
+      acquiredDate: "2020-01-01",
+    });
+    const def = await createServiceRuleDefault(owner, {
+      scope: "firearm",
+      category: "rifle",
+      name: "Cleaning",
+      intervalDays: 30,
+    });
+    await makeServiceEvent(
+      { firearmId: fa.id },
+      { ruleName: "Cleaning", servicedOn: "2026-01-01" },
+    );
+
+    await updateServiceRuleDefault(owner, def.id, {
+      name: "Deep Clean",
+      intervalDays: 30,
+    });
+
+    const events = await db
+      .select()
+      .from(serviceEvent)
+      .where(eq(serviceEvent.firearmId, fa.id));
+    expect(events.map((e) => e.ruleName)).toEqual(["Deep Clean"]);
+
+    const resolved = await getItemDueState(owner, "firearm", fa.id);
+    const rule = resolved.find((r) => r.name === "Deep Clean");
+    expect(rule).toMatchObject({ inheritanceState: "inherited" });
+    // Measuring from the last service event (2026-01-01), never the item's
+    // 2020 origin date — the rename must not reset the measure-from point.
+    expect(rule?.measureFrom).toEqual(new Date(2026, 0, 1));
+  });
+
+  test("renaming a default carries an overriding item's override and its service history to the new name, keeping the override's own thresholds", async () => {
+    const owner = await newOwner("u3defRenameOverride");
+    const fa = await makeFirearm(owner, { type: "rifle" });
+    const def = await createServiceRuleDefault(owner, {
+      scope: "firearm",
+      category: "rifle",
+      name: "Cleaning",
+      intervalRounds: 500,
+    });
+    await createItemRule(owner, "firearm", fa.id, {
+      name: "Cleaning",
+      intervalRounds: 300,
+    });
+    await makeServiceEvent(
+      { firearmId: fa.id },
+      { ruleName: "Cleaning", servicedOn: "2026-01-01" },
+    );
+
+    await updateServiceRuleDefault(owner, def.id, {
+      name: "Deep Clean",
+      intervalRounds: 500,
+    });
+
+    const itemRules = await listItemRules(owner, "firearm", fa.id);
+    expect(itemRules).toHaveLength(1);
+    expect(itemRules[0]).toMatchObject({
+      name: "Deep Clean",
+      intervalRounds: 300, // the override's OWN threshold, untouched by the default's
+    });
+
+    const events = await db
+      .select()
+      .from(serviceEvent)
+      .where(eq(serviceEvent.firearmId, fa.id));
+    expect(events.map((e) => e.ruleName)).toEqual(["Deep Clean"]);
+
+    const resolved = await getItemDueState(owner, "firearm", fa.id);
+    expect(resolved.find((r) => r.name === "Deep Clean")).toMatchObject({
+      inheritanceState: "overridden",
+      intervalRounds: 300,
+    });
+  });
+
+  test("renaming a default never touches another owner's identically-named default or that owner's items in the same category", async () => {
+    const ownerA = await newOwner("u3defRenameOwnerA");
+    const ownerB = await newOwner("u3defRenameOwnerB");
+    const faA = await makeFirearm(ownerA, { type: "rifle" });
+    const faB = await makeFirearm(ownerB, { type: "rifle" });
+
+    const defA = await createServiceRuleDefault(ownerA, {
+      scope: "firearm",
+      category: "rifle",
+      name: "Cleaning",
+      intervalRounds: 500,
+    });
+    await createServiceRuleDefault(ownerB, {
+      scope: "firearm",
+      category: "rifle",
+      name: "Cleaning",
+      intervalRounds: 999,
+    });
+    await makeServiceEvent(
+      { firearmId: faA.id },
+      { ruleName: "Cleaning", servicedOn: "2026-01-01" },
+    );
+    await makeServiceEvent(
+      { firearmId: faB.id },
+      { ruleName: "Cleaning", servicedOn: "2026-01-02" },
+    );
+
+    await updateServiceRuleDefault(ownerA, defA.id, {
+      name: "Deep Clean",
+      intervalRounds: 500,
+    });
+
+    const bDefaults = await listServiceRuleDefaults(ownerB, "firearm", "rifle");
+    expect(bDefaults.map((d) => d.name)).toEqual(["Cleaning"]);
+
+    const bEvents = await db
+      .select()
+      .from(serviceEvent)
+      .where(eq(serviceEvent.firearmId, faB.id));
+    expect(bEvents.map((e) => e.ruleName)).toEqual(["Cleaning"]);
+  });
+
+  test("renaming a default onto a name a sibling default in the same scope+category already uses throws ValidationError and writes nothing", async () => {
+    const owner = await newOwner("u3defRenameDup");
+    const fa = await makeFirearm(owner, { type: "rifle" });
+    const cleaning = await createServiceRuleDefault(owner, {
+      scope: "firearm",
+      category: "rifle",
+      name: "Cleaning",
+      intervalRounds: 500,
+    });
+    await createServiceRuleDefault(owner, {
+      scope: "firearm",
+      category: "rifle",
+      name: "Barrel",
+      intervalRounds: 5000,
+    });
+    await makeServiceEvent(
+      { firearmId: fa.id },
+      { ruleName: "Cleaning", servicedOn: "2026-01-01" },
+    );
+
+    await expect(
+      updateServiceRuleDefault(owner, cleaning.id, {
+        name: "Barrel",
+        intervalRounds: 500,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    const defaults = await listServiceRuleDefaults(owner, "firearm", "rifle");
+    expect(defaults.map((d) => d.name).sort()).toEqual(["Barrel", "Cleaning"]);
+
+    const events = await db
+      .select()
+      .from(serviceEvent)
+      .where(eq(serviceEvent.firearmId, fa.id));
+    expect(events.map((e) => e.ruleName)).toEqual(["Cleaning"]);
+  });
+
+  test("two sequential renames of the same default leave an inheriting item's history on the final name, not stranded on the intermediate one", async () => {
+    const owner = await newOwner("u3defRenameSequential");
+    const fa = await makeFirearm(owner, { type: "rifle" });
+    const def = await createServiceRuleDefault(owner, {
+      scope: "firearm",
+      category: "rifle",
+      name: "Cleaning",
+      intervalRounds: 500,
+    });
+    await makeServiceEvent(
+      { firearmId: fa.id },
+      { ruleName: "Cleaning", servicedOn: "2026-01-01" },
+    );
+
+    await updateServiceRuleDefault(owner, def.id, {
+      name: "Deep Clean",
+      intervalRounds: 500,
+    });
+    await updateServiceRuleDefault(owner, def.id, {
+      name: "Field Strip",
+      intervalRounds: 500,
+    });
+
+    const events = await db
+      .select()
+      .from(serviceEvent)
+      .where(eq(serviceEvent.firearmId, fa.id));
+    expect(events.map((e) => e.ruleName)).toEqual(["Field Strip"]);
+
+    const defaults = await listServiceRuleDefaults(owner, "firearm", "rifle");
+    expect(defaults.map((d) => d.name)).toEqual(["Field Strip"]);
+  });
+
   test("a firearm's view-grantee reading an accessory's rules is rejected, even when that accessory is mounted on the shared firearm", async () => {
     const owner = await newOwner("u3accOwner");
     const viewer = await newOwner("u3accViewer");

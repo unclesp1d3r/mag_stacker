@@ -35,10 +35,19 @@ const VALID_SERVICE_SCOPES = new Set<ServiceScope>(["firearm", "accessory"]);
  * and fail at the DB CHECK constraint instead of a clean validation error;
  * `category`/`name` are only checked for their runtime type here (`category`
  * stays free text by design — never validate its VALUE against a fixed list).
+ *
+ * `input` itself is checked FIRST, before any property read: a malformed
+ * payload (`null`, a bare string, a number — anything a client could send in
+ * place of a real object) would otherwise throw a raw `TypeError` reading
+ * `input.scope` below, escaping this function as an unhandled exception
+ * instead of the normal `ValidationError`/`{ ok: false, codes }` path every
+ * other malformed submission takes.
  */
 function validateServiceRuleDefaultInput(
   input: ServiceRuleDefaultInput,
 ): string[] {
+  if (typeof input !== "object" || input === null) return ["invalidPayload"];
+
   const codes: string[] = [];
   if (!VALID_SERVICE_SCOPES.has(input.scope)) codes.push("invalidScope");
   if (typeof input.category !== "string") codes.push("invalidCategory");

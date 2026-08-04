@@ -42,10 +42,15 @@ export async function withActorNames(
     id: event.id,
     ruleName: event.ruleName,
     servicedOn: event.servicedOn,
+    // A non-null `actorId` with no matching row (the account was deleted
+    // between the event write and this read) falls back to
+    // `UNKNOWN_ACTOR_LABEL` too, never the raw account id — leaking a raw id
+    // into the UI is exactly what resolving a display name here exists to
+    // avoid.
     actorName:
       event.actorId === null
         ? UNKNOWN_ACTOR_LABEL
-        : (nameById.get(event.actorId) ?? event.actorId),
+        : (nameById.get(event.actorId) ?? UNKNOWN_ACTOR_LABEL),
     notes: event.notes,
   }));
 }

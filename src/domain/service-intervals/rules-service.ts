@@ -1,4 +1,4 @@
-import { and, asc, count, eq } from "drizzle-orm";
+import { and, asc, count, eq, inArray } from "drizzle-orm";
 import { authorizeOwnerOnlyUpdate } from "@/src/auth/authorize";
 import { NotFoundError } from "@/src/auth/errors";
 import { resolvePermission } from "@/src/auth/visibility";
@@ -43,6 +43,15 @@ import { validateServiceRuleSet } from "./validate";
  * rename onto a name the item already uses is rejected with the existing
  * duplicate-name `ValidationError` BEFORE any write, so the DB's unique
  * constraint is never what surfaces the error.
+ *
+ * Renaming a CATEGORY DEFAULT applies the same precedent one level up
+ * (`updateServiceRuleDefault`'s `repointDefaultRename`): every one of the
+ * owner's own items in that exact scope+category that carries the old name —
+ * whether inheriting (only `service_event` rows) or overriding/suppressing
+ * (its own `service_rule` row too) — moves to the new name in the same
+ * transaction, so no item's service history is silently stranded on a name
+ * nothing measures from any more. See that function's doc for why a
+ * genuinely item-only rule can never be caught up in this rename.
  */
 
 export type ServiceParentType = "firearm" | "accessory";
@@ -298,6 +307,106 @@ async function repointServiceEvents(
     .where(and(parentWhere, eq(serviceEvent.ruleName, oldName)));
 }
 
+/**
+ * This owner's own item ids in one scope+category (KTD3: strictly the
+ * owner's own items, in the exact category the default row itself carries —
+ * a firearm's `type` or an accessory's `category`, never a fuzzy match).
+ * Shared by `repointDefaultRename` below, since both halves of that repoint
+ * (item-rule rows and service-event rows) key off the same item set.
+ */
+async function loadCategoryItemIds(
+  tx: DbOrTx,
+  ownerId: string,
+  scope: ServiceScope,
+  category: string,
+): Promise<string[]> {
+  if (scope === "firearm") {
+    const rows = await tx
+      .select({ id: firearm.id })
+      .from(firearm)
+      .where(and(eq(firearm.ownerId, ownerId), eq(firearm.type, category)));
+    return rows.map((row) => row.id);
+  }
+  const rows = await tx
+    .select({ id: accessory.id })
+    .from(accessory)
+    .where(
+      and(eq(accessory.ownerId, ownerId), eq(accessory.category, category)),
+    );
+  return rows.map((row) => row.id);
+}
+
+/**
+ * Repoint every dependent row a category-default rename would otherwise
+ * strand — the same bug class `updateItemRule`'s `repointServiceEvents`
+ * above already fixes for an item-level rename, applied one level up (PR #99
+ * review, P2): everything here is keyed by rule NAME (KTD1), so renaming a
+ * default silently orphaned the service history of every item inheriting or
+ * overriding it, which then reappeared under the new name with no history,
+ * measuring from the item's origin date again.
+ *
+ * - An item that INHERITS this default (no `service_rule` row of its own)
+ *   has only `service_event` rows named `oldName` to repoint.
+ * - An item that OVERRIDES or SUPPRESSES this default carries `oldName` on
+ *   its own `service_rule` row too — that row moves to `newName` alongside
+ *   its `service_event` rows, so the override/suppression keeps applying to
+ *   the renamed default instead of silently reverting to "inherited" under a
+ *   name nothing measures any more.
+ * - A GENUINELY item-only rule (one no default in this category names) can
+ *   never be caught up in this rename despite sharing `oldName`, so there is
+ *   no ambiguous case to special-case here: `resolveEffectiveRules`
+ *   (`derive.ts`) matches an item's own `service_rule` row to a default BY
+ *   NAME ALONE, against that item's own category's default set. This
+ *   function only ever touches items in the SAME owner + SAME scope+category
+ *   as the default being renamed — so any `service_rule` row it finds named
+ *   `oldName` is, by that identical name-matching logic, ALREADY being
+ *   resolved as an override or a suppression of exactly this default, never
+ *   as item-only. An item-only rule is by definition one no default defines;
+ *   a default of this exact name already existing in this exact category is
+ *   what rules out the item-only reading for every row this function could
+ *   possibly touch. Every matching `service_rule` row here is therefore an
+ *   override/suppression and must move with the rename.
+ *
+ * Scoped strictly to `ownerId`'s own items (KTD3) — never touches another
+ * owner's rows, even one with an identically-named default in the same
+ * category.
+ */
+async function repointDefaultRename(
+  tx: DbOrTx,
+  ownerId: string,
+  scope: ServiceScope,
+  category: string,
+  oldName: string,
+  newName: string,
+): Promise<void> {
+  const itemIds = await loadCategoryItemIds(tx, ownerId, scope, category);
+  if (itemIds.length === 0) return;
+
+  const ruleParentColumn =
+    scope === "firearm" ? serviceRule.firearmId : serviceRule.accessoryId;
+  const eventParentColumn =
+    scope === "firearm" ? serviceEvent.firearmId : serviceEvent.accessoryId;
+
+  // Overrides/suppressions first: their `service_rule` row carries the old
+  // name too, alongside any `service_event` rows the loop below also moves.
+  await tx
+    .update(serviceRule)
+    .set({ name: newName, updatedAt: new Date() })
+    .where(
+      and(inArray(ruleParentColumn, itemIds), eq(serviceRule.name, oldName)),
+    );
+
+  await tx
+    .update(serviceEvent)
+    .set({ ruleName: newName })
+    .where(
+      and(
+        inArray(eventParentColumn, itemIds),
+        eq(serviceEvent.ruleName, oldName),
+      ),
+    );
+}
+
 // ---- category defaults CRUD (owner-scoped, no grant path) ----
 
 /** An owner's default rule set for one scope+category, ordered by name. */
@@ -355,6 +464,11 @@ export async function createServiceRuleDefault(
  * Update a category default's name/thresholds (full-replace, mirroring
  * `updateAccessory`'s shape). A rename onto a name a sibling default in the
  * same owner+scope+category already uses is rejected before the write.
+ *
+ * Renaming re-points every dependent row `repointDefaultRename` finds for
+ * this owner's own items in this exact scope+category, in the same
+ * transaction (see that function's doc for the full scope reasoning) — the
+ * default-level counterpart to `updateItemRule`'s item-level rename repoint.
  */
 export async function updateServiceRuleDefault(
   actorId: string,
@@ -369,10 +483,22 @@ export async function updateServiceRuleDefault(
   try {
     return await db.transaction(async (tx) => {
       await assertWritesAllowed(tx);
+
+      // FOR UPDATE (mirrors `updateItemRule`'s F5 fix, same concurrency
+      // hazard one level up): locks this row for the rest of the
+      // transaction, so `existing.name` — what `repointDefaultRename` below
+      // repoints FROM — is always the name actually on the row, never a
+      // name a second, overlapping rename already moved past. Without the
+      // lock, two concurrent renames of the same default both read the
+      // row's starting name before either commits; whichever commits second
+      // then repoints dependent rows FROM that stale starting name, matching
+      // zero rows (the first rename already moved them), and strands history
+      // on the intermediate name.
       const [existing] = await tx
         .select()
         .from(serviceRuleDefault)
         .where(eq(serviceRuleDefault.id, defaultId))
+        .for("update")
         .limit(1);
       if (!existing || existing.ownerId !== actorId) throw new NotFoundError();
 
@@ -396,6 +522,18 @@ export async function updateServiceRuleDefault(
         .where(eq(serviceRuleDefault.id, defaultId))
         .returning();
       if (!row) throw new NotFoundError();
+
+      if (name !== existing.name) {
+        await repointDefaultRename(
+          tx,
+          actorId,
+          existing.scope as ServiceScope,
+          existing.category,
+          existing.name,
+          name,
+        );
+      }
+
       return row;
     });
   } catch (error: unknown) {

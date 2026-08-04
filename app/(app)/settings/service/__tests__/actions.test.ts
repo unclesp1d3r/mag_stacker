@@ -139,6 +139,21 @@ describe("createServiceRuleDefaultAction", () => {
     expect(result.ok === false && result.codes).toEqual(["duplicateName"]);
     expect(revalidateCalls).toHaveLength(0);
   });
+
+  // A malformed payload (`null` here — same as any non-object a client could
+  // send in place of the real shape) must produce the normal failed
+  // ActionResult, not an unhandled TypeError from reading `.scope` off it.
+  test("a malformed non-object payload is rejected as a failed ActionResult, without reaching the service", async () => {
+    currentUserId = "user-1";
+
+    const result = await createServiceRuleDefaultAction(
+      null as unknown as ServiceRuleDefaultInput,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.codes).toEqual(["invalidPayload"]);
+    expect(createCalls).toHaveLength(0);
+  });
 });
 
 describe("updateServiceRuleDefaultAction", () => {
