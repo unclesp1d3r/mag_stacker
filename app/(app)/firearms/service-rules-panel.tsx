@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
+import type { ActionResult } from "@/src/domain/action-result";
 import type { InheritanceState } from "@/src/domain/service-intervals/constants";
 import type { RuleDueState } from "@/src/domain/service-intervals/due-service";
 import type { ServiceParentType } from "@/src/domain/service-intervals/rules-service";
@@ -60,7 +61,9 @@ function formatAxis(
   threshold: number | null,
   unit: string,
 ): string {
-  return threshold === null ? "—" : `${elapsed} of ${threshold} ${unit}`;
+  if (threshold === null) return "—";
+  const label = threshold === 1 ? unit.replace(/s$/, "") : unit;
+  return `${elapsed} of ${threshold} ${label}`;
 }
 
 export interface ServiceRulesPanelProps {
@@ -211,58 +214,50 @@ export function ServiceRulesPanel({
     return [...active, ...suppressed];
   }
 
-  function reset(ruleName: string) {
+  /**
+   * Shared shape behind all four rule actions below: run in a transition,
+   * toast a success message and refresh via `afterMutation` on success, or
+   * toast `result.error` (or a fallback) with the destructive tone on
+   * failure. Each call site supplies its own action and message text — only
+   * the duplicated control flow is collapsed here.
+   */
+  function runRuleAction(
+    action: () => Promise<ActionResult>,
+    success: string,
+    failure: string,
+  ) {
     startTransition(async () => {
-      const result = await resetServiceRuleAction(
-        parentType,
-        parentId,
-        ruleName,
-      );
+      const result = await action();
       if (result.ok) {
-        afterMutation(`${ruleName} reset to inherited`);
+        afterMutation(success);
       } else {
-        toast({
-          message: result.error ?? "Could not reset rule.",
-          tone: "destructive",
-        });
+        toast({ message: result.error ?? failure, tone: "destructive" });
       }
     });
+  }
+
+  function reset(ruleName: string) {
+    runRuleAction(
+      () => resetServiceRuleAction(parentType, parentId, ruleName),
+      `${ruleName} reset to inherited`,
+      "Could not reset rule.",
+    );
   }
 
   function suppress(ruleName: string) {
-    startTransition(async () => {
-      const result = await suppressServiceRuleAction(
-        parentType,
-        parentId,
-        ruleName,
-      );
-      if (result.ok) {
-        afterMutation(`${ruleName} suppressed`);
-      } else {
-        toast({
-          message: result.error ?? "Could not suppress rule.",
-          tone: "destructive",
-        });
-      }
-    });
+    runRuleAction(
+      () => suppressServiceRuleAction(parentType, parentId, ruleName),
+      `${ruleName} suppressed`,
+      "Could not suppress rule.",
+    );
   }
 
   function restore(ruleName: string) {
-    startTransition(async () => {
-      const result = await restoreServiceRuleAction(
-        parentType,
-        parentId,
-        ruleName,
-      );
-      if (result.ok) {
-        afterMutation(`${ruleName} restored`);
-      } else {
-        toast({
-          message: result.error ?? "Could not restore rule.",
-          tone: "destructive",
-        });
-      }
-    });
+    runRuleAction(
+      () => restoreServiceRuleAction(parentType, parentId, ruleName),
+      `${ruleName} restored`,
+      "Could not restore rule.",
+    );
   }
 
   /**
@@ -271,21 +266,11 @@ export function ServiceRulesPanel({
    * to fall back to, so the toast says "removed", never "restored".
    */
   function remove(ruleName: string) {
-    startTransition(async () => {
-      const result = await removeItemOnlyRuleAction(
-        parentType,
-        parentId,
-        ruleName,
-      );
-      if (result.ok) {
-        afterMutation(`${ruleName} removed`);
-      } else {
-        toast({
-          message: result.error ?? "Could not remove rule.",
-          tone: "destructive",
-        });
-      }
-    });
+    runRuleAction(
+      () => removeItemOnlyRuleAction(parentType, parentId, ruleName),
+      `${ruleName} removed`,
+      "Could not remove rule.",
+    );
   }
 
   const isEmpty = rules.length === 0 && suppressedRuleNames.length === 0;

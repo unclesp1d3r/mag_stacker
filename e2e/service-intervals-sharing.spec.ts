@@ -57,7 +57,9 @@ test("an edit-grantee logs service but gets no rule actions; a view-grantee gets
       await page.goto("/firearms");
       await page.getByRole("link", { name }).click();
       await page.getByRole("button", { name: "Add item-only rule" }).click();
-      const ruleForm = page.locator("form");
+      const ruleForm = page
+        .getByRole("region", { name: "Service rules" })
+        .locator("form");
       await ruleForm.getByLabel("Rule name").fill("Cleaning");
       await ruleForm.getByLabel("Days").fill("1");
       await ruleForm.getByRole("button", { name: "Add rule" }).click();
@@ -138,7 +140,7 @@ test("an edit-grantee logs service but gets no rule actions; a view-grantee gets
       ).toHaveCount(0);
 
       await gp.getByRole("button", { name: "Log service — Cleaning" }).click();
-      const form = gp.locator("form");
+      const form = gp.getByRole("form", { name: "Log service — Cleaning" });
       await form.getByLabel("Notes").fill("Serviced by the edit grantee.");
       await form.getByRole("button", { name: "Log service" }).click();
       await expect(gp.getByText("Logged service — Cleaning")).toBeVisible();
@@ -147,7 +149,10 @@ test("an edit-grantee logs service but gets no rule actions; a view-grantee gets
       // inventory-log actor rule, carried into service events by KTD3).
       const history = gp.getByRole("region", { name: "Service history" });
       await expect(history).toContainText("Cleaning");
-      await expect(history).toContainText("service-intervals-viewer");
+      // The display name, not the email — `withActorNames` deliberately
+      // resolves `name` so a view-grantee reading a shared firearm's history
+      // never sees another account's address.
+      await expect(history).toContainText(grantee.key);
     } finally {
       await granteeContext.close();
     }

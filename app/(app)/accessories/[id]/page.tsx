@@ -1,21 +1,18 @@
 import { notFound, redirect } from "next/navigation";
 import { NotFoundError } from "@/src/auth/errors";
 import { getCurrentUser } from "@/src/auth/session";
-import { namesByIds } from "@/src/auth/users";
 import { visibleFirearmPermissions } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
 import { costCentsToInputValue } from "@/src/domain/accessories/display";
 import { getAccessory } from "@/src/domain/accessories/service";
 import { buildFirearmMountContext } from "@/src/domain/firearms/mount-options";
 import { listFirearms } from "@/src/domain/firearms/service";
+import { withActorNames } from "@/src/domain/service-intervals/actor-names";
 import {
   getItemDueState,
   type RuleDueState,
 } from "@/src/domain/service-intervals/due-service";
-import {
-  listServiceHistory,
-  type ServiceEventRow,
-} from "@/src/domain/service-intervals/events-service";
+import { listServiceHistory } from "@/src/domain/service-intervals/events-service";
 import {
   listItemRules,
   listOwnerAccessoryCategories,
@@ -23,9 +20,6 @@ import {
 import { isUuid } from "@/src/lib/uuid";
 import type { ServiceHistoryEntry } from "../../firearms/service-history";
 import { AccessoryDetailView } from "../accessory-detail-view";
-
-/** Display label when `actorId` is `null` — the authoring account was later deleted. */
-const UNKNOWN_ACTOR_LABEL = "Unknown";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -35,29 +29,6 @@ interface AccessoryServiceProps {
   serviceRules: RuleDueState[] | null;
   suppressedServiceRuleNames: string[] | null;
   serviceHistory: ServiceHistoryEntry[] | null;
-}
-
-async function withActorNames(
-  events: ServiceEventRow[],
-): Promise<ServiceHistoryEntry[]> {
-  const actorIds = [
-    ...new Set(
-      events
-        .map((event) => event.actorId)
-        .filter((actorId): actorId is string => actorId !== null),
-    ),
-  ];
-  const nameById = await namesByIds(actorIds);
-  return events.map((event) => ({
-    id: event.id,
-    ruleName: event.ruleName,
-    servicedOn: event.servicedOn,
-    actorName:
-      event.actorId === null
-        ? UNKNOWN_ACTOR_LABEL
-        : (nameById.get(event.actorId) ?? event.actorId),
-    notes: event.notes,
-  }));
 }
 
 /**
@@ -122,8 +93,15 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
       // The ACCESSORY'S OWNER's categories (row.ownerId, not the actor) —
       // suggestions should reflect the owner whose category defaults (KD10)
       // this accessory actually inherits from, even when an edit-grantee is
-      // the one editing a shared mount.
-      listOwnerAccessoryCategories(row.ownerId),
+      // the one editing a shared mount. But `listOwnerAccessoryCategories`
+      // returns EVERY category across ALL of that owner's accessories, not
+      // just the ones visible to this viewer — for a non-owner grantee that
+      // would leak the owner's unrelated-accessory category vocabulary, so
+      // fall back to the actor's own categories instead (still useful
+      // autocomplete, no cross-tenant leak).
+      isOwner
+        ? listOwnerAccessoryCategories(row.ownerId)
+        : listOwnerAccessoryCategories(user.id),
     ]);
 
   // The reassign-mount picker must offer only firearms owned by the

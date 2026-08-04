@@ -57,7 +57,8 @@ export default async function SummaryPage() {
 
       {summary.totalMagazines === 0 &&
       summary.firearmCounts.length === 0 &&
-      summary.totalAmmoLots === 0 ? (
+      summary.totalAmmoLots === 0 &&
+      summary.itemsDue === 0 ? (
         <EmptyState
           title="Nothing to summarize yet"
           description="Add firearms, magazines, or ammo to see counts by caliber, by firearm, and low-stock roll-ups."

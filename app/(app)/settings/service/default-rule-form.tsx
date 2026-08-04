@@ -257,7 +257,7 @@ export function ServiceRuleForm({
           value={values.name}
           onChange={(e) => set("name", e.target.value)}
           aria-invalid={NAME_CODES.some((c) => codes.includes(c))}
-          disabled={nameLocked}
+          readOnly={nameLocked}
         />
       </Field>
       <ThresholdInputs

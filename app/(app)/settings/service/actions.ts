@@ -8,6 +8,7 @@ import {
   type ServiceRuleDefaultInput,
   type ServiceRuleDefaultRow,
   type ServiceRuleDefaultUpdateInput,
+  type ServiceScope,
   updateServiceRuleDefault,
 } from "@/src/domain/service-intervals/rules-service";
 import { withActionContext } from "@/src/lib/logging/entry-context";
@@ -25,9 +26,31 @@ function revalidateServiceDefaultsPath(): void {
   revalidatePath("/settings/service");
 }
 
+const VALID_SERVICE_SCOPES = new Set<ServiceScope>(["firearm", "accessory"]);
+
+/**
+ * Server-action input arrives as deserialized client JSON with no runtime
+ * type guarantee — the `ServiceRuleDefaultInput` type only holds at compile
+ * time. A malformed `scope` would otherwise reach `createServiceRuleDefault`
+ * and fail at the DB CHECK constraint instead of a clean validation error;
+ * `category`/`name` are only checked for their runtime type here (`category`
+ * stays free text by design — never validate its VALUE against a fixed list).
+ */
+function validateServiceRuleDefaultInput(
+  input: ServiceRuleDefaultInput,
+): string[] {
+  const codes: string[] = [];
+  if (!VALID_SERVICE_SCOPES.has(input.scope)) codes.push("invalidScope");
+  if (typeof input.category !== "string") codes.push("invalidCategory");
+  if (typeof input.name !== "string") codes.push("invalidRuleName");
+  return codes;
+}
+
 export async function createServiceRuleDefaultAction(
   input: ServiceRuleDefaultInput,
 ): Promise<ActionResult<{ default: ServiceRuleDefaultRow }>> {
+  const codes = validateServiceRuleDefaultInput(input);
+  if (codes.length > 0) return { ok: false, codes };
   return withActionContext("settings-service-defaults", async (userId) => {
     const created = await createServiceRuleDefault(userId, input);
     revalidateServiceDefaultsPath();

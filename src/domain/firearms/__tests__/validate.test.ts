@@ -121,13 +121,17 @@ describe("validateFirearm — acquiredDate (U6)", () => {
   });
 
   test("a real ISO calendar date is valid", () => {
+    const asOf = new Date(2026, 5, 15);
     expect(
-      validateFirearm({
-        name: "Glock 19",
-        caliber: "9mm",
-        ...CLASS,
-        acquiredDate: "2026-06-14",
-      }),
+      validateFirearm(
+        {
+          name: "Glock 19",
+          caliber: "9mm",
+          ...CLASS,
+          acquiredDate: "2026-06-14",
+        },
+        asOf,
+      ),
     ).toEqual([]);
   });
 
@@ -160,6 +164,17 @@ describe("validateFirearm — acquiredDate (U6)", () => {
         caliber: "9mm",
         ...CLASS,
         acquiredDate: "2026-02-31",
+      }),
+    ).toEqual(["invalidAcquiredDate"]);
+  });
+
+  test("year zero returns invalidAcquiredDate (Postgres's date type has no year 0)", () => {
+    expect(
+      validateFirearm({
+        name: "Glock 19",
+        caliber: "9mm",
+        ...CLASS,
+        acquiredDate: "0000-01-01",
       }),
     ).toEqual(["invalidAcquiredDate"]);
   });

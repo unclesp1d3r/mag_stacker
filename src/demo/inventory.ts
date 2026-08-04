@@ -153,6 +153,19 @@ export const DEMO_SERVICE_DEFAULTS: readonly DemoServiceDefaultSeed[] = [
     name: "Cleaning",
     intervalDays: 120,
   },
+  // Matches DEMO_ACCESSORIES' "Optic" category (the Aimpoint CompM5, seeded
+  // with acquiredDaysAgo: 900) — without a matching accessory default, that
+  // accessory resolves NO effective rule at all and can never read due,
+  // which would break the cold-start example the seed narrative describes
+  // (see DemoAccessorySeed.acquiredDaysAgo's doc). 365 days comfortably
+  // clears the 900-day-old origin date, so the accessory reads due on day
+  // one, same as the story requires.
+  {
+    scope: "accessory",
+    category: "Optic",
+    name: "Battery Check",
+    intervalDays: 365,
+  },
 ];
 
 /**

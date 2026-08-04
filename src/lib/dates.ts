@@ -19,8 +19,15 @@ export const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  * days — the Postgres `date` cast would otherwise reject them downstream.
  * Deliberately NOT reimplemented with a date-fns call: this depends
  * specifically on `Date.parse`'s overflow-normalization behavior.
+ *
+ * Year zero is rejected explicitly: `Date.parse("0000-01-01")` succeeds and
+ * round-trips to the same string, so the overflow check above lets it
+ * through, but there is no year 0 in the SQL-standard proleptic Gregorian
+ * calendar Postgres's `date` type uses — an unguarded year-0000 value would
+ * pass validation here and fail downstream as a raw, unhandled driver error.
  */
 export function isRealCalendarDate(date: string): boolean {
+  if (date.startsWith("0000-")) return false;
   const parsed = Date.parse(date);
   if (Number.isNaN(parsed)) return false;
   return new Date(parsed).toISOString().slice(0, 10) === date;

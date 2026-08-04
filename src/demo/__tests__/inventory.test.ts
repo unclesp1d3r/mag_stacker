@@ -1,4 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setSystemTime,
+  test,
+} from "bun:test";
 import { differenceInCalendarDays, parseISO } from "date-fns";
 import {
   MAGPUL_LABEL_ALLOWED_RE,
@@ -98,6 +105,20 @@ describe("demo dataset integrity", () => {
  * regardless of the runner's actual clock or timezone.
  */
 describe("isoDateDaysAgo", () => {
+  // `isoDateDaysAgo` and `todayIso` each read the system clock independently
+  // (`new Date()` inside their own bodies, no shared reference-date
+  // parameter), so two calls straddling local midnight would disagree on the
+  // day even though both implementations are correct. Freezing the clock for
+  // this describe block (local noon, clear of any DST transition) removes
+  // that race without widening either function's signature just for a test.
+  beforeEach(() => {
+    setSystemTime(new Date(2026, 5, 15, 12));
+  });
+
+  afterEach(() => {
+    setSystemTime();
+  });
+
   test("zero days ago is today's local calendar date", () => {
     expect(isoDateDaysAgo(0)).toBe(todayIso());
   });

@@ -67,6 +67,10 @@ const ACTION_CODES: FirearmValidationCode[] = [
   "invalidAction",
   "actionRequired",
 ];
+const ACQUIRED_DATE_CODES: FirearmValidationCode[] = [
+  "invalidAcquiredDate",
+  "acquiredDateInFuture",
+];
 
 interface ClassificationSelectProps {
   id: string;
@@ -155,7 +159,7 @@ export function FirearmForm({
     { codes: ["emptyCaliber"], id: calId },
     { codes: TYPE_CODES, id: typeId },
     { codes: ACTION_CODES, id: actionId },
-    { codes: ["invalidAcquiredDate"], id: dateId },
+    { codes: ACQUIRED_DATE_CODES, id: dateId },
   ];
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -312,14 +316,14 @@ export function FirearmForm({
           label="Acquired date"
           controlId={dateId}
           hint="Optional"
-          error={firstMessage(codes, ["invalidAcquiredDate"])}
+          error={firstMessage(codes, ACQUIRED_DATE_CODES)}
         >
           <Input
             id={dateId}
             type="date"
             value={values.acquiredDate}
             onChange={(e) => set("acquiredDate", e.target.value)}
-            aria-invalid={codes.includes("invalidAcquiredDate")}
+            aria-invalid={ACQUIRED_DATE_CODES.some((c) => codes.includes(c))}
           />
         </Field>
         <Field label="Notes" controlId={notesId}>

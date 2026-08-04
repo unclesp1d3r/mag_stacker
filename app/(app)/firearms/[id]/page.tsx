@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { NotFoundError } from "@/src/auth/errors";
 import { getCurrentUser } from "@/src/auth/session";
-import { namesByIds } from "@/src/auth/users";
 import { db } from "@/src/db/client";
 import { listMountedForFirearm } from "@/src/domain/accessories/service";
 import { toFirearmDocumentRow } from "@/src/domain/firearm-documents/row";
@@ -13,18 +12,26 @@ import {
   calibersForInput,
   manufacturers,
 } from "@/src/domain/reference/reference";
+import { withActorNames } from "@/src/domain/service-intervals/actor-names";
 import { getItemDueState } from "@/src/domain/service-intervals/due-service";
 import { listServiceHistory } from "@/src/domain/service-intervals/events-service";
 import { listItemRules } from "@/src/domain/service-intervals/rules-service";
 import { isUuid } from "@/src/lib/uuid";
 import { FirearmDetailView } from "../firearm-detail-view";
-import type { ServiceHistoryEntry } from "../service-history";
-
-/** Display label when `actorId` is `null` — the authoring account was later deleted. */
-const UNKNOWN_ACTOR_LABEL = "Unknown";
 
 interface PageProps {
   params: Promise<{ id: string }>;
+}
+
+/**
+ * Shared 404 guard (mirrors the `getFirearm`/`listPhotos`/`listDocuments`
+ * catches above): a loader that authorizes internally can throw
+ * `NotFoundError` if access was revoked between `getFirearm` and this call —
+ * that must surface as the page's clean 404, not an unhandled 500.
+ */
+function asNotFound(error: unknown): never {
+  if (error instanceof NotFoundError) notFound();
+  throw error;
 }
 
 export default async function FirearmDetailPage({ params }: PageProps) {
@@ -80,11 +87,11 @@ export default async function FirearmDetailPage({ params }: PageProps) {
         })
       : Promise.resolve([]),
     // U8: the resolved, due-annotated rule set (any visibility level, R6).
-    getItemDueState(user.id, "firearm", id),
+    getItemDueState(user.id, "firearm", id).catch(asNotFound),
     // Raw item-rule rows — only their suppressed names are used here, to
     // list what's hidden from `serviceRules` above (KTD6).
-    listItemRules(user.id, "firearm", id),
-    listServiceHistory(user.id, "firearm", id),
+    listItemRules(user.id, "firearm", id).catch(asNotFound),
+    listServiceHistory(user.id, "firearm", id).catch(asNotFound),
   ]);
 
   // Derive the value total from the already-fetched accessories rather than
@@ -105,24 +112,7 @@ export default async function FirearmDetailPage({ params }: PageProps) {
   // Attach each history entry's actor display name (mirrors
   // `inventory-log/log-actions.ts`'s `listLogAction` — resolves `name`, not
   // `email`, since a view-grantee on a shared firearm can read this too).
-  const actorIds = [
-    ...new Set(
-      history
-        .map((event) => event.actorId)
-        .filter((actorId): actorId is string => actorId !== null),
-    ),
-  ];
-  const nameById = await namesByIds(actorIds);
-  const serviceHistory: ServiceHistoryEntry[] = history.map((event) => ({
-    id: event.id,
-    ruleName: event.ruleName,
-    servicedOn: event.servicedOn,
-    actorName:
-      event.actorId === null
-        ? UNKNOWN_ACTOR_LABEL
-        : (nameById.get(event.actorId) ?? event.actorId),
-    notes: event.notes,
-  }));
+  const serviceHistory = await withActorNames(history);
 
   return (
     <FirearmDetailView

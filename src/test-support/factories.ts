@@ -216,17 +216,19 @@ export async function makeFirearmPhoto(
  */
 export async function makeServiceRuleDefault(
   ownerId: string,
-  overrides: Partial<typeof serviceRuleDefault.$inferInsert> = {},
+  overrides: Partial<
+    Omit<typeof serviceRuleDefault.$inferInsert, "ownerId">
+  > = {},
 ): Promise<typeof serviceRuleDefault.$inferSelect> {
   const [row] = await db
     .insert(serviceRuleDefault)
     .values({
-      ownerId,
       scope: "firearm",
       category: "rifle",
       name: "Cleaning",
       intervalRounds: 500,
       ...overrides,
+      ownerId,
     })
     .returning();
   return row;
@@ -245,12 +247,21 @@ export async function makeServiceRule(
     Omit<typeof serviceRule.$inferInsert, "firearmId" | "accessoryId">
   > = {},
 ): Promise<typeof serviceRule.$inferSelect> {
+  const suppressed = overrides.suppressed ?? false;
   const [row] = await db
     .insert(serviceRule)
     .values({
       name: "Cleaning",
       intervalRounds: 500,
       ...overrides,
+      // A suppressed rule must carry no thresholds (DB CHECK
+      // `service_rule_suppressed_thresholds_consistent`) — force them null
+      // here so callers don't have to remember to null all three
+      // themselves, and so the constraint failure can't turn into an opaque
+      // Postgres error instead of the intended row shape.
+      ...(suppressed
+        ? { intervalDays: null, intervalSessions: null, intervalRounds: null }
+        : {}),
       ...parent,
     })
     .returning();

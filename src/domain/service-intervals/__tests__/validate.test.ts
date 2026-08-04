@@ -50,6 +50,38 @@ describe("validateServiceRuleSet", () => {
     expect(validateServiceRuleSet(rules)).toContain("thresholdTooLow");
   });
 
+  // The form's `toRuleInput` converts threshold strings with `Number()`, not
+  // `Number.parseInt` — a value like "1.5" becomes 1.5, which would otherwise
+  // pass the below-minimum check (1.5 < 1 is false) and later fail as an
+  // unhandled driver error against the integer DB columns.
+  test("rejects a fractional threshold", () => {
+    const rules: ServiceRuleInput[] = [
+      { name: "Cleaning", intervalRounds: 1.5 },
+    ];
+    expect(validateServiceRuleSet(rules)).toContain("thresholdTooLow");
+  });
+
+  test("rejects a NaN threshold", () => {
+    const rules: ServiceRuleInput[] = [
+      { name: "Cleaning", intervalRounds: Number.NaN },
+    ];
+    expect(validateServiceRuleSet(rules)).toContain("thresholdTooLow");
+  });
+
+  test("accepts a rule whose only threshold is intervalSessions", () => {
+    const rules: ServiceRuleInput[] = [
+      { name: "Cleaning", intervalSessions: 5 },
+    ];
+    expect(validateServiceRuleSet(rules)).toEqual([]);
+  });
+
+  test("rejects a zero intervalSessions threshold", () => {
+    const rules: ServiceRuleInput[] = [
+      { name: "Cleaning", intervalSessions: 0 },
+    ];
+    expect(validateServiceRuleSet(rules)).toContain("thresholdTooLow");
+  });
+
   test("rejects a rule with no threshold set and not suppressed", () => {
     const rules: ServiceRuleInput[] = [{ name: "Cleaning" }];
     expect(validateServiceRuleSet(rules)).toContain("missingThreshold");

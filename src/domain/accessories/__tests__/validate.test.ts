@@ -121,6 +121,12 @@ describe("validateAccessory — acquiredDate", () => {
     ]);
   });
 
+  test("year zero returns invalidAcquiredDate (Postgres's date type has no year 0)", () => {
+    expect(validateAccessory({ ...base, acquiredDate: "0000-01-01" })).toEqual([
+      "invalidAcquiredDate",
+    ]);
+  });
+
   test("combines with other failures rather than short-circuiting", () => {
     expect(
       validateAccessory({

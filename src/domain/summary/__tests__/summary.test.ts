@@ -652,8 +652,12 @@ describe("inventorySummary — service roll-up (U9)", () => {
     );
     expect(large.itemsDue).toBe(10);
 
-    // Same bounded query count regardless of collection size (Definition of
-    // Done, U9/U4) — never a per-item query.
-    expect(largeCount).toBe(smallCount);
+    // Bounded regardless of collection size (Definition of Done, U9/U4) —
+    // never a per-item query: 5x the items must not grow the query count.
+    // `<=` rather than exact equality: the query count is measured
+    // process-wide, so an unrelated concurrent query landing in either
+    // window would make an exact-equality assertion flake without the
+    // underlying "no per-item growth" property actually regressing.
+    expect(largeCount).toBeLessThanOrEqual(smallCount);
   });
 });

@@ -299,6 +299,7 @@ export function ServiceHistory({
       {editingEntry ? (
         <div className="mb-4">
           <EditServiceEventForm
+            key={editingEntry.id}
             entry={editingEntry}
             onCancel={() => setEditingId(null)}
             onSaved={() =>

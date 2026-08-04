@@ -262,10 +262,20 @@ async function main(): Promise<void> {
   const shouldReset =
     process.argv.includes("--reset") || process.env.SEED_RESET === "1";
 
-  if (await hasInventory(owner.id)) {
+  // `hasInventory` alone misses an owner who has `service_rule_default` rows
+  // but no inventory yet — a plain run would then try to recreate the same
+  // defaults and fail on the duplicate-name guard, so the preflight has to
+  // check both.
+  const existingDefaults = await db
+    .select({ id: serviceRuleDefault.id })
+    .from(serviceRuleDefault)
+    .where(eq(serviceRuleDefault.ownerId, owner.id))
+    .limit(1);
+
+  if ((await hasInventory(owner.id)) || existingDefaults.length > 0) {
     if (!shouldReset) {
       console.log(
-        "The target account already has inventory; nothing to do. Re-run with --reset to replace it.",
+        "The target account already has inventory or service defaults; nothing to do. Re-run with --reset to replace it.",
       );
       return;
     }

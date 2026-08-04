@@ -297,20 +297,15 @@ async function loadAccessorySessionsBatch(
 
 // ---- per-item due resolution ----
 
-function firearmOriginDate(row: {
-  acquiredDate: string | null;
-  createdAt: Date;
-}): Date {
-  return row.acquiredDate !== null ? parseISO(row.acquiredDate) : row.createdAt;
-}
-
 /**
- * An accessory's origin date (KTD9, updated during implementation) —
- * `acquiredDate` when set, else `createdAt`, exactly parallel to
- * `firearmOriginDate` above. Added after the plan's original scope; see this
- * file's header comment.
+ * An item's origin date (KTD9, updated during implementation) — shared by
+ * both firearms and accessories: `acquiredDate` when set, else `createdAt`.
+ * Accessories gained their own `acquiredDate` after the plan's original
+ * scope (see this file's header comment), at which point their resolution
+ * became byte-identical to the firearm one, so both families share this one
+ * function instead of two copies (KISS/DRY).
  */
-function accessoryOriginDate(row: {
+function itemOriginDate(row: {
   acquiredDate: string | null;
   createdAt: Date;
 }): Date {
@@ -355,7 +350,7 @@ async function getFirearmDueState(
   return resolveDueRules(
     resolved,
     lastByRule,
-    firearmOriginDate(row),
+    itemOriginDate(row),
     sessions,
     asOf,
   );
@@ -403,7 +398,7 @@ async function getAccessoryDueState(
   return resolveDueRules(
     resolved,
     lastByRule,
-    accessoryOriginDate(row),
+    itemOriginDate(row),
     sessions,
     asOf,
   );
@@ -413,6 +408,8 @@ async function getAccessoryDueState(
  * One item's resolved, due-annotated rule set (R7–R10, R12). Authorized the
  * same way `rules-service.ts` reads are: a firearm by its own visibility
  * (any of owner/edit/view, R6); an accessory by direct ownership (KTD3).
+ * Defaults are loaded against the ITEM'S OWNER, never the viewer, so a
+ * shared firearm's rules always reflect its owner's configuration (R6).
  * `asOf` defaults to "now" but is an explicit parameter so callers (and
  * tests) can pin it.
  */
@@ -454,7 +451,7 @@ function buildFirearmEntry(
     rules: resolveDueRules(
       resolved,
       lastByRule,
-      firearmOriginDate(fa),
+      itemOriginDate(fa),
       sessions,
       asOf,
     ),
@@ -484,7 +481,7 @@ function buildAccessoryEntry(
     rules: resolveDueRules(
       resolved,
       lastByRule,
-      accessoryOriginDate(acc),
+      itemOriginDate(acc),
       sessions,
       asOf,
     ),
@@ -499,23 +496,26 @@ function buildAccessoryEntry(
  * no defaults anywhere and no item-only rules yields an empty array, not an
  * error (every item resolves zero effective rules and is omitted).
  *
- * `preloadedFirearms`, when supplied, is used verbatim as the visible-firearm
- * set instead of re-running `listFirearms` — see `loadVisibleItems`.
+ * `visibleFirearmsAlreadyLoaded`, when supplied, is used verbatim as the
+ * visible-firearm set instead of re-running `listFirearms` — see
+ * `loadVisibleItems`. The name is the contract: a caller MUST pass a set
+ * already filtered to the actor's own visible firearms (e.g. `listFirearms(actorId)`'s
+ * result) — never an unfiltered list, which would leak cross-visibility data.
  */
 /**
  * The actor's visible firearms and OWNED (never granted/mounted-inherited)
  * accessories — see the accessory-scope comment on `listDueForVisibleCollection`.
- * Accepts an optional `preloadedFirearms` — the same visible-firearm set a
- * caller (e.g. the firearms list page) has often already fetched for its own
- * purposes — to skip re-running `listFirearms`'s two round trips
+ * Accepts an optional `visibleFirearmsAlreadyLoaded` — the same visible-firearm
+ * set a caller (e.g. the firearms list page) has often already fetched for its
+ * own purposes — to skip re-running `listFirearms`'s two round trips
  * (`getVisibleIds` + select). Falls back to a fresh load when not supplied.
  */
 async function loadVisibleItems(
   actorId: string,
-  preloadedFirearms?: FirearmRow[],
+  visibleFirearmsAlreadyLoaded?: FirearmRow[],
 ): Promise<{ firearms: FirearmRow[]; accessories: AccessoryRow[] }> {
   const [firearms, accessories] = await Promise.all([
-    preloadedFirearms ?? listFirearms(actorId),
+    visibleFirearmsAlreadyLoaded ?? listFirearms(actorId),
     // Deliberately NOT `listAccessories(actorId)` — that returns owned ∪
     // mounted-on-a-visible-firearm accessories, which would surface a
     // GRANTEE'S shared firearm's mounted accessory (owned by someone else)
@@ -591,11 +591,11 @@ const isPresent = (e: ItemDueEntry | null): e is ItemDueEntry => e !== null;
 export async function listDueForVisibleCollection(
   actorId: string,
   asOf: Date = new Date(),
-  preloadedFirearms?: FirearmRow[],
+  visibleFirearmsAlreadyLoaded?: FirearmRow[],
 ): Promise<ItemDueEntry[]> {
   const { firearms, accessories } = await loadVisibleItems(
     actorId,
-    preloadedFirearms,
+    visibleFirearmsAlreadyLoaded,
   );
   if (firearms.length === 0 && accessories.length === 0) return [];
 

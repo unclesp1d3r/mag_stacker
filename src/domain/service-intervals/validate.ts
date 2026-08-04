@@ -38,7 +38,9 @@ function hasAnyThreshold(rule: ServiceRuleInput): boolean {
 
 function hasThresholdBelowMin(rule: ServiceRuleInput): boolean {
   return [rule.intervalDays, rule.intervalSessions, rule.intervalRounds].some(
-    (value) => isSetThreshold(value) && value < MIN_THRESHOLD,
+    (value) =>
+      isSetThreshold(value) &&
+      (!Number.isInteger(value) || value < MIN_THRESHOLD),
   );
 }
 
@@ -48,7 +50,10 @@ function hasThresholdBelowMin(rule: ServiceRuleInput): boolean {
  * whole set (R2, KTD6):
  * - `emptyName` — a rule name is empty or whitespace-only.
  * - `duplicateName` — two rules in this same set share a (trimmed) name.
- * - `thresholdTooLow` — a set threshold is below `MIN_THRESHOLD` (zero or negative).
+ * - `thresholdTooLow` — a set threshold is below `MIN_THRESHOLD` (zero or
+ *   negative) or not a whole number (e.g. `1.5`) — thresholds are stored in
+ *   integer DB columns, so a non-integer must be rejected here rather than
+ *   fail as an unhandled driver error.
  * - `missingThreshold` — a rule sets no threshold and is not suppressed.
  * - `suppressedWithThresholds` — a rule is BOTH suppressed and carries a set
  *   threshold (F7 fix). `createItemRule`/`updateItemRule` force a suppressed

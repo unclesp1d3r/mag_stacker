@@ -189,13 +189,14 @@ describe("service-intervals events-service (U4)", () => {
   test("a servicedOn more than one day in the future throws ValidationError and writes no row (U8 log-service form contract; F1's one-day timezone tolerance)", async () => {
     const owner = await newOwner("u4evFutureOwner");
     const fa = await makeFirearm(owner, { type: "rifle" });
+    await armCleaningRule(owner, "firearm", fa.id);
 
     await expect(
       logServiceEvent(owner, "firearm", fa.id, {
         ruleName: "Cleaning",
         servicedOn: isoDateOffset(2),
       }),
-    ).rejects.toBeInstanceOf(ValidationError);
+    ).rejects.toMatchObject({ codes: ["servicedOnInFuture"] });
 
     const rows = await db
       .select()
@@ -920,7 +921,7 @@ describe("service-intervals events-service (U4)", () => {
         updateServiceEvent(owner, event.id, {
           servicedOn: isoDateOffset(2),
         }),
-      ).rejects.toBeInstanceOf(ValidationError);
+      ).rejects.toMatchObject({ codes: ["servicedOnInFuture"] });
 
       const rows = await db
         .select()
@@ -943,6 +944,116 @@ describe("service-intervals events-service (U4)", () => {
         servicedOn: tomorrow,
       });
       expect(updated.servicedOn).toBe(tomorrow);
+    });
+  });
+
+  /**
+   * `authorizeEventWritesBatch` (the bulk path's authorization) reimplements
+   * firearm authorization inline using `visibleFirearmPermissions`, rather
+   * than calling `authorizeEventWrite`/`authorizeUpdate` (the single path's
+   * gate) in a loop. The doc comments above both functions claim the two
+   * produce identical outcomes; these tests pin that claim down directly by
+   * calling BOTH `logServiceEvent` and `logServiceEventsBulk` against the
+   * SAME firearm with the SAME actor at each permission tier, so a future
+   * change that loosens one path without the other fails a test instead of
+   * silently drifting.
+   */
+  describe("authorization parity: logServiceEvent vs logServiceEventsBulk (same actor, same firearm)", () => {
+    test("the owner succeeds identically via both paths", async () => {
+      const owner = await newOwner("u4parityOwner");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      await armCleaningRule(owner, "firearm", fa.id);
+
+      const single = await logServiceEvent(owner, "firearm", fa.id, {
+        ruleName: "Cleaning",
+        servicedOn: "2026-05-01",
+      });
+      const [bulk] = await logServiceEventsBulk(owner, {
+        items: [
+          { parentType: "firearm", parentId: fa.id, ruleName: "Cleaning" },
+        ],
+        servicedOn: "2026-05-02",
+      });
+
+      expect(single.actorId).toBe(owner);
+      expect(bulk.actorId).toBe(owner);
+    });
+
+    test("an edit-grantee succeeds identically via both paths", async () => {
+      const owner = await newOwner("u4parityEditOwner");
+      const editor = await newOwner("u4parityEditor");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      await armCleaningRule(owner, "firearm", fa.id);
+      await createGrant(db, {
+        actorId: owner,
+        granteeId: editor,
+        parentType: "firearm",
+        parentId: fa.id,
+        permission: "edit",
+      });
+
+      const single = await logServiceEvent(editor, "firearm", fa.id, {
+        ruleName: "Cleaning",
+        servicedOn: "2026-05-01",
+      });
+      const [bulk] = await logServiceEventsBulk(editor, {
+        items: [
+          { parentType: "firearm", parentId: fa.id, ruleName: "Cleaning" },
+        ],
+        servicedOn: "2026-05-02",
+      });
+
+      expect(single.actorId).toBe(editor);
+      expect(bulk.actorId).toBe(editor);
+    });
+
+    test("a view-grantee is rejected identically (NotAuthorizedError) via both paths", async () => {
+      const owner = await newOwner("u4parityViewOwner");
+      const viewer = await newOwner("u4parityViewer");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      await createGrant(db, {
+        actorId: owner,
+        granteeId: viewer,
+        parentType: "firearm",
+        parentId: fa.id,
+        permission: "view",
+      });
+
+      await expect(
+        logServiceEvent(viewer, "firearm", fa.id, {
+          ruleName: "Cleaning",
+          servicedOn: "2026-05-01",
+        }),
+      ).rejects.toBeInstanceOf(NotAuthorizedError);
+      await expect(
+        logServiceEventsBulk(viewer, {
+          items: [
+            { parentType: "firearm", parentId: fa.id, ruleName: "Cleaning" },
+          ],
+          servicedOn: "2026-05-01",
+        }),
+      ).rejects.toBeInstanceOf(NotAuthorizedError);
+    });
+
+    test("a stranger with no grant at all is rejected identically (NotFoundError) via both paths", async () => {
+      const owner = await newOwner("u4parityStrangerOwner");
+      const stranger = await newOwner("u4parityStranger");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+
+      await expect(
+        logServiceEvent(stranger, "firearm", fa.id, {
+          ruleName: "Cleaning",
+          servicedOn: "2026-05-01",
+        }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      await expect(
+        logServiceEventsBulk(stranger, {
+          items: [
+            { parentType: "firearm", parentId: fa.id, ruleName: "Cleaning" },
+          ],
+          servicedOn: "2026-05-01",
+        }),
+      ).rejects.toBeInstanceOf(NotFoundError);
     });
   });
 });

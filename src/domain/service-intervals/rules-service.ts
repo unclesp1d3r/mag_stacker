@@ -157,6 +157,17 @@ function belongsToParent(
  * `excludeId` omitted means "creating new" (nothing to exclude); passing the
  * row's own id on an update lets it keep its current name. Thrown before any
  * write, so the DB's unique constraint is never what surfaces the error.
+ *
+ * This is a fast-path pre-check only, not the sole guarantee against a
+ * duplicate name: under READ COMMITTED, two concurrent writes (e.g. a double
+ * submit) can both pass this check and both reach the insert/update below.
+ * `isUniqueNameViolation` + the try/catch in each write function is the
+ * backstop that catches that race at the DB's unique constraints
+ * (`service_rule_default_owner_scope_category_name_unique`,
+ * `service_rule_firearm_name_unique`, `service_rule_accessory_name_unique` —
+ * `src/db/migrations/0019_perfect_nebula.sql`) and maps the loser to the same
+ * clean `ValidationError(["duplicateName"])` this pre-check produces, instead
+ * of letting the raw Postgres driver error (SQLSTATE `23505`) escape.
  */
 function assertNameAvailable(
   siblings: Array<{ id: string; name: string }>,
@@ -166,6 +177,40 @@ function assertNameAvailable(
   if (siblings.some((s) => s.id !== excludeId && s.name === name)) {
     throw new ValidationError(["duplicateName"]);
   }
+}
+
+/** Postgres SQLSTATE for "unique_violation". */
+const POSTGRES_UNIQUE_VIOLATION = "23505";
+
+function hasUniqueViolationCode(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === POSTGRES_UNIQUE_VIOLATION
+  );
+}
+
+/**
+ * True when `error` is the `pg` driver's unique-constraint-violation error
+ * (`.code === "23505"`, the Postgres SQLSTATE) — the race-condition backstop
+ * behind `assertNameAvailable`'s pre-check (see that function's doc). Only
+ * matches this specific code so every other DB error still propagates
+ * unchanged; a caller that wants to also confirm WHICH constraint fired can
+ * read `.constraint` off the same error object (also set by `pg` on a
+ * unique-violation), but the four call sites here don't need to distinguish
+ * between the three service-rule unique constraints — all three mean the
+ * same thing to the caller: this name is already taken.
+ *
+ * Checks `error.cause` too: drizzle's `db.transaction`/query layer wraps the
+ * raw `pg` driver error in its own `DrizzleQueryError`, with the original
+ * error (carrying `.code`) as `.cause` — the write functions here would never
+ * see the bare `pg` error directly.
+ */
+function isUniqueNameViolation(error: unknown): boolean {
+  if (hasUniqueViolationCode(error)) return true;
+  const cause = (error as { cause?: unknown } | null)?.cause;
+  return hasUniqueViolationCode(cause);
 }
 
 /**
@@ -280,24 +325,30 @@ export async function createServiceRuleDefault(
   const category = input.category.trim();
   const name = input.name.trim();
 
-  return db.transaction(async (tx) => {
-    await assertWritesAllowed(tx);
-    const siblings = await loadDefaults(tx, actorId, input.scope, category);
-    assertNameAvailable(siblings, name);
-    const [row] = await tx
-      .insert(serviceRuleDefault)
-      .values({
-        ownerId: actorId,
-        scope: input.scope,
-        category,
-        name,
-        intervalDays: input.intervalDays ?? null,
-        intervalSessions: input.intervalSessions ?? null,
-        intervalRounds: input.intervalRounds ?? null,
-      })
-      .returning();
-    return row;
-  });
+  try {
+    return await db.transaction(async (tx) => {
+      await assertWritesAllowed(tx);
+      const siblings = await loadDefaults(tx, actorId, input.scope, category);
+      assertNameAvailable(siblings, name);
+      const [row] = await tx
+        .insert(serviceRuleDefault)
+        .values({
+          ownerId: actorId,
+          scope: input.scope,
+          category,
+          name,
+          intervalDays: input.intervalDays ?? null,
+          intervalSessions: input.intervalSessions ?? null,
+          intervalRounds: input.intervalRounds ?? null,
+        })
+        .returning();
+      return row;
+    });
+  } catch (error: unknown) {
+    if (isUniqueNameViolation(error))
+      throw new ValidationError(["duplicateName"]);
+    throw error;
+  }
 }
 
 /**
@@ -315,37 +366,43 @@ export async function updateServiceRuleDefault(
 
   const name = input.name.trim();
 
-  return db.transaction(async (tx) => {
-    await assertWritesAllowed(tx);
-    const [existing] = await tx
-      .select()
-      .from(serviceRuleDefault)
-      .where(eq(serviceRuleDefault.id, defaultId))
-      .limit(1);
-    if (!existing || existing.ownerId !== actorId) throw new NotFoundError();
+  try {
+    return await db.transaction(async (tx) => {
+      await assertWritesAllowed(tx);
+      const [existing] = await tx
+        .select()
+        .from(serviceRuleDefault)
+        .where(eq(serviceRuleDefault.id, defaultId))
+        .limit(1);
+      if (!existing || existing.ownerId !== actorId) throw new NotFoundError();
 
-    const siblings = await loadDefaults(
-      tx,
-      actorId,
-      existing.scope as ServiceScope,
-      existing.category,
-    );
-    assertNameAvailable(siblings, name, defaultId);
+      const siblings = await loadDefaults(
+        tx,
+        actorId,
+        existing.scope as ServiceScope,
+        existing.category,
+      );
+      assertNameAvailable(siblings, name, defaultId);
 
-    const [row] = await tx
-      .update(serviceRuleDefault)
-      .set({
-        name,
-        intervalDays: input.intervalDays ?? null,
-        intervalSessions: input.intervalSessions ?? null,
-        intervalRounds: input.intervalRounds ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(serviceRuleDefault.id, defaultId))
-      .returning();
-    if (!row) throw new NotFoundError();
-    return row;
-  });
+      const [row] = await tx
+        .update(serviceRuleDefault)
+        .set({
+          name,
+          intervalDays: input.intervalDays ?? null,
+          intervalSessions: input.intervalSessions ?? null,
+          intervalRounds: input.intervalRounds ?? null,
+          updatedAt: new Date(),
+        })
+        .where(eq(serviceRuleDefault.id, defaultId))
+        .returning();
+      if (!row) throw new NotFoundError();
+      return row;
+    });
+  } catch (error: unknown) {
+    if (isUniqueNameViolation(error))
+      throw new ValidationError(["duplicateName"]);
+    throw error;
+  }
 }
 
 /** Delete a category default. Owner-only, matching every other default op. */
@@ -397,31 +454,39 @@ export async function createItemRule(
   const name = input.name.trim();
   const suppressed = input.suppressed ?? false;
 
-  return db.transaction(async (tx) => {
-    await authorizeItemRuleWrite(tx, actorId, parentType, parentId);
+  try {
+    return await db.transaction(async (tx) => {
+      await authorizeItemRuleWrite(tx, actorId, parentType, parentId);
 
-    const siblings =
-      preloadedSiblings ?? (await loadItemRules(tx, parentType, parentId));
-    assertNameAvailable(siblings, name);
+      const siblings =
+        preloadedSiblings ?? (await loadItemRules(tx, parentType, parentId));
+      assertNameAvailable(siblings, name);
 
-    // `validateServiceRuleSet` above already rejects `suppressed: true` WITH
-    // any threshold submitted (`suppressedWithThresholds`, F7 fix), so this
-    // ternary is defense-in-depth, not the primary guarantee: a suppressed
-    // rule's thresholds are always absent by the time we reach here.
-    const [row] = await tx
-      .insert(serviceRule)
-      .values({
-        firearmId: parentType === "firearm" ? parentId : null,
-        accessoryId: parentType === "accessory" ? parentId : null,
-        name,
-        suppressed,
-        intervalDays: suppressed ? null : (input.intervalDays ?? null),
-        intervalSessions: suppressed ? null : (input.intervalSessions ?? null),
-        intervalRounds: suppressed ? null : (input.intervalRounds ?? null),
-      })
-      .returning();
-    return row;
-  });
+      // `validateServiceRuleSet` above already rejects `suppressed: true` WITH
+      // any threshold submitted (`suppressedWithThresholds`, F7 fix), so this
+      // ternary is defense-in-depth, not the primary guarantee: a suppressed
+      // rule's thresholds are always absent by the time we reach here.
+      const [row] = await tx
+        .insert(serviceRule)
+        .values({
+          firearmId: parentType === "firearm" ? parentId : null,
+          accessoryId: parentType === "accessory" ? parentId : null,
+          name,
+          suppressed,
+          intervalDays: suppressed ? null : (input.intervalDays ?? null),
+          intervalSessions: suppressed
+            ? null
+            : (input.intervalSessions ?? null),
+          intervalRounds: suppressed ? null : (input.intervalRounds ?? null),
+        })
+        .returning();
+      return row;
+    });
+  } catch (error: unknown) {
+    if (isUniqueNameViolation(error))
+      throw new ValidationError(["duplicateName"]);
+    throw error;
+  }
 }
 
 /**
@@ -448,57 +513,71 @@ export async function updateItemRule(
   const name = input.name.trim();
   const suppressed = input.suppressed ?? false;
 
-  return db.transaction(async (tx) => {
-    await authorizeItemRuleWrite(tx, actorId, parentType, parentId);
+  try {
+    return await db.transaction(async (tx) => {
+      await authorizeItemRuleWrite(tx, actorId, parentType, parentId);
 
-    // FOR UPDATE (F5 fix): locks this row for the rest of the transaction,
-    // so `existing.name` — what `repointServiceEvents` below repoints FROM —
-    // is always the name actually on the row, never a name a second,
-    // overlapping rename already moved past. Without the lock, two
-    // concurrent renames of the same rule both read the row's starting name
-    // before either commits; whichever commits second then repoints events
-    // FROM that stale starting name, matching zero rows (the first rename
-    // already moved them), and strands history on the intermediate name. The
-    // lock forces the second transaction's read to block until the first
-    // commits, so it re-reads the name the first rename actually left
-    // behind — mirroring `magazines/service.ts`'s `updateMagazine` lock.
-    const [existing] = await tx
-      .select()
-      .from(serviceRule)
-      .where(eq(serviceRule.id, ruleId))
-      .for("update")
-      .limit(1);
-    if (!existing || !belongsToParent(existing, parentType, parentId)) {
-      throw new NotFoundError();
-    }
+      // FOR UPDATE (F5 fix): locks this row for the rest of the transaction,
+      // so `existing.name` — what `repointServiceEvents` below repoints FROM —
+      // is always the name actually on the row, never a name a second,
+      // overlapping rename already moved past. Without the lock, two
+      // concurrent renames of the same rule both read the row's starting name
+      // before either commits; whichever commits second then repoints events
+      // FROM that stale starting name, matching zero rows (the first rename
+      // already moved them), and strands history on the intermediate name. The
+      // lock forces the second transaction's read to block until the first
+      // commits, so it re-reads the name the first rename actually left
+      // behind — mirroring `magazines/service.ts`'s `updateMagazine` lock.
+      const [existing] = await tx
+        .select()
+        .from(serviceRule)
+        .where(eq(serviceRule.id, ruleId))
+        .for("update")
+        .limit(1);
+      if (!existing || !belongsToParent(existing, parentType, parentId)) {
+        throw new NotFoundError();
+      }
 
-    const siblings =
-      preloadedSiblings ?? (await loadItemRules(tx, parentType, parentId));
-    assertNameAvailable(siblings, name, ruleId);
+      const siblings =
+        preloadedSiblings ?? (await loadItemRules(tx, parentType, parentId));
+      assertNameAvailable(siblings, name, ruleId);
 
-    // `validateServiceRuleSet` above already rejects `suppressed: true` WITH
-    // any threshold submitted (`suppressedWithThresholds`, F7 fix), so this
-    // ternary is defense-in-depth, not the primary guarantee.
-    const [row] = await tx
-      .update(serviceRule)
-      .set({
-        name,
-        suppressed,
-        intervalDays: suppressed ? null : (input.intervalDays ?? null),
-        intervalSessions: suppressed ? null : (input.intervalSessions ?? null),
-        intervalRounds: suppressed ? null : (input.intervalRounds ?? null),
-        updatedAt: new Date(),
-      })
-      .where(eq(serviceRule.id, ruleId))
-      .returning();
-    if (!row) throw new NotFoundError();
+      // `validateServiceRuleSet` above already rejects `suppressed: true` WITH
+      // any threshold submitted (`suppressedWithThresholds`, F7 fix), so this
+      // ternary is defense-in-depth, not the primary guarantee.
+      const [row] = await tx
+        .update(serviceRule)
+        .set({
+          name,
+          suppressed,
+          intervalDays: suppressed ? null : (input.intervalDays ?? null),
+          intervalSessions: suppressed
+            ? null
+            : (input.intervalSessions ?? null),
+          intervalRounds: suppressed ? null : (input.intervalRounds ?? null),
+          updatedAt: new Date(),
+        })
+        .where(eq(serviceRule.id, ruleId))
+        .returning();
+      if (!row) throw new NotFoundError();
 
-    if (name !== existing.name) {
-      await repointServiceEvents(tx, parentType, parentId, existing.name, name);
-    }
+      if (name !== existing.name) {
+        await repointServiceEvents(
+          tx,
+          parentType,
+          parentId,
+          existing.name,
+          name,
+        );
+      }
 
-    return row;
-  });
+      return row;
+    });
+  } catch (error: unknown) {
+    if (isUniqueNameViolation(error))
+      throw new ValidationError(["duplicateName"]);
+    throw error;
+  }
 }
 
 /**
@@ -532,17 +611,6 @@ export async function deleteItemRule(
 }
 
 // ---- reads ----
-
-/**
- * An item's effective, resolved rule set (R4, R5) — defaults are loaded
- * against the ITEM'S OWNER, never the viewer, so a shared firearm's rules
- * always reflect its owner's configuration (R6). The live production read
- * path for this same resolution is `due-service.ts`'s `getItemDueState`,
- * which additionally annotates each rule with due state — there is no
- * production caller that wants resolution WITHOUT due annotation, so this
- * function was removed (its only callers were its own tests, since
- * re-pointed at `getItemDueState`).
- */
 
 /** An item's own raw rule rows (overrides, suppressions, item-only rules). */
 export async function listItemRules(

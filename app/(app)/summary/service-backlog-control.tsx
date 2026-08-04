@@ -11,7 +11,7 @@ import { useToast } from "@/components/ui/toast";
 import type { BacklogRow } from "@/src/domain/service-intervals/backlog";
 import type { BulkServiceItem } from "@/src/domain/service-intervals/events-service";
 import { validateServicedOn } from "@/src/domain/service-intervals/validate-event";
-import { firstMessage } from "@/src/domain/validation-messages";
+import { firstMessage, messageForCode } from "@/src/domain/validation-messages";
 import { todayIso } from "@/src/lib/dates";
 import { markServicedBulkAction } from "./actions";
 
@@ -60,6 +60,7 @@ export function ServiceBacklogControl({ backlog }: ServiceBacklogControlProps) {
   const dateId = useId();
   const notesId = useId();
   const selectAllId = useId();
+  const rowIdPrefix = useId();
 
   const allKeys = useMemo(() => backlog.map(rowKey), [backlog]);
   const allSelected = allKeys.length > 0 && selected.size === allKeys.length;
@@ -108,6 +109,12 @@ export function ServiceBacklogControl({ backlog }: ServiceBacklogControlProps) {
         router.refresh();
       } else if (result.codes) {
         setCodes(result.codes);
+        const nonDateCode = result.codes.find(
+          (code) => !DATE_CODES.includes(code),
+        );
+        if (nonDateCode) {
+          setServerError(messageForCode(nonDateCode));
+        }
       } else {
         setServerError(result.error ?? "Could not mark service.");
       }
@@ -144,9 +151,9 @@ export function ServiceBacklogControl({ backlog }: ServiceBacklogControlProps) {
         </div>
 
         <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto">
-          {backlog.map((row) => {
+          {backlog.map((row, index) => {
             const key = rowKey(row);
-            const inputId = `${dateId}-${key}`;
+            const inputId = `${rowIdPrefix}-${index}`;
             return (
               <li key={key}>
                 <label

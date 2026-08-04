@@ -469,6 +469,78 @@ describe("service-intervals rules-service (U3)", () => {
     expect(events.map((e) => e.ruleName)).toEqual([finalName]);
   });
 
+  // Backstop for the race `assertNameAvailable`'s pre-check can't close on its
+  // own: under READ COMMITTED, two concurrent creates of the same name can
+  // both pass the pre-check read before either insert commits. The DB's
+  // unique constraint (`service_rule_firearm_name_unique`) then rejects the
+  // loser — this must surface as the same clean `ValidationError(["duplicateName"])`
+  // the pre-check itself throws, never the raw Postgres driver error.
+  test("two concurrent creates of the same item-rule name: one wins, the other gets ValidationError(duplicateName), never a raw driver error", async () => {
+    const owner = await newOwner("u3raceItemRule");
+    const fa = await makeFirearm(owner, { type: "rifle" });
+
+    const results = await Promise.allSettled([
+      createItemRule(owner, "firearm", fa.id, {
+        name: "Cleaning",
+        intervalRounds: 500,
+      }),
+      createItemRule(owner, "firearm", fa.id, {
+        name: "Cleaning",
+        intervalRounds: 500,
+      }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    const rejection = rejected[0] as PromiseRejectedResult;
+    expect(rejection.reason).toBeInstanceOf(ValidationError);
+    expect((rejection.reason as ValidationError).codes).toEqual([
+      "duplicateName",
+    ]);
+
+    const finalRules = await listItemRules(owner, "firearm", fa.id);
+    expect(finalRules).toHaveLength(1);
+  });
+
+  // Same backstop, for category defaults (`service_rule_default_owner_scope_category_name_unique`).
+  test("two concurrent creates of the same default name: one wins, the other gets ValidationError(duplicateName), never a raw driver error", async () => {
+    const owner = await newOwner("u3raceDefault");
+
+    const results = await Promise.allSettled([
+      createServiceRuleDefault(owner, {
+        scope: "firearm",
+        category: "rifle",
+        name: "Cleaning",
+        intervalRounds: 500,
+      }),
+      createServiceRuleDefault(owner, {
+        scope: "firearm",
+        category: "rifle",
+        name: "Cleaning",
+        intervalRounds: 500,
+      }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    const rejection = rejected[0] as PromiseRejectedResult;
+    expect(rejection.reason).toBeInstanceOf(ValidationError);
+    expect((rejection.reason as ValidationError).codes).toEqual([
+      "duplicateName",
+    ]);
+
+    const finalDefaults = await listServiceRuleDefaults(
+      owner,
+      "firearm",
+      "rifle",
+    );
+    expect(finalDefaults).toHaveLength(1);
+  });
+
   test("the accessory-category listing returns each of the owner's distinct categories once, alphabetically, and excludes another owner's categories", async () => {
     const owner = await newOwner("u3catOwner");
     const other = await newOwner("u3catOther");

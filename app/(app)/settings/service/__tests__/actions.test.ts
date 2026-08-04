@@ -214,4 +214,14 @@ describe("deleteServiceRuleDefaultAction", () => {
     expect(deleteCalls).toEqual([{ actorId: "user-1", id: "default-1" }]);
     expect(revalidateCalls).toContain("/settings/service");
   });
+
+  test("maps a NotFoundError (another owner's default) to a non-leaking failed ActionResult and does not revalidate", async () => {
+    currentUserId = "user-1";
+    deleteThrows = new NotFoundError();
+
+    const result = await deleteServiceRuleDefaultAction("default-1");
+
+    expect(result.ok).toBe(false);
+    expect(revalidateCalls).toEqual([]);
+  });
 });

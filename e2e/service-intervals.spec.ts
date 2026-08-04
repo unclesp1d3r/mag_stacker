@@ -161,7 +161,7 @@ test("a rifle default marks items due with no visit, logging service clears it, 
     const barrelRow = panel.getByRole("row").filter({ hasText: "Barrel" });
     await expect(barrelRow.getByText("Overridden")).toBeVisible();
     await expect(barrelRow.getByText("Due")).toBeVisible();
-    await expect(barrelRow).toContainText("of 1 days");
+    await expect(barrelRow).toContainText("of 1 day");
   });
 
   await test.step("raising the rifle Barrel default reaches Interval Rifle One but leaves Interval Rifle Two's override standing (F3, AE1)", async () => {
@@ -193,7 +193,7 @@ test("a rifle default marks items due with no visit, logging service clears it, 
       .getByRole("row")
       .filter({ hasText: "Barrel" });
     await expect(twoBarrelRow.getByText("Overridden")).toBeVisible();
-    await expect(twoBarrelRow).toContainText("of 1 days");
+    await expect(twoBarrelRow).toContainText("of 1 day");
   });
 
   await test.step("correcting the Cleaning entry's date and notes, then deleting it (correction path)", async () => {

@@ -11,7 +11,7 @@ import {
   type ServiceEventInput,
   validateServiceEventInput,
 } from "@/src/domain/service-intervals/validate-event";
-import { firstMessage } from "@/src/domain/validation-messages";
+import { firstMessage, messageForCode } from "@/src/domain/validation-messages";
 import { todayIso } from "@/src/lib/dates";
 
 /**
@@ -69,6 +69,12 @@ export function LogServiceForm({
         onSaved();
       } else if (result.codes) {
         setCodes(result.codes);
+        const nonDateCode = result.codes.find(
+          (code) => !DATE_CODES.includes(code),
+        );
+        if (nonDateCode) {
+          setServerError(messageForCode(nonDateCode));
+        }
       } else {
         setServerError(result.error ?? "Could not log service.");
       }

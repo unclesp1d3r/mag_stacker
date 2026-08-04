@@ -136,5 +136,6 @@ describe("markServicedBulkAction", () => {
 
     expect(result.ok).toBe(false);
     expect(result.ok === false && result.codes).toEqual(["servicedOnInFuture"]);
+    expect(revalidateCalls).toEqual([]);
   });
 });
