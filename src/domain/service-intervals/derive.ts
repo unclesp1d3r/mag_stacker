@@ -131,7 +131,13 @@ export interface ElapsedCounts {
  *
  * Sessions are counted only when STRICTLY AFTER the measure-from date
  * (KTD10) — a session on the same calendar day as the measure-from date does
- * not count toward sessions or rounds.
+ * not count toward sessions or rounds — AND no later than `asOf` (F4 fix).
+ * Range-session dates are deliberately allowed in the future by their own
+ * validation (unrelated to this fix, and not changed here), so without this
+ * upper bound a session logged for next month would immediately inflate
+ * today's session/round counts and could trip a threshold for something
+ * that has not happened yet. A session dated exactly `asOf` still counts —
+ * only STRICTLY later than `asOf` is excluded.
  */
 export function elapsedCounts(
   measureFrom: Date,
@@ -144,6 +150,7 @@ export function elapsedCounts(
   let roundsTotal = 0;
   for (const session of sessions) {
     if (differenceInCalendarDays(session.date, measureFrom) <= 0) continue;
+    if (differenceInCalendarDays(session.date, asOf) > 0) continue;
     sessionCount += 1;
     roundsTotal += session.roundsFired;
   }

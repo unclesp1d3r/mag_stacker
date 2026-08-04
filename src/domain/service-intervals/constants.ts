@@ -30,3 +30,15 @@ export type InheritanceState = (typeof INHERITANCE_STATES)[number];
 export const SERVICE_AXES = ["days", "sessions", "rounds"] as const;
 
 export type ServiceAxis = (typeof SERVICE_AXES)[number];
+
+/**
+ * Maximum item+rule pairs one `logServiceEventsBulk` call (R16) may include
+ * (F6 fix). A single INSERT binds several parameters per row, so an
+ * unbounded batch could exceed the DB driver's bound-parameter ceiling as an
+ * unhandled error mid-transaction, holding row locks open in the meantime.
+ * Rejecting an over-size batch as a `ValidationError` BEFORE opening the
+ * transaction turns that into a clean, expected failure instead. A few
+ * hundred is comfortably more than any real "mark this whole visible
+ * collection serviced" click would ever submit.
+ */
+export const MAX_BULK_SERVICE_ITEMS = 200;

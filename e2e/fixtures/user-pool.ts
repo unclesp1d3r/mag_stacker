@@ -47,6 +47,8 @@ export const SPEC_USER_KEYS = [
   "service-intervals-share",
   "service-intervals-viewer",
   "service-intervals-bulk",
+  "service-intervals-bulk-share",
+  "service-intervals-rule-actions",
 ] as const;
 
 export type SpecUserKey = (typeof SPEC_USER_KEYS)[number];

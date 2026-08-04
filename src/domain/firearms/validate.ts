@@ -12,14 +12,23 @@
  * backfilled row).
  *
  * `acquiredDate` is nullable and, when present, must be a real ISO calendar
- * date (service-intervals plan R22, mirrors `accessories.installedDate` /
+ * date, and not more than `FUTURE_DATE_TOLERANCE_DAYS` after `asOf`
+ * (service-intervals plan R22, mirrors `accessories.installedDate` /
  * range-sessions' `date` check). Unlike `magazine`/`ammo`'s acquired date —
  * which the service layer persists unvalidated — a firearm's feeds the
- * service-interval origin date (KTD9), so a malformed value is rejected here
+ * service-interval origin date (KTD9): `measureFrom` in `derive.ts` is built
+ * from it directly, so a FUTURE acquired date would make every rule's
+ * elapsed-days count clamp to 0 forever, silently freezing its due state
+ * until the clock caught up (F3 fix). A malformed value is rejected here
  * rather than left to the Postgres `date` cast.
  */
 
-import { ISO_DATE, isRealCalendarDate } from "@/src/lib/dates";
+import { differenceInCalendarDays, parseISO } from "date-fns";
+import {
+  FUTURE_DATE_TOLERANCE_DAYS,
+  ISO_DATE,
+  isRealCalendarDate,
+} from "@/src/lib/dates";
 import { isFirearmAction, isFirearmType, UNSPECIFIED } from "./constants";
 
 export type FirearmValidationCode =
@@ -29,7 +38,8 @@ export type FirearmValidationCode =
   | "invalidAction"
   | "typeRequired"
   | "actionRequired"
-  | "invalidAcquiredDate";
+  | "invalidAcquiredDate"
+  | "acquiredDateInFuture";
 
 export interface FirearmInput {
   name: string;
@@ -40,7 +50,20 @@ export interface FirearmInput {
   acquiredDate?: string | null;
 }
 
-export function validateFirearm(input: FirearmInput): FirearmValidationCode[] {
+/**
+ * `asOf` is the reference "now" the not-in-the-future `acquiredDate` check
+ * compares against — an explicit parameter (default `new Date()`, the
+ * server's clock) so this stays a pure, deterministic function for tests,
+ * matching `validateServicedOn`'s shape. The same one-day tolerance
+ * (`FUTURE_DATE_TOLERANCE_DAYS`) applies for the same reason as
+ * `validateServicedOn`: `asOf` is the SERVER's clock, and a submitter whose
+ * local calendar day genuinely runs ahead of it must not be rejected for
+ * submitting their own today.
+ */
+export function validateFirearm(
+  input: FirearmInput,
+  asOf: Date = new Date(),
+): FirearmValidationCode[] {
   const codes: FirearmValidationCode[] = [];
   if (input.name.trim() === "") codes.push("emptyName");
   if (input.caliber.trim() === "") codes.push("emptyCaliber");
@@ -52,6 +75,11 @@ export function validateFirearm(input: FirearmInput): FirearmValidationCode[] {
     const date = input.acquiredDate.trim();
     if (date === "" || !ISO_DATE.test(date) || !isRealCalendarDate(date)) {
       codes.push("invalidAcquiredDate");
+    } else if (
+      differenceInCalendarDays(parseISO(date), asOf) >
+      FUTURE_DATE_TOLERANCE_DAYS
+    ) {
+      codes.push("acquiredDateInFuture");
     }
   }
   return codes;

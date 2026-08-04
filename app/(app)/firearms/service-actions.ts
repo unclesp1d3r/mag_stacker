@@ -145,6 +145,32 @@ export async function addItemOnlyRuleAction(
   });
 }
 
+/**
+ * Shared delete-by-name core behind two DIFFERENT rule actions that happen to
+ * be the same write: "Reset to inherited" (an overridden rule falling back
+ * to its category default) and "Remove" (an item-only rule, which has no
+ * default underneath to fall back to — code-review finding #2). Both are
+ * structurally "delete this item's row for `ruleName`"; keeping one function
+ * avoids the two diverging while each call site's own name still says why it
+ * invokes it.
+ */
+async function deleteItemRuleByName(
+  userId: string,
+  parentType: ServiceParentType,
+  parentId: string,
+  ruleName: string,
+): Promise<void> {
+  const { existing } = await findItemRuleByName(
+    userId,
+    parentType,
+    parentId,
+    ruleName,
+  );
+  if (!existing) throw new NotFoundError();
+  await deleteItemRule(userId, parentType, parentId, existing.id);
+  revalidateItemPath(parentType, parentId);
+}
+
 /** The "Reset to inherited" action: delete this item's override for `ruleName`. */
 export async function resetServiceRuleAction(
   parentType: ServiceParentType,
@@ -152,15 +178,25 @@ export async function resetServiceRuleAction(
   ruleName: string,
 ): Promise<ActionResult> {
   return withActionContext("service-reset-rule", async (userId) => {
-    const { existing } = await findItemRuleByName(
-      userId,
-      parentType,
-      parentId,
-      ruleName,
-    );
-    if (!existing) throw new NotFoundError();
-    await deleteItemRule(userId, parentType, parentId, existing.id);
-    revalidateItemPath(parentType, parentId);
+    await deleteItemRuleByName(userId, parentType, parentId, ruleName);
+    return { ok: true };
+  });
+}
+
+/**
+ * The "Remove" action: delete an ITEM-ONLY rule outright (code-review
+ * finding #2). An item-only rule has no category default underneath it, so
+ * unlike "Reset to inherited" there is nothing left to measure once the row
+ * is gone — this is a real deletion, not a fallback, and the panel's toast
+ * copy says so ("removed", never "restored"/"reset").
+ */
+export async function removeItemOnlyRuleAction(
+  parentType: ServiceParentType,
+  parentId: string,
+  ruleName: string,
+): Promise<ActionResult> {
+  return withActionContext("service-remove-item-only-rule", async (userId) => {
+    await deleteItemRuleByName(userId, parentType, parentId, ruleName);
     return { ok: true };
   });
 }

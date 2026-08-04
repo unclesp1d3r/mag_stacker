@@ -11,16 +11,27 @@ import {
   makeAccessory,
   makeFirearm,
 } from "@/src/test-support/factories";
+import { MAX_BULK_SERVICE_ITEMS } from "../constants";
 import {
+  type BulkServiceItem,
   listServiceHistory,
   logServiceEvent,
   logServiceEventsBulk,
 } from "../events-service";
+import { createItemRule, updateItemRule } from "../rules-service";
 
 /**
  * Events-service integration tests (service-intervals plan, U4). Each test
  * creates its own owner(s), matching the isolation style established in
  * `rules-service.test.ts`.
+ *
+ * F2 fix: `logServiceEvent`/`logServiceEventsBulk` now confirm `ruleName`
+ * resolves against the item's CURRENT effective rule set before writing, so
+ * every test below that expects a successful write first arms the target
+ * rule with `createItemRule` — matching how the real log-service flow only
+ * ever offers a `ruleName` already showing in the item's resolved due state
+ * (`log-service-form.tsx`'s doc comment: "`ruleName` is fixed by which
+ * rule's 'Log service' button opened this form").
  */
 describe("service-intervals events-service (U4)", () => {
   const createdUsers: string[] = [];
@@ -35,9 +46,32 @@ describe("service-intervals events-service (U4)", () => {
     return id;
   }
 
+  /** Arms an item-only "Cleaning" rule so a subsequent log-service call resolves (F2). */
+  async function armCleaningRule(
+    owner: string,
+    parentType: "firearm" | "accessory",
+    parentId: string,
+  ): Promise<void> {
+    await createItemRule(owner, parentType, parentId, {
+      name: "Cleaning",
+      intervalRounds: 500,
+    });
+  }
+
+  function isoDateOffset(daysFromNow: number): string {
+    const date = new Date();
+    date.setDate(date.getDate() + daysFromNow);
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("-");
+  }
+
   test("logs a firearm service event recording the given rule, date, and notes", async () => {
     const owner = await newOwner("u4evOwner");
     const fa = await makeFirearm(owner, { type: "rifle" });
+    await armCleaningRule(owner, "firearm", fa.id);
 
     const event = await logServiceEvent(owner, "firearm", fa.id, {
       ruleName: "Cleaning",
@@ -59,6 +93,7 @@ describe("service-intervals events-service (U4)", () => {
     const owner = await newOwner("u4evOwner2");
     const editor = await newOwner("u4evEditor");
     const fa = await makeFirearm(owner, { type: "rifle" });
+    await armCleaningRule(owner, "firearm", fa.id);
     await createGrant(db, {
       actorId: owner,
       granteeId: editor,
@@ -140,21 +175,14 @@ describe("service-intervals events-service (U4)", () => {
     expect(rows).toHaveLength(0);
   });
 
-  test("a future servicedOn throws ValidationError and writes no row (U8 log-service form contract)", async () => {
+  test("a servicedOn more than one day in the future throws ValidationError and writes no row (U8 log-service form contract; F1's one-day timezone tolerance)", async () => {
     const owner = await newOwner("u4evFutureOwner");
     const fa = await makeFirearm(owner, { type: "rifle" });
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const isoTomorrow = [
-      tomorrow.getFullYear(),
-      String(tomorrow.getMonth() + 1).padStart(2, "0"),
-      String(tomorrow.getDate()).padStart(2, "0"),
-    ].join("-");
 
     await expect(
       logServiceEvent(owner, "firearm", fa.id, {
         ruleName: "Cleaning",
-        servicedOn: isoTomorrow,
+        servicedOn: isoDateOffset(2),
       }),
     ).rejects.toBeInstanceOf(ValidationError);
 
@@ -165,11 +193,28 @@ describe("service-intervals events-service (U4)", () => {
     expect(rows).toHaveLength(0);
   });
 
+  test("a servicedOn exactly one day in the future is accepted (F1 fix: absorbs a submitter whose local day genuinely runs ahead of the server's)", async () => {
+    const owner = await newOwner("u4evTomorrowOwner");
+    const fa = await makeFirearm(owner, { type: "rifle" });
+    await armCleaningRule(owner, "firearm", fa.id);
+    const tomorrow = isoDateOffset(1);
+
+    const event = await logServiceEvent(owner, "firearm", fa.id, {
+      ruleName: "Cleaning",
+      servicedOn: tomorrow,
+    });
+
+    expect(event.servicedOn).toBe(tomorrow);
+  });
+
   test("covers R16: a bulk mark-serviced call across several items writes one event per item-and-rule pair with the given date", async () => {
     const owner = await newOwner("u4bulkOwner");
     const fa1 = await makeFirearm(owner, { type: "rifle" });
     const fa2 = await makeFirearm(owner, { type: "pistol" });
     const acc = await makeAccessory(owner, { currentFirearmId: fa1.id });
+    await armCleaningRule(owner, "firearm", fa1.id);
+    await armCleaningRule(owner, "firearm", fa2.id);
+    await armCleaningRule(owner, "accessory", acc.id);
 
     const events = await logServiceEventsBulk(owner, {
       items: [
@@ -261,6 +306,8 @@ describe("service-intervals events-service (U4)", () => {
     const editor = await newOwner("u4bulkEditor");
     const fa1 = await makeFirearm(owner, { type: "rifle" });
     const fa2 = await makeFirearm(owner, { type: "pistol" });
+    await armCleaningRule(owner, "firearm", fa1.id);
+    await armCleaningRule(owner, "firearm", fa2.id);
     await createGrant(db, {
       actorId: owner,
       granteeId: editor,
@@ -330,6 +377,18 @@ describe("service-intervals events-service (U4)", () => {
   test("service history returns events newest first and names the rule each serviced", async () => {
     const owner = await newOwner("u4historyOwner");
     const fa = await makeFirearm(owner, { type: "rifle" });
+    await createItemRule(owner, "firearm", fa.id, {
+      name: "Cleaning",
+      intervalRounds: 500,
+    });
+    await createItemRule(owner, "firearm", fa.id, {
+      name: "Barrel",
+      intervalRounds: 5000,
+    });
+    await createItemRule(owner, "firearm", fa.id, {
+      name: "Lubrication",
+      intervalRounds: 250,
+    });
 
     await logServiceEvent(owner, "firearm", fa.id, {
       ruleName: "Cleaning",
@@ -356,6 +415,7 @@ describe("service-intervals events-service (U4)", () => {
     const owner = await newOwner("u4historyViewOwner");
     const viewer = await newOwner("u4historyViewer");
     const fa = await makeFirearm(owner, { type: "rifle" });
+    await armCleaningRule(owner, "firearm", fa.id);
     await createGrant(db, {
       actorId: owner,
       granteeId: viewer,
@@ -377,6 +437,7 @@ describe("service-intervals events-service (U4)", () => {
     const viewer = await newOwner("u4historyAccViewer");
     const fa = await makeFirearm(owner, { type: "rifle" });
     const acc = await makeAccessory(owner, { currentFirearmId: fa.id });
+    await armCleaningRule(owner, "accessory", acc.id);
     await createGrant(db, {
       actorId: owner,
       granteeId: viewer,
@@ -392,5 +453,136 @@ describe("service-intervals events-service (U4)", () => {
     await expect(
       listServiceHistory(viewer, "accessory", acc.id),
     ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  // ---- F2: a stale (renamed-away) rule name is rejected, not written ----
+
+  describe("F2: ruleName must resolve against the item's current effective rule set", () => {
+    test("logServiceEvent rejects a rule name renamed away since it was captured, and writes nothing", async () => {
+      const owner = await newOwner("u4f2Owner");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      const rule = await createItemRule(owner, "firearm", fa.id, {
+        name: "Cleaning",
+        intervalRounds: 500,
+      });
+      await updateItemRule(owner, "firearm", fa.id, rule.id, {
+        name: "Deep Clean",
+        intervalRounds: 500,
+      });
+
+      await expect(
+        logServiceEvent(owner, "firearm", fa.id, {
+          ruleName: "Cleaning",
+          servicedOn: "2026-01-01",
+        }),
+      ).rejects.toBeInstanceOf(ValidationError);
+
+      const rows = await db
+        .select()
+        .from(serviceEvent)
+        .where(eq(serviceEvent.firearmId, fa.id));
+      expect(rows).toHaveLength(0);
+    });
+
+    test("logServiceEventsBulk rejects a rule name renamed away since it was captured, and writes nothing", async () => {
+      const owner = await newOwner("u4f2BulkOwner");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      const rule = await createItemRule(owner, "firearm", fa.id, {
+        name: "Cleaning",
+        intervalRounds: 500,
+      });
+      await updateItemRule(owner, "firearm", fa.id, rule.id, {
+        name: "Deep Clean",
+        intervalRounds: 500,
+      });
+
+      await expect(
+        logServiceEventsBulk(owner, {
+          items: [
+            { parentType: "firearm", parentId: fa.id, ruleName: "Cleaning" },
+          ],
+          servicedOn: "2026-01-02",
+        }),
+      ).rejects.toBeInstanceOf(ValidationError);
+
+      const rows = await db
+        .select()
+        .from(serviceEvent)
+        .where(eq(serviceEvent.firearmId, fa.id));
+      expect(rows).toHaveLength(0);
+    });
+  });
+
+  // ---- F6: the bulk batch-size cap ----
+
+  describe("F6: logServiceEventsBulk bounds batch size", () => {
+    test(`a batch of exactly MAX_BULK_SERVICE_ITEMS (${MAX_BULK_SERVICE_ITEMS}) succeeds`, async () => {
+      const owner = await newOwner("u4f6AtCapOwner");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      await armCleaningRule(owner, "firearm", fa.id);
+
+      const items: BulkServiceItem[] = Array.from(
+        { length: MAX_BULK_SERVICE_ITEMS },
+        () => ({
+          parentType: "firearm",
+          parentId: fa.id,
+          ruleName: "Cleaning",
+        }),
+      );
+
+      const events = await logServiceEventsBulk(owner, {
+        items,
+        servicedOn: "2026-01-03",
+      });
+      expect(events).toHaveLength(MAX_BULK_SERVICE_ITEMS);
+    });
+
+    test(`a batch one over MAX_BULK_SERVICE_ITEMS (${MAX_BULK_SERVICE_ITEMS + 1}) is rejected before any write`, async () => {
+      const owner = await newOwner("u4f6OverCapOwner");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      await armCleaningRule(owner, "firearm", fa.id);
+
+      const items: BulkServiceItem[] = Array.from(
+        { length: MAX_BULK_SERVICE_ITEMS + 1 },
+        () => ({
+          parentType: "firearm",
+          parentId: fa.id,
+          ruleName: "Cleaning",
+        }),
+      );
+
+      await expect(
+        logServiceEventsBulk(owner, { items, servicedOn: "2026-01-04" }),
+      ).rejects.toBeInstanceOf(ValidationError);
+
+      const rows = await db
+        .select()
+        .from(serviceEvent)
+        .where(eq(serviceEvent.firearmId, fa.id));
+      expect(rows).toHaveLength(0);
+    });
+  });
+
+  // ---- F8: duplicate item+rule pairs in one bulk call ----
+
+  test("F8: duplicate item+rule pairs in one bulk call each write their own event (no dedup)", async () => {
+    const owner = await newOwner("u4f8DupOwner");
+    const fa = await makeFirearm(owner, { type: "rifle" });
+    await armCleaningRule(owner, "firearm", fa.id);
+
+    const events = await logServiceEventsBulk(owner, {
+      items: [
+        { parentType: "firearm", parentId: fa.id, ruleName: "Cleaning" },
+        { parentType: "firearm", parentId: fa.id, ruleName: "Cleaning" },
+      ],
+      servicedOn: "2026-01-05",
+    });
+
+    expect(events).toHaveLength(2);
+    const rows = await db
+      .select()
+      .from(serviceEvent)
+      .where(eq(serviceEvent.firearmId, fa.id));
+    expect(rows).toHaveLength(2);
   });
 });

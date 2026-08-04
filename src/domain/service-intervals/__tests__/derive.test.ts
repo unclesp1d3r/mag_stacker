@@ -177,6 +177,22 @@ describe("isDue", () => {
 
     expect(isDue(thresholds, counts).due).toBe(true);
   });
+
+  // F8: the sessions axis specifically, as the tripped axis — previously
+  // asserted only for days (AE2, via rounds) and rounds, never sessions.
+  test("covers F8: the sessions axis trips when only sessions has reached its threshold", () => {
+    const thresholds: Thresholds = {
+      intervalDays: 180,
+      intervalSessions: 5,
+      intervalRounds: 10_000,
+    };
+    const counts: ElapsedCounts = { days: 20, sessions: 6, rounds: 100 };
+
+    expect(isDue(thresholds, counts)).toEqual({
+      due: true,
+      trippedAxis: "sessions",
+    });
+  });
 });
 
 describe("elapsedCounts", () => {
@@ -224,5 +240,22 @@ describe("elapsedCounts", () => {
       sessions: 0,
       rounds: 0,
     });
+  });
+
+  // F4: a future-dated range session must not inflate today's counts. Range
+  // sessions are deliberately allowed a future date by their own validation
+  // (unrelated, unchanged) — `elapsedCounts` is what must not count one
+  // until `asOf` actually reaches it.
+  test("covers F4: a session dated after asOf contributes neither sessions nor rounds; one dated exactly asOf still counts", () => {
+    const measureFrom = localDate(2026, 0, 1);
+    const asOf = localDate(2026, 0, 15);
+    const sessions: SessionRow[] = [
+      { date: localDate(2026, 0, 15), roundsFired: 40 }, // exactly asOf: counts
+      { date: localDate(2026, 0, 20), roundsFired: 999 }, // after asOf: excluded
+    ];
+
+    const counts = elapsedCounts(measureFrom, sessions, asOf);
+    expect(counts.sessions).toBe(1);
+    expect(counts.rounds).toBe(40);
   });
 });

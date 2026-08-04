@@ -164,17 +164,6 @@ describe("validateFirearm — acquiredDate (U6)", () => {
     ).toEqual(["invalidAcquiredDate"]);
   });
 
-  test("a future acquired date is accepted (no future-date restriction, mirrors the magazine/ammo path)", () => {
-    expect(
-      validateFirearm({
-        name: "Glock 19",
-        caliber: "9mm",
-        ...CLASS,
-        acquiredDate: "2099-01-01",
-      }),
-    ).toEqual([]);
-  });
-
   test("combines with other failures rather than short-circuiting (R20)", () => {
     expect(
       validateFirearm({
@@ -188,5 +177,101 @@ describe("validateFirearm — acquiredDate (U6)", () => {
 
   test("messageForCode returns a non-default string for invalidAcquiredDate", () => {
     expect(messageForCode("invalidAcquiredDate")).not.toBe("Invalid value");
+  });
+});
+
+// F3: a future acquiredDate must be rejected, mirroring `validateServicedOn`
+// — a future acquired date makes `derive.ts`'s `measureFrom` future too, so
+// elapsed days clamp to 0 and every rule silently never trips until the
+// clock catches up. `asOf` is an explicit parameter (default `new Date()`)
+// so this stays deterministic for tests.
+describe("validateFirearm — acquiredDateInFuture (F3)", () => {
+  test("an acquired date on the server's own day is accepted", () => {
+    const asOf = new Date(2026, 5, 15);
+    expect(
+      validateFirearm(
+        {
+          name: "Glock 19",
+          caliber: "9mm",
+          ...CLASS,
+          acquiredDate: "2026-06-15",
+        },
+        asOf,
+      ),
+    ).toEqual([]);
+  });
+
+  test("an acquired date one day ahead of the server's day is accepted (the timezone-ahead submitter case, same tolerance as F1)", () => {
+    const asOf = new Date(2026, 5, 15);
+    expect(
+      validateFirearm(
+        {
+          name: "Glock 19",
+          caliber: "9mm",
+          ...CLASS,
+          acquiredDate: "2026-06-16",
+        },
+        asOf,
+      ),
+    ).toEqual([]);
+  });
+
+  test("an acquired date two days ahead of the server's day is rejected", () => {
+    const asOf = new Date(2026, 5, 15);
+    expect(
+      validateFirearm(
+        {
+          name: "Glock 19",
+          caliber: "9mm",
+          ...CLASS,
+          acquiredDate: "2026-06-17",
+        },
+        asOf,
+      ),
+    ).toEqual(["acquiredDateInFuture"]);
+  });
+
+  test("a far-future acquired date is rejected", () => {
+    const asOf = new Date(2026, 5, 15);
+    expect(
+      validateFirearm(
+        {
+          name: "Glock 19",
+          caliber: "9mm",
+          ...CLASS,
+          acquiredDate: "2099-01-01",
+        },
+        asOf,
+      ),
+    ).toEqual(["acquiredDateInFuture"]);
+  });
+
+  test("combines with other failures rather than short-circuiting (R20)", () => {
+    const asOf = new Date(2026, 5, 15);
+    expect(
+      validateFirearm(
+        { name: "", caliber: "9mm", ...CLASS, acquiredDate: "2099-01-01" },
+        asOf,
+      ),
+    ).toEqual(["emptyName", "acquiredDateInFuture"]);
+  });
+
+  test("a malformed date takes priority over the future check (only invalidAcquiredDate is returned)", () => {
+    const asOf = new Date(2026, 5, 15);
+    expect(
+      validateFirearm(
+        {
+          name: "Glock 19",
+          caliber: "9mm",
+          ...CLASS,
+          acquiredDate: "2026-02-31",
+        },
+        asOf,
+      ),
+    ).toEqual(["invalidAcquiredDate"]);
+  });
+
+  test("messageForCode returns a non-default string for acquiredDateInFuture", () => {
+    expect(messageForCode("acquiredDateInFuture")).not.toBe("Invalid value");
   });
 });

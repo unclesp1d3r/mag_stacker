@@ -404,6 +404,10 @@ export async function createItemRule(
       preloadedSiblings ?? (await loadItemRules(tx, parentType, parentId));
     assertNameAvailable(siblings, name);
 
+    // `validateServiceRuleSet` above already rejects `suppressed: true` WITH
+    // any threshold submitted (`suppressedWithThresholds`, F7 fix), so this
+    // ternary is defense-in-depth, not the primary guarantee: a suppressed
+    // rule's thresholds are always absent by the time we reach here.
     const [row] = await tx
       .insert(serviceRule)
       .values({
@@ -447,10 +451,22 @@ export async function updateItemRule(
   return db.transaction(async (tx) => {
     await authorizeItemRuleWrite(tx, actorId, parentType, parentId);
 
+    // FOR UPDATE (F5 fix): locks this row for the rest of the transaction,
+    // so `existing.name` — what `repointServiceEvents` below repoints FROM —
+    // is always the name actually on the row, never a name a second,
+    // overlapping rename already moved past. Without the lock, two
+    // concurrent renames of the same rule both read the row's starting name
+    // before either commits; whichever commits second then repoints events
+    // FROM that stale starting name, matching zero rows (the first rename
+    // already moved them), and strands history on the intermediate name. The
+    // lock forces the second transaction's read to block until the first
+    // commits, so it re-reads the name the first rename actually left
+    // behind — mirroring `magazines/service.ts`'s `updateMagazine` lock.
     const [existing] = await tx
       .select()
       .from(serviceRule)
       .where(eq(serviceRule.id, ruleId))
+      .for("update")
       .limit(1);
     if (!existing || !belongsToParent(existing, parentType, parentId)) {
       throw new NotFoundError();
@@ -460,6 +476,9 @@ export async function updateItemRule(
       preloadedSiblings ?? (await loadItemRules(tx, parentType, parentId));
     assertNameAvailable(siblings, name, ruleId);
 
+    // `validateServiceRuleSet` above already rejects `suppressed: true` WITH
+    // any threshold submitted (`suppressedWithThresholds`, F7 fix), so this
+    // ternary is defense-in-depth, not the primary guarantee.
     const [row] = await tx
       .update(serviceRule)
       .set({

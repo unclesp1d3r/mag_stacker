@@ -37,3 +37,21 @@ export function isRealCalendarDate(date: string): boolean {
 export function todayIso(): string {
   return format(new Date(), "yyyy-MM-dd");
 }
+
+/**
+ * Slack allowed, in calendar days, before a submitted date is treated as
+ * genuinely in the future — shared by every not-in-the-future check that
+ * compares a submitted date against the SERVER's clock (service-intervals'
+ * `servicedOn`, firearms' `acquiredDate`).
+ *
+ * A not-in-the-future check's `asOf` defaults to the server's own
+ * `new Date()`, but the submitter's local calendar day is not the server's:
+ * no real timezone runs more than ~26 hours ahead of another, so a
+ * submitter's genuine local "today" can read as at most one calendar day
+ * ahead of the server. Without this slack, a user east of the server (say,
+ * Tokyo against a UTC server) submitting their own local today — exactly
+ * what `todayIso()` pre-fills into a form by default — would be rejected as
+ * "in the future" for part of every day. Anything beyond this one day of
+ * slack is a real future date and stays rejected.
+ */
+export const FUTURE_DATE_TOLERANCE_DAYS = 1;

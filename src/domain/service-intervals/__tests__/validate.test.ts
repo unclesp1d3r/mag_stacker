@@ -60,6 +60,25 @@ describe("validateServiceRuleSet", () => {
     expect(validateServiceRuleSet(rules)).toEqual([]);
   });
 
+  // F7: suppression and thresholds are mutually exclusive on one row (KTD6).
+  // A caller submitting both together is a bug — reject it explicitly rather
+  // than silently discarding the submitted thresholds.
+  test("F7: rejects a suppressed rule that also sets a threshold", () => {
+    const rules: ServiceRuleInput[] = [
+      { name: "Cleaning", suppressed: true, intervalRounds: 500 },
+    ];
+    expect(validateServiceRuleSet(rules)).toEqual(["suppressedWithThresholds"]);
+  });
+
+  test("F7: a suppressed rule with a threshold does NOT also raise missingThreshold", () => {
+    const rules: ServiceRuleInput[] = [
+      { name: "Cleaning", suppressed: true, intervalDays: 30 },
+    ];
+    const codes = validateServiceRuleSet(rules);
+    expect(codes).toContain("suppressedWithThresholds");
+    expect(codes).not.toContain("missingThreshold");
+  });
+
   test("returns every applicable code together in one call", () => {
     const rules: ServiceRuleInput[] = [
       { name: "", intervalRounds: 500 },

@@ -13,7 +13,8 @@ export type ServiceRuleValidationCode =
   | "emptyName"
   | "duplicateName"
   | "thresholdTooLow"
-  | "missingThreshold";
+  | "missingThreshold"
+  | "suppressedWithThresholds";
 
 export interface ServiceRuleInput {
   name: string;
@@ -49,6 +50,13 @@ function hasThresholdBelowMin(rule: ServiceRuleInput): boolean {
  * - `duplicateName` — two rules in this same set share a (trimmed) name.
  * - `thresholdTooLow` — a set threshold is below `MIN_THRESHOLD` (zero or negative).
  * - `missingThreshold` — a rule sets no threshold and is not suppressed.
+ * - `suppressedWithThresholds` — a rule is BOTH suppressed and carries a set
+ *   threshold (F7 fix). `createItemRule`/`updateItemRule` force a suppressed
+ *   rule's thresholds to `null` regardless of what was submitted (KTD6:
+ *   suppression and thresholds are mutually exclusive on one row), so a
+ *   caller submitting both together is a caller bug — explicit rejection
+ *   here, rather than silently discarding the submitted thresholds, is what
+ *   surfaces that bug instead of hiding it.
  */
 export function validateServiceRuleSet(
   rules: ServiceRuleInput[],
@@ -68,7 +76,9 @@ export function validateServiceRuleSet(
 
     if (hasThresholdBelowMin(rule)) codes.add("thresholdTooLow");
 
-    if (rule.suppressed !== true && !hasAnyThreshold(rule)) {
+    if (rule.suppressed === true) {
+      if (hasAnyThreshold(rule)) codes.add("suppressedWithThresholds");
+    } else if (!hasAnyThreshold(rule)) {
       codes.add("missingThreshold");
     }
   }

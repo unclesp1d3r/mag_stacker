@@ -17,6 +17,11 @@
 -- `inventory_log_event_type_valid` with the narrowed firearm list. Replacing
 -- the CHECK before the delete would reject the table's own historical
 -- `cleaned`/`lubed` rows and fail the migration before conversion ever runs.
+--
+-- Operational assumption: this reconciliation only holds if no other writer
+-- inserts firearm `cleaned`/`lubed` inventory_log rows during the migration
+-- window. drizzle-orm wraps every pending migration in one transaction, so a
+-- mismatch here aborts the whole batch, not just this file.
 DO $$
 DECLARE
   read_count integer;

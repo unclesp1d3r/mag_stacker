@@ -36,6 +36,7 @@ describe("buildServiceBacklog", () => {
       entries,
       new Map([["fa-1", "Interval Rifle One"]]),
       new Map(),
+      new Set(["fa-1"]),
     );
 
     expect(rows).toEqual([
@@ -58,7 +59,12 @@ describe("buildServiceBacklog", () => {
     ];
 
     expect(
-      buildServiceBacklog(entries, new Map([["fa-1", "Rifle"]]), new Map()),
+      buildServiceBacklog(
+        entries,
+        new Map([["fa-1", "Rifle"]]),
+        new Map(),
+        new Set(["fa-1"]),
+      ),
     ).toEqual([]);
   });
 
@@ -75,6 +81,7 @@ describe("buildServiceBacklog", () => {
       entries,
       new Map(),
       new Map([["acc-1", "Vortex Scope"]]),
+      new Set(),
     );
 
     expect(rows).toEqual([
@@ -96,7 +103,12 @@ describe("buildServiceBacklog", () => {
       },
     ];
 
-    const rows = buildServiceBacklog(entries, new Map(), new Map());
+    const rows = buildServiceBacklog(
+      entries,
+      new Map(),
+      new Map(),
+      new Set(["fa-unknown"]),
+    );
 
     expect(rows[0]?.itemName).toBe("Unknown item");
   });
@@ -119,7 +131,12 @@ describe("buildServiceBacklog", () => {
       ["fa-2", "Beta Rifle"],
     ]);
 
-    const rows = buildServiceBacklog(entries, names, new Map());
+    const rows = buildServiceBacklog(
+      entries,
+      names,
+      new Map(),
+      new Set(["fa-1", "fa-2"]),
+    );
 
     expect(rows.map((r) => `${r.itemName}:${r.ruleName}`)).toEqual([
       "Alpha Rifle:Cleaning",
@@ -145,6 +162,7 @@ describe("buildServiceBacklog", () => {
       entries,
       new Map([["fa-1", "Rifle"]]),
       new Map(),
+      new Set(["fa-1"]),
     );
 
     expect(rows).toHaveLength(2);
@@ -152,6 +170,120 @@ describe("buildServiceBacklog", () => {
   });
 
   test("empty entries yields an empty backlog, not an error", () => {
-    expect(buildServiceBacklog([], new Map(), new Map())).toEqual([]);
+    expect(buildServiceBacklog([], new Map(), new Map(), new Set())).toEqual(
+      [],
+    );
+  });
+
+  // --- Finding 1 (P1): view-only grantees must not be offered write rows ---
+
+  test("a firearm absent from actionableFirearmIds (view-only grantee) is excluded from the backlog", () => {
+    const entries: ItemDueEntry[] = [
+      {
+        parentType: "firearm",
+        parentId: "fa-view-only",
+        rules: [rule("Cleaning", true)],
+      },
+    ];
+
+    const rows = buildServiceBacklog(
+      entries,
+      new Map([["fa-view-only", "Shared Rifle"]]),
+      new Map(),
+      new Set(), // actor holds no owner/edit permission on this firearm
+    );
+
+    expect(rows).toEqual([]);
+  });
+
+  test("a firearm present in actionableFirearmIds (edit-grantee) is included in the backlog", () => {
+    const entries: ItemDueEntry[] = [
+      {
+        parentType: "firearm",
+        parentId: "fa-edit",
+        rules: [rule("Cleaning", true)],
+      },
+    ];
+
+    const rows = buildServiceBacklog(
+      entries,
+      new Map([["fa-edit", "Shared Rifle"]]),
+      new Map(),
+      new Set(["fa-edit"]), // actor holds edit permission
+    );
+
+    expect(rows).toEqual([
+      {
+        parentType: "firearm",
+        parentId: "fa-edit",
+        itemName: "Shared Rifle",
+        ruleName: "Cleaning",
+      },
+    ]);
+  });
+
+  test("a view-only firearm is excluded while the actor's own actionable firearm still appears", () => {
+    const entries: ItemDueEntry[] = [
+      {
+        parentType: "firearm",
+        parentId: "fa-own",
+        rules: [rule("Cleaning", true)],
+      },
+      {
+        parentType: "firearm",
+        parentId: "fa-view-only",
+        rules: [rule("Barrel", true)],
+      },
+    ];
+
+    const rows = buildServiceBacklog(
+      entries,
+      new Map([
+        ["fa-own", "My Rifle"],
+        ["fa-view-only", "Shared Rifle"],
+      ]),
+      new Map(),
+      new Set(["fa-own"]),
+    );
+
+    expect(rows).toEqual([
+      {
+        parentType: "firearm",
+        parentId: "fa-own",
+        itemName: "My Rifle",
+        ruleName: "Cleaning",
+      },
+    ]);
+  });
+
+  test("an accessory belonging to someone else never appears, regardless of actionableFirearmIds", () => {
+    const entries: ItemDueEntry[] = [
+      {
+        parentType: "accessory",
+        parentId: "acc-not-mine",
+        rules: [rule("Lens", true)],
+      },
+    ];
+
+    // actionableFirearmIds only ever governs firearm rows (KTD3: accessory
+    // service is owner-only throughout, and `listDueForVisibleCollection`
+    // never surfaces another owner's accessory in the first place) — an
+    // empty set here proves the accessory row's inclusion doesn't depend on
+    // it at all.
+    const rows = buildServiceBacklog(
+      entries,
+      new Map(),
+      new Map([["acc-not-mine", "Someone Else's Scope"]]),
+      new Set(),
+    );
+
+    expect(rows).toEqual([
+      {
+        parentType: "accessory",
+        parentId: "acc-not-mine",
+        itemName: "Someone Else's Scope",
+        ruleName: "Lens",
+      },
+    ]);
   });
 });

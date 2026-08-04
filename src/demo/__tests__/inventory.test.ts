@@ -1,13 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import { differenceInCalendarDays, parseISO } from "date-fns";
 import {
   MAGPUL_LABEL_ALLOWED_RE,
   MAX_LABEL_LENGTH,
 } from "@/src/domain/magazines/constants";
+import { ISO_DATE, todayIso } from "@/src/lib/dates";
 import {
   bulkMagazines,
   DEMO_ACCESSORIES,
   DEMO_AMMO,
   DEMO_FIREARMS,
+  isoDateDaysAgo,
 } from "../inventory";
 
 /**
@@ -85,5 +88,37 @@ describe("demo dataset integrity", () => {
   test("firearm names are unique, so mount resolution is unambiguous", () => {
     const names = DEMO_FIREARMS.map((f) => f.name);
     expect(new Set(names).size).toBe(names.length);
+  });
+});
+
+/**
+ * F8: `isoDateDaysAgo` had no unit test despite being pure, TZ-sensitive,
+ * local-frame date arithmetic (KTD5) now used by e2e specs. No fixed "now"
+ * is asserted here — these check relative, local-frame properties that hold
+ * regardless of the runner's actual clock or timezone.
+ */
+describe("isoDateDaysAgo", () => {
+  test("zero days ago is today's local calendar date", () => {
+    expect(isoDateDaysAgo(0)).toBe(todayIso());
+  });
+
+  test("returns a well-formed ISO calendar date for a typical offset", () => {
+    expect(ISO_DATE.test(isoDateDaysAgo(45))).toBe(true);
+  });
+
+  test("is local-frame calendar-day arithmetic, exact regardless of runner timezone", () => {
+    const ninetyDaysAgo = isoDateDaysAgo(90);
+    const today = isoDateDaysAgo(0);
+    expect(
+      differenceInCalendarDays(parseISO(today), parseISO(ninetyDaysAgo)),
+    ).toBe(90);
+  });
+
+  test("crossing a year boundary (the SBR's 900-day acquiredDaysAgo) still resolves to a real, correctly-offset calendar date", () => {
+    const longAgo = isoDateDaysAgo(900);
+    expect(ISO_DATE.test(longAgo)).toBe(true);
+    expect(
+      differenceInCalendarDays(parseISO(todayIso()), parseISO(longAgo)),
+    ).toBe(900);
   });
 });

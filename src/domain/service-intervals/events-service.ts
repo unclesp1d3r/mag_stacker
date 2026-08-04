@@ -10,7 +10,17 @@ import { assertWritesAllowed } from "@/src/backup/maintenance";
 import { type DbOrTx, db } from "@/src/db/client";
 import { accessory, serviceEvent } from "@/src/db/schema";
 import { ValidationError } from "../errors";
-import type { ServiceParentType } from "./rules-service";
+import { MAX_BULK_SERVICE_ITEMS } from "./constants";
+import { resolveEffectiveRules } from "./derive";
+import {
+  loadDefaults,
+  loadItemRules,
+  requireAccessoryOwner,
+  requireFirearmVisible,
+  type ServiceParentType,
+  toDefaultRule,
+  toItemRule,
+} from "./rules-service";
 import {
   type ServiceEventInput,
   type ServiceEventValidationCode,
@@ -148,6 +158,109 @@ function parentColumns(parentType: ServiceParentType, parentId: string) {
 }
 
 /**
+ * An item's current effective rule names — its own item rules plus its
+ * owner's category defaults for the item's category (R4, R5), reusing
+ * `rules-service.ts`'s single-item resolution helpers and `derive.ts`'s
+ * `resolveEffectiveRules` (DRY, mirroring `due-service.ts`'s per-item shape).
+ * Backs the F2 fix below: a `ruleName` a caller submits is only ever
+ * trustworthy when it is re-checked against what the item actually carries
+ * NOW, not what it carried when a form rendered.
+ *
+ * Queries here run SEQUENTIALLY, not via `Promise.all` — `tx` is a single
+ * connection bound to one open transaction, so issuing two queries against
+ * it concurrently races on that one connection (node-postgres deprecates
+ * this: "Calling client.query() when the client is already executing a
+ * query"). `due-service.ts`'s batched loaders can run concurrently because
+ * each one there queries the pool-level `db`, which hands out a separate
+ * connection per call; that shape doesn't apply inside a transaction.
+ */
+async function loadEffectiveRuleNames(
+  tx: DbOrTx,
+  actorId: string,
+  parentType: ServiceParentType,
+  parentId: string,
+): Promise<Set<string>> {
+  const { ownerId, category } =
+    parentType === "firearm"
+      ? await requireFirearmVisible(tx, actorId, parentId)
+      : await requireAccessoryOwner(tx, actorId, parentId);
+  const defaultRows = await loadDefaults(tx, ownerId, parentType, category);
+  const itemRuleRows = await loadItemRules(tx, parentType, parentId);
+  const resolved = resolveEffectiveRules(
+    defaultRows.map(toDefaultRule),
+    itemRuleRows.map(toItemRule),
+  );
+  return new Set(resolved.map((rule) => rule.name));
+}
+
+/**
+ * Confirm `ruleName` resolves against `parentId`'s current effective rule
+ * set (F2 fix). The `/summary` bulk checklist captures `ruleName` at render
+ * time; if the rule was renamed on this item between render and submit, the
+ * old name no longer resolves, and inserting a `service_event` under it
+ * anyway would land under a dead name — `loadLastServicePointBatch` groups
+ * strictly by exact name, so due state would silently never advance and the
+ * owner would get no error at all. Rejecting here, inside the same
+ * transaction as the write, closes that window.
+ */
+async function assertRuleExists(
+  tx: DbOrTx,
+  actorId: string,
+  parentType: ServiceParentType,
+  parentId: string,
+  ruleName: string,
+): Promise<void> {
+  const names = await loadEffectiveRuleNames(tx, actorId, parentType, parentId);
+  if (!names.has(ruleName)) {
+    throw new ValidationError(["ruleNotFound"]);
+  }
+}
+
+/**
+ * Batched counterpart to `assertRuleExists`, for the bulk path. Resolves
+ * effective rule names ONCE PER UNIQUE (parentType, parentId) pair in the
+ * batch, not once per item — a duplicate item+rule pair (F8) or several rows
+ * against the same item costs one lookup, not several. `MAX_BULK_SERVICE_ITEMS`
+ * (F6) bounds the batch to a few hundred, so this per-unique-item shape is
+ * proportionate here; it is not `due-service.ts`'s fully batched,
+ * one-query-per-data-source shape, which exists for the much larger
+ * visible-collection READ path (KTD4).
+ *
+ * Lookups run SEQUENTIALLY (a `for...of` with `await`, not `Promise.all`) —
+ * see `loadEffectiveRuleNames`'s doc: `tx` is one connection, and this whole
+ * batch shares it.
+ */
+async function assertRuleNamesResolveBulk(
+  tx: DbOrTx,
+  actorId: string,
+  items: BulkServiceItem[],
+): Promise<void> {
+  const uniqueParents = new Map<
+    string,
+    { parentType: ServiceParentType; parentId: string }
+  >();
+  for (const item of items) {
+    uniqueParents.set(`${item.parentType}:${item.parentId}`, item);
+  }
+
+  const namesByParent = new Map<string, Set<string>>();
+  for (const [key, { parentType, parentId }] of uniqueParents) {
+    namesByParent.set(
+      key,
+      await loadEffectiveRuleNames(tx, actorId, parentType, parentId),
+    );
+  }
+
+  for (const item of items) {
+    const key = `${item.parentType}:${item.parentId}`;
+    const names = namesByParent.get(key);
+    if (!names?.has(item.ruleName.trim())) {
+      throw new ValidationError(["ruleNotFound"]);
+    }
+  }
+}
+
+/**
  * Log one service event against a rule (R14). `actorId` is always the
  * acting user (never caller-supplied) and is authorized before any write.
  */
@@ -165,6 +278,7 @@ export async function logServiceEvent(
 
   return db.transaction(async (tx) => {
     await authorizeEventWrite(tx, actorId, parentType, parentId);
+    await assertRuleExists(tx, actorId, parentType, parentId, ruleName);
     const [row] = await tx
       .insert(serviceEvent)
       .values({
@@ -198,7 +312,10 @@ export interface BulkServiceInput {
  * `logServiceEvent` uses; any single unauthorized (or missing) pair throws
  * and rolls the whole batch back, so the batch either writes every event or
  * writes none. An empty `items` list writes nothing and returns `[]` without
- * touching the database.
+ * touching the database. Rejects a batch over `MAX_BULK_SERVICE_ITEMS` (F6)
+ * before any DB work at all, and rejects any pair whose `ruleName` no longer
+ * resolves against that item's current effective rule set (F2) inside the
+ * same transaction as the writes.
  */
 export async function logServiceEventsBulk(
   actorId: string,
@@ -206,6 +323,9 @@ export async function logServiceEventsBulk(
 ): Promise<ServiceEventRow[]> {
   const { items, notes = "" } = input;
   if (items.length === 0) return [];
+  if (items.length > MAX_BULK_SERVICE_ITEMS) {
+    throw new ValidationError(["bulkTooLarge"]);
+  }
 
   const servicedOn = input.servicedOn.trim();
   const codes: ServiceEventValidationCode[] = [
@@ -218,6 +338,7 @@ export async function logServiceEventsBulk(
 
   return db.transaction(async (tx) => {
     await authorizeEventWritesBatch(tx, actorId, items);
+    await assertRuleNamesResolveBulk(tx, actorId, items);
     return tx
       .insert(serviceEvent)
       .values(

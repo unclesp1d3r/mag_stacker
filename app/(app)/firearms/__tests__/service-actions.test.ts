@@ -49,6 +49,7 @@ const {
   resetServiceRuleAction,
   suppressServiceRuleAction,
   restoreServiceRuleAction,
+  removeItemOnlyRuleAction,
 } = await import("../service-actions");
 
 type ServiceRuleRowLike = rulesService.ServiceRuleRow;
@@ -354,6 +355,60 @@ describe("service-actions (U8)", () => {
         "firearm",
         "fa-1",
         "Cleaning",
+      );
+
+      expect(result.ok).toBe(false);
+      expect(deleteItemRuleSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("removeItemOnlyRuleAction (finding #2: item-only rules get Remove, not Suppress)", () => {
+    test("deletes the existing item-only rule by its resolved id", async () => {
+      currentUserId = "user-1";
+      listItemRulesSpy.mockResolvedValue([ruleRow("rule-11", "Lens cleaning")]);
+
+      const result = await removeItemOnlyRuleAction(
+        "accessory",
+        "acc-1",
+        "Lens cleaning",
+      );
+
+      expect(result.ok).toBe(true);
+      expect(deleteItemRuleSpy).toHaveBeenCalledWith(
+        "user-1",
+        "accessory",
+        "acc-1",
+        "rule-11",
+      );
+      expect(revalidateCalls).toContain("/accessories/acc-1");
+      // The delete is the same write `resetServiceRuleAction` performs, but
+      // `updateItemRule` (suppress's nulling-of-thresholds write) is never
+      // touched — this is a deletion, not a suppression.
+      expect(updateItemRuleSpy).not.toHaveBeenCalled();
+    });
+
+    test("returns a non-leaking error and deletes nothing when no rule exists under that name", async () => {
+      currentUserId = "user-1";
+      listItemRulesSpy.mockResolvedValue([]);
+
+      const result = await removeItemOnlyRuleAction(
+        "firearm",
+        "fa-1",
+        "Recoil spring",
+      );
+
+      expect(result.ok).toBe(false);
+      expect(deleteItemRuleSpy).not.toHaveBeenCalled();
+    });
+
+    test("rejects an unauthenticated caller without touching the service", async () => {
+      currentUserId = null;
+      listItemRulesSpy.mockResolvedValue([ruleRow("rule-11", "Lens cleaning")]);
+
+      const result = await removeItemOnlyRuleAction(
+        "accessory",
+        "acc-1",
+        "Lens cleaning",
       );
 
       expect(result.ok).toBe(false);

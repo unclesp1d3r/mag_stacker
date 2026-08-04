@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/ui/feedback";
 import { PageHeader, Stat } from "@/components/ui/surface";
 import { getCurrentUser } from "@/src/auth/session";
+import { visibleFirearmPermissions } from "@/src/auth/visibility";
+import { db } from "@/src/db/client";
 import { accessoryDisplayName } from "@/src/domain/accessories/display";
 import { listAccessories } from "@/src/domain/accessories/service";
 import { firearmDisplayName } from "@/src/domain/firearms/display";
@@ -19,9 +21,10 @@ export default async function SummaryPage() {
   // control's backlog (R16) — `inventorySummary` would otherwise re-run
   // `listDueForVisibleCollection`'s own batched pipeline a second time
   // (KTD4), mirroring how `firearms/page.tsx` already reuses these loads.
-  const [firearms, accessories] = await Promise.all([
+  const [firearms, accessories, firearmPermissions] = await Promise.all([
     listFirearms(user.id),
     listAccessories(user.id),
+    visibleFirearmPermissions(db, user.id),
   ]);
   const dueEntries = await listDueForVisibleCollection(
     user.id,
@@ -29,10 +32,20 @@ export default async function SummaryPage() {
     firearms,
   );
   const summary = await inventorySummary(user.id, dueEntries, firearms);
+  // The bulk mark-serviced checklist is a WRITE surface: a firearm
+  // view-grantee can see the owner's due state in the roll-up above (that's
+  // legitimate, unchanged), but `logServiceEventsBulk` never lets them log
+  // service (KTD3), so they must never be offered a checkbox for it.
+  const actionableFirearmIds = new Set(
+    [...firearmPermissions.entries()]
+      .filter(([, perm]) => perm === "owner" || perm === "edit")
+      .map(([id]) => id),
+  );
   const serviceBacklog = buildServiceBacklog(
     dueEntries,
     new Map(firearms.map((f) => [f.id, firearmDisplayName(f)])),
     new Map(accessories.map((a) => [a.id, accessoryDisplayName(a)])),
+    actionableFirearmIds,
   );
 
   return (

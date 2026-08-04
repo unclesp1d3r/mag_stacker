@@ -23,6 +23,7 @@ import {
   addItemOnlyRuleAction,
   logServiceEventAction,
   overrideServiceRuleAction,
+  removeItemOnlyRuleAction,
   resetServiceRuleAction,
   restoreServiceRuleAction,
   suppressServiceRuleAction,
@@ -99,6 +100,7 @@ interface RuleActionsProps {
   onLog: () => void;
   onReset: () => void;
   onSuppress: () => void;
+  onRemove: () => void;
   pending: boolean;
 }
 
@@ -110,8 +112,18 @@ function RuleActions({
   onLog,
   onReset,
   onSuppress,
+  onRemove,
   pending,
 }: RuleActionsProps) {
+  // An item-only rule has no category default underneath it, so "Suppress"
+  // (mask an inherited default) has nothing to mask — offer "Remove" (delete
+  // the row outright) instead, so the removal path this action was always
+  // the only way to reach doesn't silently destroy an item-only rule's
+  // thresholds behind a button and toast that both say "restored"
+  // (code-review finding #2). Suppress stays exactly as-is for an inherited
+  // or overridden rule.
+  const isItemOnly = rule.inheritanceState === "item-only";
+
   return (
     <div className="flex flex-wrap justify-end gap-1">
       {canLogService ? (
@@ -126,7 +138,7 @@ function RuleActions({
       ) : null}
       {canManageRules ? (
         <>
-          {rule.inheritanceState !== "item-only" ? (
+          {!isItemOnly ? (
             <Button
               variant="ghost"
               size="sm"
@@ -147,15 +159,27 @@ function RuleActions({
               Reset to inherited
             </Button>
           ) : null}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onSuppress}
-            disabled={pending}
-            aria-label={`Suppress ${rule.name}`}
-          >
-            Suppress
-          </Button>
+          {isItemOnly ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onRemove}
+              disabled={pending}
+              aria-label={`Remove ${rule.name}`}
+            >
+              Remove
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onSuppress}
+              disabled={pending}
+              aria-label={`Suppress ${rule.name}`}
+            >
+              Suppress
+            </Button>
+          )}
         </>
       ) : null}
     </div>
@@ -235,6 +259,29 @@ export function ServiceRulesPanel({
       } else {
         toast({
           message: result.error ?? "Could not restore rule.",
+          tone: "destructive",
+        });
+      }
+    });
+  }
+
+  /**
+   * The "Remove" action for an item-only rule (finding #2): a real deletion,
+   * not a fallback — an item-only rule has no category default underneath it
+   * to fall back to, so the toast says "removed", never "restored".
+   */
+  function remove(ruleName: string) {
+    startTransition(async () => {
+      const result = await removeItemOnlyRuleAction(
+        parentType,
+        parentId,
+        ruleName,
+      );
+      if (result.ok) {
+        afterMutation(`${ruleName} removed`);
+      } else {
+        toast({
+          message: result.error ?? "Could not remove rule.",
           tone: "destructive",
         });
       }
@@ -368,6 +415,7 @@ export function ServiceRulesPanel({
                           }
                           onReset={() => reset(rule.name)}
                           onSuppress={() => suppress(rule.name)}
+                          onRemove={() => remove(rule.name)}
                         />
                       </TableCell>
                     </TableRow>

@@ -387,6 +387,88 @@ describe("service-intervals rules-service (U3)", () => {
     expect(rules).toHaveLength(0);
   });
 
+  // F7: a suppressed rule submitted WITH a threshold is a caller bug, and is
+  // rejected explicitly rather than silently normalized (see `validate.ts`'s
+  // `suppressedWithThresholds` doc for the full rationale).
+  test("F7: creating a rule that is both suppressed and carries a threshold throws ValidationError and writes no row", async () => {
+    const owner = await newOwner("u3f7Owner");
+    const fa = await makeFirearm(owner, { type: "rifle" });
+
+    await expect(
+      createItemRule(owner, "firearm", fa.id, {
+        name: "Cleaning",
+        suppressed: true,
+        intervalRounds: 500,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    const rules = await listItemRules(owner, "firearm", fa.id);
+    expect(rules).toHaveLength(0);
+  });
+
+  test("F7: updating a rule to be both suppressed and carry a threshold throws ValidationError and leaves the row unchanged", async () => {
+    const owner = await newOwner("u3f7UpdateOwner");
+    const fa = await makeFirearm(owner, { type: "rifle" });
+    const rule = await createItemRule(owner, "firearm", fa.id, {
+      name: "Cleaning",
+      intervalRounds: 500,
+    });
+
+    await expect(
+      updateItemRule(owner, "firearm", fa.id, rule.id, {
+        name: "Cleaning",
+        suppressed: true,
+        intervalRounds: 500,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    const rules = await listItemRules(owner, "firearm", fa.id);
+    expect(rules[0]).toMatchObject({
+      name: "Cleaning",
+      suppressed: false,
+      intervalRounds: 500,
+    });
+  });
+
+  // F5: two overlapping renames of the same rule must never leave history
+  // stranded on the intermediate name — the second writer has to re-read the
+  // name the first writer actually left behind, not the name both started
+  // from.
+  test("F5: two concurrent renames of the same rule leave history following whichever name won, not stranded on the intermediate name", async () => {
+    const owner = await newOwner("u3f5concurrent");
+    const fa = await makeFirearm(owner, { type: "rifle" });
+    const rule = await createItemRule(owner, "firearm", fa.id, {
+      name: "Cleaning",
+      intervalRounds: 500,
+    });
+    await makeServiceEvent(
+      { firearmId: fa.id },
+      { ruleName: "Cleaning", servicedOn: "2026-01-01" },
+    );
+
+    await Promise.all([
+      updateItemRule(owner, "firearm", fa.id, rule.id, {
+        name: "Deep Clean",
+        intervalRounds: 500,
+      }),
+      updateItemRule(owner, "firearm", fa.id, rule.id, {
+        name: "Field Strip",
+        intervalRounds: 500,
+      }),
+    ]);
+
+    const finalRules = await listItemRules(owner, "firearm", fa.id);
+    expect(finalRules).toHaveLength(1);
+    const finalName = finalRules[0].name;
+    expect(["Deep Clean", "Field Strip"]).toContain(finalName);
+
+    const events = await db
+      .select()
+      .from(serviceEvent)
+      .where(eq(serviceEvent.firearmId, fa.id));
+    expect(events.map((e) => e.ruleName)).toEqual([finalName]);
+  });
+
   test("the accessory-category listing returns each of the owner's distinct categories once, alphabetically, and excludes another owner's categories", async () => {
     const owner = await newOwner("u3catOwner");
     const other = await newOwner("u3catOther");
