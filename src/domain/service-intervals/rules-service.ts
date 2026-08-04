@@ -12,12 +12,7 @@ import {
   serviceRuleDefault,
 } from "@/src/db/schema";
 import { ValidationError } from "../errors";
-import {
-  type DefaultRule,
-  type ItemRule,
-  type ResolvedRule,
-  resolveEffectiveRules,
-} from "./derive";
+import type { DefaultRule, ItemRule } from "./derive";
 import { validateServiceRuleSet } from "./validate";
 
 /**
@@ -379,12 +374,22 @@ export async function deleteServiceRuleDefault(
  * (`suppressed: true`, thresholds forced null), or an item-only rule with no
  * matching default. Rejects a name already used by another rule on this same
  * item before the insert.
+ *
+ * `preloadedSiblings`, when supplied, is used in place of this function's own
+ * `loadItemRules` call for the duplicate-name check — a caller that already
+ * loaded this item's rules (e.g. `service-actions.ts`'s `findItemRuleByName`,
+ * resolving which existing rule a UI action targets) can pass that list
+ * through rather than have it reloaded here a second time. The authorization
+ * check (`authorizeItemRuleWrite`) below is NEVER conditioned on this
+ * parameter — it always runs, so this function stays safe to call directly
+ * with no preload at all.
  */
 export async function createItemRule(
   actorId: string,
   parentType: ServiceParentType,
   parentId: string,
   input: ItemRuleInput,
+  preloadedSiblings?: ServiceRuleRow[],
 ): Promise<ServiceRuleRow> {
   const codes = validateServiceRuleSet([input]);
   if (codes.length > 0) throw new ValidationError(codes);
@@ -395,7 +400,8 @@ export async function createItemRule(
   return db.transaction(async (tx) => {
     await authorizeItemRuleWrite(tx, actorId, parentType, parentId);
 
-    const siblings = await loadItemRules(tx, parentType, parentId);
+    const siblings =
+      preloadedSiblings ?? (await loadItemRules(tx, parentType, parentId));
     assertNameAvailable(siblings, name);
 
     const [row] = await tx
@@ -419,6 +425,10 @@ export async function createItemRule(
  * `service_event` rows from the old `rule_name` to the new one in the same
  * transaction (KTD1); a rename onto a name the item already carries is
  * rejected with `ValidationError` before any write.
+ *
+ * `preloadedSiblings` — see `createItemRule`'s doc — is used in place of this
+ * function's own `loadItemRules` call for the duplicate-name check, when
+ * supplied. The authorization check below always runs regardless.
  */
 export async function updateItemRule(
   actorId: string,
@@ -426,6 +436,7 @@ export async function updateItemRule(
   parentId: string,
   ruleId: string,
   input: ItemRuleInput,
+  preloadedSiblings?: ServiceRuleRow[],
 ): Promise<ServiceRuleRow> {
   const codes = validateServiceRuleSet([input]);
   if (codes.length > 0) throw new ValidationError(codes);
@@ -445,7 +456,8 @@ export async function updateItemRule(
       throw new NotFoundError();
     }
 
-    const siblings = await loadItemRules(tx, parentType, parentId);
+    const siblings =
+      preloadedSiblings ?? (await loadItemRules(tx, parentType, parentId));
     assertNameAvailable(siblings, name, ruleId);
 
     const [row] = await tx
@@ -505,28 +517,13 @@ export async function deleteItemRule(
 /**
  * An item's effective, resolved rule set (R4, R5) — defaults are loaded
  * against the ITEM'S OWNER, never the viewer, so a shared firearm's rules
- * always reflect its owner's configuration (R6).
+ * always reflect its owner's configuration (R6). The live production read
+ * path for this same resolution is `due-service.ts`'s `getItemDueState`,
+ * which additionally annotates each rule with due state — there is no
+ * production caller that wants resolution WITHOUT due annotation, so this
+ * function was removed (its only callers were its own tests, since
+ * re-pointed at `getItemDueState`).
  */
-export async function getEffectiveRules(
-  actorId: string,
-  parentType: ServiceParentType,
-  parentId: string,
-): Promise<ResolvedRule[]> {
-  const { ownerId, category } =
-    parentType === "firearm"
-      ? await requireFirearmVisible(db, actorId, parentId)
-      : await requireAccessoryOwner(db, actorId, parentId);
-
-  const [defaultRows, itemRuleRows] = await Promise.all([
-    loadDefaults(db, ownerId, parentType, category),
-    loadItemRules(db, parentType, parentId),
-  ]);
-
-  return resolveEffectiveRules(
-    defaultRows.map(toDefaultRule),
-    itemRuleRows.map(toItemRule),
-  );
-}
 
 /** An item's own raw rule rows (overrides, suppressions, item-only rules). */
 export async function listItemRules(
@@ -615,4 +612,63 @@ export async function countItemsInCategory(
             ),
           );
   return row?.total ?? 0;
+}
+
+/**
+ * Every one of the owner's default rule sets for one scope, grouped by
+ * category, in a single query (U7's settings page) — the batched counterpart
+ * to calling `listServiceRuleDefaults` once per category, which the settings
+ * page's `loadSections` used to do (once per firearm type, once per
+ * accessory category), breaking the batching discipline the rest of the
+ * service-intervals feature follows (KTD4-style, though this page predates
+ * that pin). A category with no defaults yet is simply absent from the map.
+ */
+export async function listServiceRuleDefaultsByCategory(
+  actorId: string,
+  scope: ServiceScope,
+): Promise<Map<string, ServiceRuleDefaultRow[]>> {
+  const rows = await db
+    .select()
+    .from(serviceRuleDefault)
+    .where(
+      and(
+        eq(serviceRuleDefault.ownerId, actorId),
+        eq(serviceRuleDefault.scope, scope),
+      ),
+    )
+    .orderBy(asc(serviceRuleDefault.category), asc(serviceRuleDefault.name));
+
+  const byCategory = new Map<string, ServiceRuleDefaultRow[]>();
+  for (const row of rows) {
+    const rules = byCategory.get(row.category) ?? [];
+    rules.push(row);
+    byCategory.set(row.category, rules);
+  }
+  return byCategory;
+}
+
+/**
+ * The owner's item count per category for one scope, in a single `GROUP BY`
+ * query (U7's settings page) — the batched counterpart to calling
+ * `countItemsInCategory` once per category. A category with no items yet is
+ * simply absent from the map (callers read that as zero, matching
+ * `countItemsInCategory`'s `row?.total ?? 0` fallback).
+ */
+export async function countItemsByCategory(
+  actorId: string,
+  scope: ServiceScope,
+): Promise<Map<string, number>> {
+  const rows =
+    scope === "firearm"
+      ? await db
+          .select({ category: firearm.type, total: count() })
+          .from(firearm)
+          .where(eq(firearm.ownerId, actorId))
+          .groupBy(firearm.type)
+      : await db
+          .select({ category: accessory.category, total: count() })
+          .from(accessory)
+          .where(eq(accessory.ownerId, actorId))
+          .groupBy(accessory.category);
+  return new Map(rows.map((row) => [row.category, row.total]));
 }

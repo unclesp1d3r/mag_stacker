@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Fragment, useState, useTransition } from "react";
+import { ServiceRuleForm } from "@/app/(app)/settings/service/default-rule-form";
 import { Button } from "@/components/ui/button";
 import { Badge, EmptyState } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/surface";
@@ -26,7 +27,6 @@ import {
   restoreServiceRuleAction,
   suppressServiceRuleAction,
 } from "./service-actions";
-import { ServiceRuleForm } from "./service-rule-form";
 
 /**
  * The shared service-rules panel (U8, R18) — ONE component mounted on both

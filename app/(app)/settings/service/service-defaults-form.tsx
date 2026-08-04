@@ -25,10 +25,10 @@ import {
   updateServiceRuleDefaultAction,
 } from "./actions";
 import {
-  DefaultRuleForm,
   EMPTY_RULE_VALUES,
   NAME_CODES,
   type RuleFieldValues,
+  ServiceRuleForm,
   THRESHOLD_CODES,
   ThresholdInputs,
   toRuleInput,
@@ -135,11 +135,11 @@ function CategorySectionCard({
               openForm?.kind === "edit" && openForm.id === rule.id ? (
                 <TableRow key={rule.id}>
                   <TableCell colSpan={5}>
-                    <DefaultRuleForm
+                    <ServiceRuleForm
                       initial={toRuleValues(rule)}
-                      siblings={section.defaults.filter(
-                        (d) => d.id !== rule.id,
-                      )}
+                      siblingNames={section.defaults
+                        .filter((d) => d.id !== rule.id)
+                        .map((d) => d.name)}
                       submitLabel="Save changes"
                       pendingLabel="Saving…"
                       onCancel={() => setOpenForm(null)}
@@ -193,8 +193,8 @@ function CategorySectionCard({
 
       {openForm?.kind === "add" ? (
         <div className="mt-3">
-          <DefaultRuleForm
-            siblings={section.defaults}
+          <ServiceRuleForm
+            siblingNames={section.defaults.map((d) => d.name)}
             submitLabel="Add rule"
             pendingLabel="Adding…"
             onCancel={() => setOpenForm(null)}

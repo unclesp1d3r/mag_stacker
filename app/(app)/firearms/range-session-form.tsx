@@ -8,6 +8,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { validateRangeSession } from "@/src/domain/range-sessions/validate";
 import { firstMessage } from "@/src/domain/validation-messages";
+import { todayIso } from "@/src/lib/dates";
 import {
   logRangeSessionAction,
   updateRangeSessionAction,
@@ -23,13 +24,6 @@ export interface RangeSessionFormValues {
 
 const DATE_CODES = ["emptyDate", "invalidDate"];
 const ROUNDS_CODES = ["invalidRoundsFired"];
-
-/** Today's calendar date (KTD5 default), local time. */
-function todayIso(): string {
-  const now = new Date();
-  const offsetMs = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10);
-}
 
 interface RangeSessionFormProps {
   firearmId: string;

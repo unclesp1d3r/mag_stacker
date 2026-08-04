@@ -182,6 +182,9 @@ describe("service-actions (U8)", () => {
           intervalRounds: 4000,
           suppressed: false,
         },
+        // The empty sibling list `findItemRuleByName`'s `listItemRules` call
+        // already resolved, threaded through so the write skips reloading it.
+        [],
       );
       expect(updateItemRuleSpy).not.toHaveBeenCalled();
       expect(revalidateCalls).toContain("/firearms/fa-1");
@@ -189,7 +192,8 @@ describe("service-actions (U8)", () => {
 
     test("updates the existing item rule by id when one already exists for that name", async () => {
       currentUserId = "user-1";
-      listItemRulesSpy.mockResolvedValue([ruleRow("rule-42", "Barrel")]);
+      const siblings = [ruleRow("rule-42", "Barrel")];
+      listItemRulesSpy.mockResolvedValue(siblings);
 
       const result = await overrideServiceRuleAction("firearm", "fa-1", {
         name: "Barrel",
@@ -211,6 +215,9 @@ describe("service-actions (U8)", () => {
           intervalRounds: 3000,
           suppressed: false,
         },
+        // The sibling list (including the row itself) already resolved by
+        // `findItemRuleByName`, threaded through to skip a reload.
+        siblings,
       );
       expect(createItemRuleSpy).not.toHaveBeenCalled();
     });
@@ -274,7 +281,8 @@ describe("service-actions (U8)", () => {
   describe("suppressServiceRuleAction", () => {
     test("updates the existing row to suppressed when one exists", async () => {
       currentUserId = "user-1";
-      listItemRulesSpy.mockResolvedValue([ruleRow("rule-9", "Cleaning")]);
+      const siblings = [ruleRow("rule-9", "Cleaning")];
+      listItemRulesSpy.mockResolvedValue(siblings);
 
       const result = await suppressServiceRuleAction(
         "firearm",
@@ -289,6 +297,8 @@ describe("service-actions (U8)", () => {
         "fa-1",
         "rule-9",
         { name: "Cleaning", suppressed: true },
+        // Already-resolved siblings threaded through to skip a reload.
+        siblings,
       );
       expect(createItemRuleSpy).not.toHaveBeenCalled();
     });
@@ -309,6 +319,8 @@ describe("service-actions (U8)", () => {
         "firearm",
         "fa-1",
         { name: "Cleaning", suppressed: true },
+        // Already-resolved (empty) siblings threaded through to skip a reload.
+        [],
       );
       expect(updateItemRuleSpy).not.toHaveBeenCalled();
     });

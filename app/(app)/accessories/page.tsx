@@ -21,15 +21,23 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
 
   const { mountFirearm } = await searchParams;
 
-  const [accessories, firearms, permissions, dueEntries] = await Promise.all([
+  const [accessories, firearms, permissions] = await Promise.all([
     listAccessories(user.id),
     listFirearms(user.id),
     visibleFirearmPermissions(db, user.id),
-    // U9/R20: bounded (never per-item, KTD4) — marks rows with at least one
-    // due service rule of their own (never merely because a mounting firearm
-    // is due).
-    listDueForVisibleCollection(user.id),
   ]);
+  // U9/R20: bounded (never per-item, KTD4) — marks rows with at least one due
+  // service rule of their own (never merely because a mounting firearm is
+  // due). Passes the already-fetched `firearms` through — `listFirearms`'s
+  // visible-firearm scope here matches this page's own fetch above, so
+  // `listDueForVisibleCollection` doesn't need to re-run it. (Deliberately
+  // NOT threading `accessories` — its scope there is owner-only, KTD3,
+  // narrower than this page's mount-inheriting `listAccessories`.)
+  const dueEntries = await listDueForVisibleCollection(
+    user.id,
+    undefined,
+    firearms,
+  );
   const dueAccessoryIds = dueParentIds(dueEntries, "accessory");
 
   // On create, the accessory's owner is the actor themself (KTD5's

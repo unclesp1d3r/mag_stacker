@@ -243,18 +243,38 @@ function computeServiceRollup(
   return { itemsDue, rulesDue };
 }
 
-/** Load the requester's viewer-relative visible inventory and summarize it. */
-export async function inventorySummary(actorId: string): Promise<Summary> {
-  const [firearms, magazines, ammoLots, dueEntries] = await Promise.all([
-    listFirearms(actorId),
-    listMagazines(actorId),
-    listAmmo(actorId),
-    listDueForVisibleCollection(actorId),
-  ]);
+/**
+ * Load the requester's viewer-relative visible inventory and summarize it.
+ * Accepts an optional pre-fetched `dueEntries` (already the same batched,
+ * bounded load `listDueForVisibleCollection` returns) so a caller that also
+ * needs the raw entries — e.g. to mark individual rows due, R20 — can fetch
+ * once and pass the result here instead of triggering the full due-resolution
+ * pipeline (defaults + item rules + last-service-points + session rows) a
+ * second time. When omitted, behavior is identical to before: this function
+ * fetches it itself.
+ *
+ * Also accepts an optional pre-fetched `firearms` (the same visible-firearm
+ * set `listFirearms` would return) so a caller that has already loaded it —
+ * e.g. the firearms list page — can skip `listFirearms`'s two round trips
+ * (`getVisibleIds` + select) a second time. When omitted, this function
+ * fetches it itself, identical to before.
+ */
+export async function inventorySummary(
+  actorId: string,
+  dueEntries?: ItemDueEntry[],
+  firearms?: FirearmIdentity[],
+): Promise<Summary> {
+  const [resolvedFirearms, magazines, ammoLots, resolvedDueEntries] =
+    await Promise.all([
+      firearms ?? listFirearms(actorId),
+      listMagazines(actorId),
+      listAmmo(actorId),
+      dueEntries ?? listDueForVisibleCollection(actorId),
+    ]);
   const ammo: AmmoSnapshot[] = ammoLots.map((lot) => ({
     caliber: lot.caliber,
     quantityRounds: lot.quantityRounds,
     lowStockThreshold: lot.lowStockThreshold,
   }));
-  return computeSummary(firearms, magazines, ammo, dueEntries);
+  return computeSummary(resolvedFirearms, magazines, ammo, resolvedDueEntries);
 }

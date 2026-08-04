@@ -12,6 +12,7 @@ import {
   validateServiceEventInput,
 } from "@/src/domain/service-intervals/validate-event";
 import { firstMessage } from "@/src/domain/validation-messages";
+import { todayIso } from "@/src/lib/dates";
 
 /**
  * The log-service action form (U8, R14) — one rule, a date, and optional
@@ -28,13 +29,6 @@ const DATE_CODES = [
   "invalidServicedOn",
   "servicedOnInFuture",
 ];
-
-/** Today's calendar date (KTD5 default), local time — mirrors `range-session-form.tsx`'s `todayIso`. */
-function todayIso(): string {
-  const now = new Date();
-  const offsetMs = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10);
-}
 
 export interface LogServiceFormProps {
   ruleName: string;

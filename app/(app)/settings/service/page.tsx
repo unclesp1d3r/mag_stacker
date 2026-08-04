@@ -7,11 +7,11 @@ import {
   isRealFirearmType,
 } from "@/src/domain/firearms/constants";
 import {
-  countItemsInCategory,
+  countItemsByCategory,
   listConfiguredCategories,
   listOwnerAccessoryCategories,
-  listServiceRuleDefaults,
-  type ServiceScope,
+  listServiceRuleDefaultsByCategory,
+  type ServiceRuleDefaultRow,
 } from "@/src/domain/service-intervals/rules-service";
 import { ServiceDefaultsForm } from "./service-defaults-form";
 import type { CategorySection } from "./types";
@@ -31,31 +31,28 @@ import type { CategorySection } from "./types";
  * a section here rather than becoming invisible.
  */
 
-async function loadSections(
-  userId: string,
-  scope: ServiceScope,
+/**
+ * Builds each scope's sections from the already-batch-loaded defaults-by-
+ * category and count-by-category maps (one query each, regardless of how
+ * many categories exist) rather than a query pair per category.
+ */
+function loadSections(
   categories: { category: string; label: string }[],
-): Promise<CategorySection[]> {
-  return Promise.all(
-    categories.map(async ({ category, label }) => {
-      const [defaults, itemCount] = await Promise.all([
-        listServiceRuleDefaults(userId, scope, category),
-        countItemsInCategory(userId, scope, category),
-      ]);
-      return {
-        category,
-        label,
-        itemCount,
-        defaults: defaults.map((d) => ({
-          id: d.id,
-          name: d.name,
-          intervalDays: d.intervalDays,
-          intervalSessions: d.intervalSessions,
-          intervalRounds: d.intervalRounds,
-        })),
-      };
-    }),
-  );
+  defaultsByCategory: Map<string, ServiceRuleDefaultRow[]>,
+  countByCategory: Map<string, number>,
+): CategorySection[] {
+  return categories.map(({ category, label }) => ({
+    category,
+    label,
+    itemCount: countByCategory.get(category) ?? 0,
+    defaults: (defaultsByCategory.get(category) ?? []).map((d) => ({
+      id: d.id,
+      name: d.name,
+      intervalDays: d.intervalDays,
+      intervalSessions: d.intervalSessions,
+      intervalRounds: d.intervalRounds,
+    })),
+  }));
 }
 
 export default async function ServiceDefaultsPage() {
@@ -82,10 +79,25 @@ export default async function ServiceDefaultsPage() {
     label: category,
   }));
 
-  const [firearmSections, accessorySections] = await Promise.all([
-    loadSections(user.id, "firearm", firearmCategories),
-    loadSections(user.id, "accessory", accessoryCategories),
-  ]);
+  // One grouped-by-category query per data source per scope (four total),
+  // instead of a defaults + count query pair for every individual category.
+  const [firearmDefaults, firearmCounts, accessoryDefaults, accessoryCounts] =
+    await Promise.all([
+      listServiceRuleDefaultsByCategory(user.id, "firearm"),
+      countItemsByCategory(user.id, "firearm"),
+      listServiceRuleDefaultsByCategory(user.id, "accessory"),
+      countItemsByCategory(user.id, "accessory"),
+    ]);
+  const firearmSections = loadSections(
+    firearmCategories,
+    firearmDefaults,
+    firearmCounts,
+  );
+  const accessorySections = loadSections(
+    accessoryCategories,
+    accessoryDefaults,
+    accessoryCounts,
+  );
 
   return (
     <div className="space-y-6">

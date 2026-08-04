@@ -15,12 +15,28 @@ import { firstMessage } from "@/src/domain/validation-messages";
 import type { CategoryDefaultRule } from "./types";
 
 /**
- * The rule-name-plus-three-thresholds shape shared by every default-editing
- * surface on the service-defaults settings screen (U7): editing an existing
- * category default (`DefaultRuleForm`) and arming a brand-new accessory
- * category (`AddAccessoryCategoryPanel`, in `service-defaults-form.tsx`) both
- * build on `ThresholdInputs` and this file's helpers rather than duplicating
- * the three-field group.
+ * The rule-name-plus-three-thresholds shape shared by every rule-editing
+ * surface in the service-intervals feature (U7/U8): `ServiceRuleForm` below
+ * is the ONE add/edit form for a name-plus-three-thresholds rule, used for
+ * editing a category default (`CategorySectionCard` in
+ * `service-defaults-form.tsx`) AND for a firearm/accessory's own item rules
+ * (override an inherited default, or add an item-only rule — see
+ * `service-rules-panel.tsx` in `app/(app)/firearms/`). Arming a brand-new
+ * accessory category (`AddAccessoryCategoryPanel`, also in
+ * `service-defaults-form.tsx`) has an extra category field ahead of the rule
+ * fields and a different single-button footer, so it composes `ThresholdInputs`
+ * and this file's helpers directly rather than wrapping `ServiceRuleForm`.
+ *
+ * The two prior near-duplicate components (a settings-only `DefaultRuleForm`
+ * taking `siblings: CategoryDefaultRule[]`, and a firearms-only
+ * `ServiceRuleForm` taking `siblingNames: string[]` plus a `nameLocked` flag)
+ * collapsed into this single component once `siblingNames: string[]` proved
+ * sufficient for both: `validateServiceRuleSet`'s duplicate-name check only
+ * reads `name` off sibling entries, and marking every one `suppressed: true`
+ * short-circuits its `missingThreshold`/`thresholdTooLow` checks for a
+ * fabricated sibling exactly the way an already-valid real default's
+ * thresholds would anyway (they can never fail those checks — they were
+ * validated when created).
  */
 
 export interface RuleFieldValues {
@@ -55,15 +71,6 @@ export function toRuleInput(values: RuleFieldValues): ServiceRuleInput {
     intervalDays: values.days === "" ? null : Number(values.days),
     intervalSessions: values.sessions === "" ? null : Number(values.sessions),
     intervalRounds: values.rounds === "" ? null : Number(values.rounds),
-  };
-}
-
-export function toSiblingInput(rule: CategoryDefaultRule): ServiceRuleInput {
-  return {
-    name: rule.name,
-    intervalDays: rule.intervalDays,
-    intervalSessions: rule.intervalSessions,
-    intervalRounds: rule.intervalRounds,
   };
 }
 
@@ -143,10 +150,23 @@ export function ThresholdInputs({
   );
 }
 
-export interface DefaultRuleFormProps {
+export interface ServiceRuleFormProps {
   initial?: RuleFieldValues;
-  /** Sibling defaults already in this category, excluding the one being edited. */
-  siblings: CategoryDefaultRule[];
+  /**
+   * Every OTHER rule name already in this set (active + suppressed),
+   * excluding the one being edited — a category's sibling defaults, or an
+   * item's sibling rules. `validateServiceRuleSet` only reads `name` off
+   * these (see this file's top comment), so callers pass names, not full
+   * rows.
+   */
+  siblingNames: string[];
+  /**
+   * Locks the name field — set when overriding a default-backed item rule,
+   * whose name must stay the default's name to keep resolving as that same
+   * rule. Never set for a category default (its name IS the rule's identity)
+   * or an item-only rule (nothing to keep in sync with).
+   */
+  nameLocked?: boolean;
   submitLabel: string;
   pendingLabel: string;
   onCancel: () => void;
@@ -154,16 +174,22 @@ export interface DefaultRuleFormProps {
   onSaved: () => void;
 }
 
-/** Add/edit form for one category default (name + the three thresholds). */
-export function DefaultRuleForm({
+/**
+ * Add/edit form for one name-plus-three-thresholds rule: a category default,
+ * or a firearm/accessory's own item rule (override or item-only). See this
+ * file's top comment for how the two prior near-duplicate components merged
+ * into this one.
+ */
+export function ServiceRuleForm({
   initial,
-  siblings,
+  siblingNames,
+  nameLocked = false,
   submitLabel,
   pendingLabel,
   onCancel,
   onSubmit,
   onSaved,
-}: DefaultRuleFormProps) {
+}: ServiceRuleFormProps) {
   const [values, setValues] = useState<RuleFieldValues>(
     initial ?? EMPTY_RULE_VALUES,
   );
@@ -181,10 +207,11 @@ export function DefaultRuleForm({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const input = toRuleInput(values);
-    const found = validateServiceRuleSet([
-      ...siblings.map(toSiblingInput),
-      input,
-    ]);
+    const siblingInputs: ServiceRuleInput[] = siblingNames.map((name) => ({
+      name,
+      suppressed: true,
+    }));
+    const found = validateServiceRuleSet([...siblingInputs, input]);
     setCodes(found);
     setServerError(null);
     if (found.length > 0) {
@@ -193,7 +220,15 @@ export function DefaultRuleForm({
       return;
     }
     startTransition(async () => {
-      const result = await onSubmit(input);
+      // Trimmed here (not just left to the server) because the firearms
+      // item-rule actions (`overrideServiceRuleAction`,
+      // `addItemOnlyRuleAction`) resolve an existing rule by an exact
+      // `row.name === name` string match BEFORE any server-side trim runs
+      // (`findItemRuleByName` in `service-actions.ts`) — an untrimmed name
+      // with incidental whitespace would miss that match and misfire a
+      // create instead of an update. A no-op for the category-default path,
+      // whose actions look up the target row by id and trim independently.
+      const result = await onSubmit({ ...input, name: input.name.trim() });
       if (result.ok) {
         onSaved();
       } else if (result.codes) {
@@ -222,6 +257,7 @@ export function DefaultRuleForm({
           value={values.name}
           onChange={(e) => set("name", e.target.value)}
           aria-invalid={NAME_CODES.some((c) => codes.includes(c))}
+          disabled={nameLocked}
         />
       </Field>
       <ThresholdInputs

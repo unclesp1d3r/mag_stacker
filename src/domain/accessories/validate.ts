@@ -12,6 +12,8 @@
  * range-sessions' `date` check).
  */
 
+import { ISO_DATE, isRealCalendarDate } from "@/src/lib/dates";
+
 export type AccessoryValidationCode =
   | "emptyCategory"
   | "negativeCostCents"
@@ -24,20 +26,6 @@ export type AccessoryValidationCode =
  * out-of-range DB error; the form mirrors it as the input's `max`.
  */
 export const MAX_COST_CENTS = 2_147_483_647;
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * True only for a real calendar date. `Date.parse` NORMALIZES day overflow
- * (e.g. `2026-02-31` → Mar 3) instead of returning NaN, so a round-trip
- * compare against the UTC-normalized ISO date is what rejects impossible
- * days — the Postgres `date` cast would otherwise reject them downstream.
- */
-function isRealCalendarDate(date: string): boolean {
-  const parsed = Date.parse(date);
-  if (Number.isNaN(parsed)) return false;
-  return new Date(parsed).toISOString().slice(0, 10) === date;
-}
 
 export interface AccessoryFields {
   category: string;

@@ -19,6 +19,7 @@
  * rather than left to the Postgres `date` cast.
  */
 
+import { ISO_DATE, isRealCalendarDate } from "@/src/lib/dates";
 import { isFirearmAction, isFirearmType, UNSPECIFIED } from "./constants";
 
 export type FirearmValidationCode =
@@ -37,20 +38,6 @@ export interface FirearmInput {
   action: string;
   /** ISO calendar date (`YYYY-MM-DD`), or null/undefined when unset. */
   acquiredDate?: string | null;
-}
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * True only for a real calendar date. `Date.parse` NORMALIZES day overflow
- * (e.g. `2026-02-31` → Mar 3) instead of returning NaN, so a round-trip
- * compare against the UTC-normalized ISO date is what rejects impossible
- * days — the Postgres `date` cast would otherwise reject them downstream.
- */
-function isRealCalendarDate(date: string): boolean {
-  const parsed = Date.parse(date);
-  if (Number.isNaN(parsed)) return false;
-  return new Date(parsed).toISOString().slice(0, 10) === date;
 }
 
 export function validateFirearm(input: FirearmInput): FirearmValidationCode[] {

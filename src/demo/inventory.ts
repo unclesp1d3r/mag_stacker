@@ -15,6 +15,7 @@
  * `e2e/fixtures/`, which would drag Playwright into the plain Bun seed script.
  */
 
+import { format } from "date-fns";
 import type {
   FirearmAction,
   FirearmType,
@@ -100,15 +101,14 @@ export const DEMO_FIREARMS = [
  * local Y/M/D components rather than a UTC offset (service-intervals plan
  * KTD5) — matches how the derivation core compares calendar days, so a seed
  * fixture built here lands on the same local day a viewer's due computation
- * measures against.
+ * measures against. `date-fns`'s `format` reads the same local Y/M/D getters
+ * `setDate`'s local calendar-day rollover already leaves in place, so this is
+ * behavior-equivalent to (and replaces) a manual padStart build.
  */
 export function isoDateDaysAgo(daysAgo: number): string {
   const date = new Date();
   date.setDate(date.getDate() - daysAgo);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return format(date, "yyyy-MM-dd");
 }
 
 /**

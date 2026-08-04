@@ -7,6 +7,7 @@
  */
 
 import { differenceInCalendarDays, parseISO } from "date-fns";
+import { ISO_DATE, isRealCalendarDate } from "@/src/lib/dates";
 
 export interface ServiceEventInput {
   ruleName: string;
@@ -19,21 +20,6 @@ export type ServiceEventValidationCode =
   | "emptyServicedOn"
   | "invalidServicedOn"
   | "servicedOnInFuture";
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * True only for a real calendar date (mirrors
- * `range-sessions/validate.ts`'s `isRealCalendarDate`) — `Date.parse`
- * normalizes day overflow (e.g. `2026-02-31` -> Mar 3) instead of returning
- * `NaN`, so the round-trip compare against the normalized ISO date is what
- * actually rejects an impossible day.
- */
-function isRealCalendarDate(date: string): boolean {
-  const parsed = Date.parse(date);
-  if (Number.isNaN(parsed)) return false;
-  return new Date(parsed).toISOString().slice(0, 10) === date;
-}
 
 /**
  * `servicedOn` must be non-empty, a real calendar date, and not later than

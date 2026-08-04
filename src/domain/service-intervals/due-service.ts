@@ -464,16 +464,24 @@ function buildAccessoryEntry(
  * last-service-points, session rows), never a per-item query. An owner with
  * no defaults anywhere and no item-only rules yields an empty array, not an
  * error (every item resolves zero effective rules and is omitted).
+ *
+ * `preloadedFirearms`, when supplied, is used verbatim as the visible-firearm
+ * set instead of re-running `listFirearms` — see `loadVisibleItems`.
  */
 /**
  * The actor's visible firearms and OWNED (never granted/mounted-inherited)
  * accessories — see the accessory-scope comment on `listDueForVisibleCollection`.
+ * Accepts an optional `preloadedFirearms` — the same visible-firearm set a
+ * caller (e.g. the firearms list page) has often already fetched for its own
+ * purposes — to skip re-running `listFirearms`'s two round trips
+ * (`getVisibleIds` + select). Falls back to a fresh load when not supplied.
  */
 async function loadVisibleItems(
   actorId: string,
+  preloadedFirearms?: FirearmRow[],
 ): Promise<{ firearms: FirearmRow[]; accessories: AccessoryRow[] }> {
   const [firearms, accessories] = await Promise.all([
-    listFirearms(actorId),
+    preloadedFirearms ?? listFirearms(actorId),
     // Deliberately NOT `listAccessories(actorId)` — that returns owned ∪
     // mounted-on-a-visible-firearm accessories, which would surface a
     // GRANTEE'S shared firearm's mounted accessory (owned by someone else)
@@ -549,8 +557,12 @@ const isPresent = (e: ItemDueEntry | null): e is ItemDueEntry => e !== null;
 export async function listDueForVisibleCollection(
   actorId: string,
   asOf: Date = new Date(),
+  preloadedFirearms?: FirearmRow[],
 ): Promise<ItemDueEntry[]> {
-  const { firearms, accessories } = await loadVisibleItems(actorId);
+  const { firearms, accessories } = await loadVisibleItems(
+    actorId,
+    preloadedFirearms,
+  );
   if (firearms.length === 0 && accessories.length === 0) return [];
 
   const {

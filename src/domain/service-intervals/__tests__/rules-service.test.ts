@@ -12,13 +12,13 @@ import {
   makeFirearm,
   makeServiceEvent,
 } from "@/src/test-support/factories";
+import { getItemDueState } from "../due-service";
 import {
   countItemsInCategory,
   createItemRule,
   createServiceRuleDefault,
   deleteItemRule,
   deleteServiceRuleDefault,
-  getEffectiveRules,
   listConfiguredCategories,
   listItemRules,
   listOwnerAccessoryCategories,
@@ -75,8 +75,8 @@ describe("service-intervals rules-service (U3)", () => {
       intervalRounds: 6000,
     });
 
-    const ar15Rules = await getEffectiveRules(owner, "firearm", ar15.id);
-    const otherRules = await getEffectiveRules(owner, "firearm", otherRifle.id);
+    const ar15Rules = await getItemDueState(owner, "firearm", ar15.id);
+    const otherRules = await getItemDueState(owner, "firearm", otherRifle.id);
 
     expect(ar15Rules.find((r) => r.name === "Barrel")).toMatchObject({
       intervalRounds: 4000,
@@ -106,14 +106,14 @@ describe("service-intervals rules-service (U3)", () => {
       name: "Cleaning",
       intervalRounds: 300,
     });
-    let resolved = await getEffectiveRules(owner, "firearm", fa.id);
+    let resolved = await getItemDueState(owner, "firearm", fa.id);
     expect(resolved.find((r) => r.name === "Cleaning")).toMatchObject({
       intervalRounds: 300,
       inheritanceState: "overridden",
     });
 
     await deleteItemRule(owner, "firearm", fa.id, override.id);
-    resolved = await getEffectiveRules(owner, "firearm", fa.id);
+    resolved = await getItemDueState(owner, "firearm", fa.id);
     expect(resolved.find((r) => r.name === "Cleaning")).toMatchObject({
       intervalRounds: 500,
       inheritanceState: "inherited",
@@ -123,11 +123,11 @@ describe("service-intervals rules-service (U3)", () => {
       name: "Cleaning",
       suppressed: true,
     });
-    resolved = await getEffectiveRules(owner, "firearm", fa.id);
+    resolved = await getItemDueState(owner, "firearm", fa.id);
     expect(resolved.find((r) => r.name === "Cleaning")).toBeUndefined();
 
     await deleteItemRule(owner, "firearm", fa.id, suppression.id);
-    resolved = await getEffectiveRules(owner, "firearm", fa.id);
+    resolved = await getItemDueState(owner, "firearm", fa.id);
     expect(resolved.find((r) => r.name === "Cleaning")).toMatchObject({
       intervalRounds: 500,
       inheritanceState: "inherited",
@@ -243,7 +243,7 @@ describe("service-intervals rules-service (U3)", () => {
       intervalRounds: 999,
     });
 
-    const resolved = await getEffectiveRules(viewer, "firearm", fa.id);
+    const resolved = await getItemDueState(viewer, "firearm", fa.id);
     expect(resolved.find((r) => r.name === "Cleaning")).toMatchObject({
       intervalRounds: 500,
       inheritanceState: "inherited",
@@ -256,7 +256,7 @@ describe("service-intervals rules-service (U3)", () => {
     const fa = await makeFirearm(owner, { type: "rifle" });
 
     await expect(
-      getEffectiveRules(stranger, "firearm", fa.id),
+      getItemDueState(stranger, "firearm", fa.id),
     ).rejects.toBeInstanceOf(NotFoundError);
     await expect(
       listItemRules(stranger, "firearm", fa.id),
@@ -368,7 +368,7 @@ describe("service-intervals rules-service (U3)", () => {
     });
 
     await expect(
-      getEffectiveRules(viewer, "accessory", acc.id),
+      getItemDueState(viewer, "accessory", acc.id),
     ).rejects.toBeInstanceOf(NotFoundError);
     await expect(
       listItemRules(viewer, "accessory", acc.id),
@@ -449,12 +449,12 @@ describe("service-intervals rules-service (U3)", () => {
 
     await deleteServiceRuleDefault(owner, def.id);
 
-    const overriddenRules = await getEffectiveRules(
+    const overriddenRules = await getItemDueState(
       owner,
       "firearm",
       overridden.id,
     );
-    const plainRules = await getEffectiveRules(owner, "firearm", plain.id);
+    const plainRules = await getItemDueState(owner, "firearm", plain.id);
     // The override row still stands (it's the item's own row, untouched by
     // the default's deletion) — with no default left to match it against, it
     // now resolves item-only rather than overridden. The item with no

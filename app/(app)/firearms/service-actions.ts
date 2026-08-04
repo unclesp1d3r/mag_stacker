@@ -17,6 +17,7 @@ import {
   type ServiceRuleRow,
   updateItemRule,
 } from "@/src/domain/service-intervals/rules-service";
+import type { ServiceRuleInput } from "@/src/domain/service-intervals/validate";
 import { withActionContext } from "@/src/lib/logging/entry-context";
 
 /**
@@ -51,14 +52,31 @@ function revalidateItemPath(
   );
 }
 
+/**
+ * Resolves which existing item-rule row (if any) `name` refers to, alongside
+ * the FULL sibling list `listItemRules` already loaded to find it —
+ * returned so a caller proceeding to `createItemRule`/`updateItemRule` can
+ * pass `siblings` through as `preloadedSiblings` and skip having that same
+ * item's rules reloaded a second time purely for the duplicate-name check
+ * those functions would otherwise re-run themselves. This does NOT replace
+ * either function's own authorization check — `listItemRules` here resolves
+ * READ visibility (any of owner/edit/view for a firearm, KTD3), while
+ * `createItemRule`/`updateItemRule` separately and unconditionally enforce
+ * the stricter WRITE gate (owner-only for a firearm) inside their own
+ * transaction — so this helper only ever narrows what has to be reloaded,
+ * never what has to be re-authorized.
+ */
 async function findItemRuleByName(
   userId: string,
   parentType: ServiceParentType,
   parentId: string,
   name: string,
-): Promise<ServiceRuleRow | null> {
+): Promise<{ existing: ServiceRuleRow | null; siblings: ServiceRuleRow[] }> {
   const rows = await listItemRules(userId, parentType, parentId);
-  return rows.find((row) => row.name === name) ?? null;
+  return {
+    existing: rows.find((row) => row.name === name) ?? null,
+    siblings: rows,
+  };
 }
 
 export async function logServiceEventAction(
@@ -73,26 +91,23 @@ export async function logServiceEventAction(
   });
 }
 
-export interface RuleThresholdInput {
-  name: string;
-  intervalDays: number | null;
-  intervalSessions: number | null;
-  intervalRounds: number | null;
-}
-
 /**
  * The "Override" action: create-or-update this item's thresholds for
  * `input.name`. Creates a new item-rule row when the item has no entry for
  * that name yet (an "inherited" rule becoming "overridden"); updates the
- * existing row otherwise (adjusting an already-overridden rule).
+ * existing row otherwise (adjusting an already-overridden rule). `input.name`
+ * is expected already-trimmed (`ServiceRuleForm` trims before calling this) —
+ * `findItemRuleByName` below matches by exact string equality against
+ * already-trimmed stored names, before either branch's own server-side trim
+ * would otherwise run.
  */
 export async function overrideServiceRuleAction(
   parentType: ServiceParentType,
   parentId: string,
-  input: RuleThresholdInput,
+  input: ServiceRuleInput,
 ): Promise<ActionResult<{ rule: ServiceRuleRow }>> {
   return withActionContext("service-override-rule", async (userId) => {
-    const existing = await findItemRuleByName(
+    const { existing, siblings } = await findItemRuleByName(
       userId,
       parentType,
       parentId,
@@ -100,8 +115,15 @@ export async function overrideServiceRuleAction(
     );
     const payload: ItemRuleInput = { ...input, suppressed: false };
     const rule = existing
-      ? await updateItemRule(userId, parentType, parentId, existing.id, payload)
-      : await createItemRule(userId, parentType, parentId, payload);
+      ? await updateItemRule(
+          userId,
+          parentType,
+          parentId,
+          existing.id,
+          payload,
+          siblings,
+        )
+      : await createItemRule(userId, parentType, parentId, payload, siblings);
     revalidateItemPath(parentType, parentId);
     return { ok: true, data: { rule } };
   });
@@ -111,7 +133,7 @@ export async function overrideServiceRuleAction(
 export async function addItemOnlyRuleAction(
   parentType: ServiceParentType,
   parentId: string,
-  input: RuleThresholdInput,
+  input: ServiceRuleInput,
 ): Promise<ActionResult<{ rule: ServiceRuleRow }>> {
   return withActionContext("service-add-item-only-rule", async (userId) => {
     const rule = await createItemRule(userId, parentType, parentId, {
@@ -130,7 +152,7 @@ export async function resetServiceRuleAction(
   ruleName: string,
 ): Promise<ActionResult> {
   return withActionContext("service-reset-rule", async (userId) => {
-    const existing = await findItemRuleByName(
+    const { existing } = await findItemRuleByName(
       userId,
       parentType,
       parentId,
@@ -155,22 +177,29 @@ export async function suppressServiceRuleAction(
   ruleName: string,
 ): Promise<ActionResult> {
   return withActionContext("service-suppress-rule", async (userId) => {
-    const existing = await findItemRuleByName(
+    const { existing, siblings } = await findItemRuleByName(
       userId,
       parentType,
       parentId,
       ruleName,
     );
     if (existing) {
-      await updateItemRule(userId, parentType, parentId, existing.id, {
-        name: ruleName,
-        suppressed: true,
-      });
+      await updateItemRule(
+        userId,
+        parentType,
+        parentId,
+        existing.id,
+        { name: ruleName, suppressed: true },
+        siblings,
+      );
     } else {
-      await createItemRule(userId, parentType, parentId, {
-        name: ruleName,
-        suppressed: true,
-      });
+      await createItemRule(
+        userId,
+        parentType,
+        parentId,
+        { name: ruleName, suppressed: true },
+        siblings,
+      );
     }
     revalidateItemPath(parentType, parentId);
     return { ok: true };
@@ -184,7 +213,7 @@ export async function restoreServiceRuleAction(
   ruleName: string,
 ): Promise<ActionResult> {
   return withActionContext("service-restore-rule", async (userId) => {
-    const existing = await findItemRuleByName(
+    const { existing } = await findItemRuleByName(
       userId,
       parentType,
       parentId,
