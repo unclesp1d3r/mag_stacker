@@ -2,13 +2,38 @@ import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/ui/feedback";
 import { PageHeader, Stat } from "@/components/ui/surface";
 import { getCurrentUser } from "@/src/auth/session";
+import { accessoryDisplayName } from "@/src/domain/accessories/display";
+import { listAccessories } from "@/src/domain/accessories/service";
+import { firearmDisplayName } from "@/src/domain/firearms/display";
+import { listFirearms } from "@/src/domain/firearms/service";
+import { buildServiceBacklog } from "@/src/domain/service-intervals/backlog";
+import { listDueForVisibleCollection } from "@/src/domain/service-intervals/due-service";
 import { inventorySummary } from "@/src/domain/summary/summary";
 import { SummaryTables } from "./summary-tables";
 
 export default async function SummaryPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  const summary = await inventorySummary(user.id);
+
+  // Loaded once and reused for the roll-up counts AND the bulk mark-serviced
+  // control's backlog (R16) — `inventorySummary` would otherwise re-run
+  // `listDueForVisibleCollection`'s own batched pipeline a second time
+  // (KTD4), mirroring how `firearms/page.tsx` already reuses these loads.
+  const [firearms, accessories] = await Promise.all([
+    listFirearms(user.id),
+    listAccessories(user.id),
+  ]);
+  const dueEntries = await listDueForVisibleCollection(
+    user.id,
+    undefined,
+    firearms,
+  );
+  const summary = await inventorySummary(user.id, dueEntries, firearms);
+  const serviceBacklog = buildServiceBacklog(
+    dueEntries,
+    new Map(firearms.map((f) => [f.id, firearmDisplayName(f)])),
+    new Map(accessories.map((a) => [a.id, accessoryDisplayName(a)])),
+  );
 
   return (
     <div className="space-y-6">
@@ -44,6 +69,7 @@ export default async function SummaryPage() {
             caliberCoverage={summary.caliberCoverage}
             itemsDue={summary.itemsDue}
             rulesDue={summary.rulesDue}
+            serviceBacklog={serviceBacklog}
           />
         </>
       )}

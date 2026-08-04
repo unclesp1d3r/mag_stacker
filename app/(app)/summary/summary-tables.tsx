@@ -14,11 +14,13 @@ import {
 } from "@/components/ui/data-table/types";
 import { Data } from "@/components/ui/typography";
 import { useTableViewState } from "@/hooks/use-table-view-state";
+import type { BacklogRow } from "@/src/domain/service-intervals/backlog";
 import type {
   CaliberCoverage,
   CaliberSummary,
   FirearmCount,
 } from "@/src/domain/summary/summary";
+import { ServiceBacklogControl } from "./service-backlog-control";
 
 interface SummaryTablesProps {
   byCaliber: CaliberSummary[];
@@ -28,6 +30,8 @@ interface SummaryTablesProps {
   itemsDue: number;
   /** Total due service rules across the visible collection (U9, R19). */
   rulesDue: number;
+  /** One row per due item-and-rule pair (R16) — feeds the bulk mark-serviced control. */
+  serviceBacklog: BacklogRow[];
 }
 
 /** Visible text for each `CaliberCoverage.reason` (R12) — never color alone. */
@@ -42,6 +46,7 @@ export function SummaryTables({
   caliberCoverage,
   itemsDue,
   rulesDue,
+  serviceBacklog,
 }: SummaryTablesProps) {
   const caliberColumns = useMemo<ColumnDef<CaliberSummary>[]>(
     () => [
@@ -144,6 +149,7 @@ export function SummaryTables({
           {itemsDue} {itemsDue === 1 ? "item" : "items"} due for service across{" "}
           {rulesDue} {rulesDue === 1 ? "rule" : "rules"}
         </Data>
+        <ServiceBacklogControl backlog={serviceBacklog} />
       </section>
 
       <section aria-labelledby="by-caliber" className="space-y-3">

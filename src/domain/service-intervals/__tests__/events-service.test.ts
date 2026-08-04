@@ -228,6 +228,34 @@ describe("service-intervals events-service (U4)", () => {
     expect(rows).toHaveLength(0);
   });
 
+  test("a view-grantee's bulk mark-serviced call is rejected with NotAuthorizedError (not NotFoundError) and writes nothing — proves the batched authorization preserves the same per-item outcome as the single-event path", async () => {
+    const owner = await newOwner("u4bulkViewOwner");
+    const viewer = await newOwner("u4bulkViewViewer");
+    const fa = await makeFirearm(owner, { type: "rifle" });
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: viewer,
+      parentType: "firearm",
+      parentId: fa.id,
+      permission: "view",
+    });
+
+    await expect(
+      logServiceEventsBulk(viewer, {
+        items: [
+          { parentType: "firearm", parentId: fa.id, ruleName: "Cleaning" },
+        ],
+        servicedOn: "2026-04-02",
+      }),
+    ).rejects.toBeInstanceOf(NotAuthorizedError);
+
+    const rows = await db
+      .select()
+      .from(serviceEvent)
+      .where(eq(serviceEvent.firearmId, fa.id));
+    expect(rows).toHaveLength(0);
+  });
+
   test("an edit-grantee's bulk mark-serviced call across shared firearms succeeds, matching what the single-event path already allows them", async () => {
     const owner = await newOwner("u4bulkEditOwner");
     const editor = await newOwner("u4bulkEditor");
@@ -258,6 +286,36 @@ describe("service-intervals events-service (U4)", () => {
 
     expect(events).toHaveLength(2);
     for (const event of events) expect(event.actorId).toBe(editor);
+  });
+
+  test("an edit-grantee's bulk mark-serviced call rejects when it includes an accessory they don't own, even though they can edit the firearm it's mounted to, and writes nothing", async () => {
+    const owner = await newOwner("u4bulkAccSplitOwner");
+    const editor = await newOwner("u4bulkAccSplitEditor");
+    const fa = await makeFirearm(owner, { type: "rifle" });
+    const acc = await makeAccessory(owner, { currentFirearmId: fa.id });
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: editor,
+      parentType: "firearm",
+      parentId: fa.id,
+      permission: "edit",
+    });
+
+    await expect(
+      logServiceEventsBulk(editor, {
+        items: [
+          { parentType: "firearm", parentId: fa.id, ruleName: "Cleaning" },
+          { parentType: "accessory", parentId: acc.id, ruleName: "Cleaning" },
+        ],
+        servicedOn: "2026-04-03",
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+
+    const rows = await db
+      .select()
+      .from(serviceEvent)
+      .where(eq(serviceEvent.firearmId, fa.id));
+    expect(rows).toHaveLength(0);
   });
 
   test("an empty bulk items list writes nothing and returns an empty array", async () => {

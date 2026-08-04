@@ -1,7 +1,11 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { authorizeUpdate } from "@/src/auth/authorize";
-import { NotFoundError } from "@/src/auth/errors";
-import { resolvePermission } from "@/src/auth/visibility";
+import { NotAuthorizedError, NotFoundError } from "@/src/auth/errors";
+import {
+  type Permission,
+  resolvePermission,
+  visibleFirearmPermissions,
+} from "@/src/auth/visibility";
 import { assertWritesAllowed } from "@/src/backup/maintenance";
 import { type DbOrTx, db } from "@/src/db/client";
 import { accessory, serviceEvent } from "@/src/db/schema";
@@ -67,6 +71,73 @@ async function authorizeEventWrite(
     .where(eq(accessory.id, parentId))
     .limit(1);
   if (!row || row.ownerId !== actorId) throw new NotFoundError();
+}
+
+/**
+ * Batched counterpart to `authorizeEventWrite`, used by the bulk mark-
+ * serviced path (R16). Produces the EXACT SAME per-item authorization
+ * outcome as calling `authorizeEventWrite` in a loop — same error type
+ * (`NotAuthorizedError` for a firearm view-grantee, `NotFoundError` for
+ * anything outside the actor's visible set, same as a stranger's item or a
+ * non-owned accessory) — but in a bounded number of queries regardless of
+ * batch size: one `visibleFirearmPermissions` call covers every firearm
+ * pair, and one `IN` query covers every accessory pair, instead of one query
+ * per item. `assertWritesAllowed` runs once up front rather than once per
+ * item, which is safe: maintenance mode can't toggle mid-transaction.
+ */
+async function authorizeEventWritesBatch(
+  tx: DbOrTx,
+  actorId: string,
+  items: BulkServiceItem[],
+): Promise<void> {
+  await assertWritesAllowed(tx);
+
+  const firearmIds = [
+    ...new Set(
+      items
+        .filter((item) => item.parentType === "firearm")
+        .map((item) => item.parentId),
+    ),
+  ];
+  const accessoryIds = [
+    ...new Set(
+      items
+        .filter((item) => item.parentType === "accessory")
+        .map((item) => item.parentId),
+    ),
+  ];
+
+  const firearmPermissions: Map<string, Permission> =
+    firearmIds.length > 0
+      ? await visibleFirearmPermissions(tx, actorId)
+      : new Map();
+
+  const accessoryOwners = new Map<string, string>();
+  if (accessoryIds.length > 0) {
+    const rows = await tx
+      .select({ id: accessory.id, ownerId: accessory.ownerId })
+      .from(accessory)
+      .where(inArray(accessory.id, accessoryIds));
+    for (const row of rows) accessoryOwners.set(row.id, row.ownerId);
+  }
+
+  for (const item of items) {
+    if (item.parentType === "firearm") {
+      const perm = firearmPermissions.get(item.parentId) ?? null;
+      if (perm === "owner" || perm === "edit") continue;
+      if (perm === "view") {
+        throw new NotAuthorizedError(
+          "read-only access; cannot modify this item",
+        );
+      }
+      throw new NotFoundError();
+    } else {
+      const ownerId = accessoryOwners.get(item.parentId);
+      if (ownerId === undefined || ownerId !== actorId) {
+        throw new NotFoundError();
+      }
+    }
+  }
 }
 
 function parentColumns(parentType: ServiceParentType, parentId: string) {
@@ -146,9 +217,7 @@ export async function logServiceEventsBulk(
   if (codes.length > 0) throw new ValidationError(codes);
 
   return db.transaction(async (tx) => {
-    for (const item of items) {
-      await authorizeEventWrite(tx, actorId, item.parentType, item.parentId);
-    }
+    await authorizeEventWritesBatch(tx, actorId, items);
     return tx
       .insert(serviceEvent)
       .values(
