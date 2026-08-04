@@ -48,11 +48,17 @@ import {
  *   U4): one batched load per data source (owners' defaults, item rules,
  *   last-service-points, session rows), never a per-item query.
  *
- * Origin date resolves per family (KTD9): a firearm's `acquired_date` when
- * set, else its `created_at`, as a calendar date; an accessory's
- * `created_at`, always (accessories have no acquired date, and
- * `installed_date` is force-nulled on unmount so it can't serve as one).
- * `acquired_date`/`serviced_on` are stored as Postgres `date` (a plain
+ * Origin date resolves per family (KTD9, updated during implementation): a
+ * firearm's `acquired_date` when set, else its `created_at`, as a calendar
+ * date; an accessory's `acquired_date` when set, else its `created_at`,
+ * EXACTLY parallel to the firearm resolution — accessories gained their own
+ * `acquired_date` after the plan's original scope (see the plan's "Scope
+ * added during implementation" note): leaving accessories on `created_at`
+ * alone reproduced R22's cold-start problem on the smaller half of the
+ * feature, where an accessory owned for years but entered today read as
+ * not-due on day one. `installed_date` still can't serve as an origin — it
+ * is force-nulled on unmount — but `acquired_date` is never touched by mount
+ * state, so it's stable. `acquired_date`/`serviced_on` are stored as Postgres `date` (a plain
  * `YYYY-MM-DD` string); `parseISO` on a date-only string resolves to LOCAL
  * midnight (KTD5), matching how `magazines/inventory-filter.ts` already
  * parses stored calendar dates. `created_at` is already a `Date` instance
@@ -298,6 +304,19 @@ function firearmOriginDate(row: {
   return row.acquiredDate !== null ? parseISO(row.acquiredDate) : row.createdAt;
 }
 
+/**
+ * An accessory's origin date (KTD9, updated during implementation) —
+ * `acquiredDate` when set, else `createdAt`, exactly parallel to
+ * `firearmOriginDate` above. Added after the plan's original scope; see this
+ * file's header comment.
+ */
+function accessoryOriginDate(row: {
+  acquiredDate: string | null;
+  createdAt: Date;
+}): Date {
+  return row.acquiredDate !== null ? parseISO(row.acquiredDate) : row.createdAt;
+}
+
 /** `getItemDueState`'s firearm branch — a firearm by its own visibility (R6). */
 async function getFirearmDueState(
   actorId: string,
@@ -360,7 +379,10 @@ async function getAccessoryDueState(
       loadLastServicePointBatch(db, "accessory", [parentId]),
       getVisibleIds(db, actorId, "firearm"),
       db
-        .select({ createdAt: accessory.createdAt })
+        .select({
+          acquiredDate: accessory.acquiredDate,
+          createdAt: accessory.createdAt,
+        })
         .from(accessory)
         .where(eq(accessory.id, parentId))
         .limit(1),
@@ -378,7 +400,13 @@ async function getAccessoryDueState(
     itemRuleRows.map(toItemRule),
   );
   const lastByRule = lastByItem.get(parentId) ?? new Map<string, string>();
-  return resolveDueRules(resolved, lastByRule, row.createdAt, sessions, asOf);
+  return resolveDueRules(
+    resolved,
+    lastByRule,
+    accessoryOriginDate(row),
+    sessions,
+    asOf,
+  );
 }
 
 /**
@@ -453,7 +481,13 @@ function buildAccessoryEntry(
   return {
     parentType: "accessory",
     parentId: acc.id,
-    rules: resolveDueRules(resolved, lastByRule, acc.createdAt, sessions, asOf),
+    rules: resolveDueRules(
+      resolved,
+      lastByRule,
+      accessoryOriginDate(acc),
+      sessions,
+      asOf,
+    ),
   };
 }
 

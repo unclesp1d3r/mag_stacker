@@ -50,6 +50,10 @@ interface AccessoryDetailViewProps {
   serviceRules: RuleDueState[] | null;
   suppressedServiceRuleNames: string[] | null;
   serviceHistory: ServiceHistoryEntry[] | null;
+  /** The ACCESSORY'S OWNER's previously-typed categories (not necessarily
+   * the viewer's, when an edit-grantee is editing a shared mount) — merged
+   * into the edit form's category suggestions, see `AccessoryForm`'s doc. */
+  ownerCategories: string[];
 }
 
 /**
@@ -119,6 +123,7 @@ export function AccessoryDetailView({
   serviceRules,
   suppressedServiceRuleNames,
   serviceHistory,
+  ownerCategories,
 }: AccessoryDetailViewProps) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -198,6 +203,7 @@ export function AccessoryDetailView({
             initial={accessory}
             editableFirearms={editableFirearms}
             currentFirearmId={accessory.currentFirearmId}
+            ownerCategories={ownerCategories}
             onDone={() => {
               setEditing(false);
               router.refresh();
@@ -248,6 +254,10 @@ export function AccessoryDetailView({
               value={orDash(accessory.installedDate)}
             />
             <DetailRow
+              label="Acquired date"
+              value={orDash(accessory.acquiredDate)}
+            />
+            <DetailRow
               label="Cost"
               value={
                 formattedCost ?? (
@@ -288,7 +298,11 @@ export function AccessoryDetailView({
       ) : null}
 
       {isOwner && serviceHistory !== null ? (
-        <ServiceHistory entries={serviceHistory} />
+        <ServiceHistory
+          entries={serviceHistory}
+          canWrite={isOwner}
+          onChange={() => router.refresh()}
+        />
       ) : null}
 
       <ConfirmDialog

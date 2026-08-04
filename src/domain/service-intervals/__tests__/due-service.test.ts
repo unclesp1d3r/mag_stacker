@@ -99,6 +99,57 @@ describe("service-intervals due-service (U4)", () => {
     expect(cleaning?.counts).toEqual({ days: 30, sessions: 2, rounds: 1400 });
   });
 
+  // Accessory acquiredDate (added during implementation — see the plan's
+  // "Scope added during implementation" note; KTD9 updated to resolve an
+  // accessory's origin the same way a firearm's does). Parallels AE3 above
+  // exactly, on the accessory side, and is the direct proof for the feature:
+  // a backdated accessory reads due on day one where an otherwise-identical
+  // one with no acquired date does not.
+  test("an accessory with a backdated acquired date is due on day one; an otherwise-identical one with no acquired date is not", async () => {
+    const owner = await newOwner("u4accAcquiredColdStart");
+    const fa = await makeFirearm(owner, { type: "rifle" });
+    const backdated = await makeAccessory(owner, {
+      category: "Optic",
+      currentFirearmId: fa.id,
+      acquiredDate: "2024-01-01",
+    });
+    const undated = await makeAccessory(owner, {
+      category: "Optic",
+      currentFirearmId: fa.id,
+    });
+    await createServiceRuleDefault(owner, {
+      scope: "accessory",
+      category: "Optic",
+      name: "Cleaning",
+      intervalDays: 180,
+    });
+
+    const asOf = localDate(2026, 0, 1);
+    const backdatedRules = await getItemDueState(
+      owner,
+      "accessory",
+      backdated.id,
+      asOf,
+    );
+    const undatedRules = await getItemDueState(
+      owner,
+      "accessory",
+      undated.id,
+      asOf,
+    );
+    const backdatedCleaning = backdatedRules.find((r) => r.name === "Cleaning");
+    const undatedCleaning = undatedRules.find((r) => r.name === "Cleaning");
+
+    expect(backdatedCleaning?.due).toBe(true);
+    expect(backdatedCleaning?.trippedAxis).toBe("days");
+    expect(backdatedCleaning?.measureFrom.getTime()).toBe(
+      localDate(2024, 0, 1).getTime(),
+    );
+    // The undated accessory was just created (its origin is `createdAt`,
+    // effectively "now") — nowhere near 180 days elapsed.
+    expect(undatedCleaning?.due).toBe(false);
+  });
+
   test("covers AE4: a suppressor mounted on 2 of 5 post-service sessions counts only those two sessions and their rounds", async () => {
     const owner = await newOwner("u4ae4");
     const fa = await makeFirearm(owner, { type: "rifle" });
@@ -241,7 +292,10 @@ describe("service-intervals due-service (U4)", () => {
     expect(cleaning?.measureFrom.getTime()).toBe(fa.createdAt.getTime());
   });
 
-  test("an accessory measures from its creation date, not its installed date", async () => {
+  // No `acquiredDate` is set here — with one unset, `createdAt` is still the
+  // fallback origin (KTD9), so this stays valid alongside the acquiredDate
+  // cold-start test above.
+  test("an accessory with no acquired date measures from its creation date, not its installed date", async () => {
     const owner = await newOwner("u4accCreatedAt");
     const fa = await makeFirearm(owner, { type: "rifle" });
     const acc = await makeAccessory(owner, {

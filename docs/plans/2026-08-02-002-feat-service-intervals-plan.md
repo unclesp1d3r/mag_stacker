@@ -184,7 +184,6 @@ flowchart TB
 - Projecting when a rule *will* come due from usage rate.
 - Service rules on magazines and ammo. Both are owned parents and could carry rules later; this plan covers firearms and accessories only.
 - Parts, cost, or vendor tracking attached to a service event.
-- An acquired date on accessories. Firearms get one (R22) because their day-axis cold start is the common case; accessories measure days from record creation, so an accessory owned for years but entered today reads as not-due on day one. Accepted for now — adding a second nullable acquired date and its form field doubles U6 for the smaller half of the feature.
 
 **Outside this plan's identity**
 
@@ -192,8 +191,16 @@ flowchart TB
 
 **Deferred to follow-up work**
 
-- Converting accessory `category` to a controlled list, or offering the owner's previously-typed categories in the accessory *form* combobox. KTD8 covers only the defaults surface, which is where a blind-typed category silently costs the owner a default set.
+- Converting accessory `category` to a controlled list. This would contradict KD10, which settles category as free text with exact-string matching, so it stays out of scope; the accessory form instead offers the owner's own previously-typed categories as suggestions, which reduces the typo risk KD10 creates without changing the matching rule.
 - CSV export of service rules or events. The existing exports in `src/domain/csv/` cover inventory shape, not activity, and this plan adds no export surface.
+
+**Scope added during implementation**
+
+Three items were pulled in after the plan was approved, each recorded here so the boundary list stays honest:
+
+- An acquired date on accessories, parallel to R22 for firearms. Originally deferred, but leaving it out reproduced on accessories exactly the cold-start problem KD6 exists to prevent — an accessory owned for years but entered today read as not-due on day one.
+- Editing and deleting a service event. The plan had no correction path, and because due state derives from the latest event per rule, one mis-logged entry skewed that rule permanently with no in-app recovery.
+- The accessory form offering the owner's existing categories as suggestions, per the first bullet above.
 
 ### Dependencies / Assumptions
 

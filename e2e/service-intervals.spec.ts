@@ -195,4 +195,37 @@ test("a rifle default marks items due with no visit, logging service clears it, 
     await expect(twoBarrelRow.getByText("Overridden")).toBeVisible();
     await expect(twoBarrelRow).toContainText("of 1 days");
   });
+
+  await test.step("correcting the Cleaning entry's date and notes, then deleting it (correction path)", async () => {
+    await page.goto("/firearms");
+    await page.getByRole("link", { name: "Interval Rifle One" }).click();
+
+    const history = page.getByRole("region", { name: "Service history" });
+    await history
+      .getByRole("button", { name: /^Edit service — Cleaning/ })
+      .click();
+
+    const editForm = history.locator("form");
+    await editForm.getByLabel("Date serviced").fill(isoDateDaysAgo(1));
+    await editForm
+      .getByLabel("Notes")
+      .fill("Corrected: actually cleaned yesterday.");
+    await editForm.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByText("Cleaning entry updated")).toBeVisible();
+    await expect(history).toContainText(
+      "Corrected: actually cleaned yesterday.",
+    );
+
+    await history
+      .getByRole("button", { name: /^Delete service — Cleaning/ })
+      .click();
+    await expect(page.getByText("Cleaning entry deleted")).toBeVisible();
+    await expect(history.getByText("No service logged yet")).toBeVisible();
+
+    // With no service event left for Cleaning, due state falls back to the
+    // firearm's acquired date (30 days ago) — well past the 7-day threshold.
+    const panel = page.getByRole("region", { name: "Service rules" });
+    const cleaningRow = panel.getByRole("row").filter({ hasText: "Cleaning" });
+    await expect(cleaningRow.getByText("Due")).toBeVisible();
+  });
 });

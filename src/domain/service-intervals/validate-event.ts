@@ -19,6 +19,20 @@ export interface ServiceEventInput {
   notes?: string;
 }
 
+/**
+ * Input for correcting an EXISTING service event (the correction path this
+ * unit adds — U4 originally shipped only create/list, with no way back out
+ * of a mis-logged event). Deliberately narrower than `ServiceEventInput`: no
+ * `ruleName`, and no parent at all. An edit may only ever change
+ * `servicedOn` and/or `notes` — see `updateServiceEvent`'s doc in
+ * `events-service.ts` for why the rule and parent stay fixed for the life of
+ * an event.
+ */
+export interface ServiceEventUpdateInput {
+  servicedOn: string;
+  notes?: string;
+}
+
 export type ServiceEventValidationCode =
   | "emptyRuleName"
   | "emptyServicedOn"
@@ -89,4 +103,21 @@ export function validateServiceEventInput(
   if (input.ruleName.trim() === "") codes.push("emptyRuleName");
   codes.push(...validateServicedOn(input.servicedOn, asOf));
   return codes;
+}
+
+/**
+ * Validates a service-event correction (`ServiceEventUpdateInput`) — reused
+ * by both `events-service.ts` (server, re-validates before every write) and
+ * `service-history.tsx`'s edit form (client, same codes/messages for
+ * immediate feedback), matching `validateServiceEventInput`'s reuse shape.
+ * Just `servicedOn`, through the exact same `validateServicedOn` (including
+ * its one-day future tolerance) the log path uses — there is no `ruleName`
+ * to validate here; an edit can never submit one (`ServiceEventUpdateInput`
+ * has no such field at all).
+ */
+export function validateServiceEventUpdateInput(
+  input: ServiceEventUpdateInput,
+  asOf: Date = new Date(),
+): ServiceEventValidationCode[] {
+  return validateServicedOn(input.servicedOn, asOf);
 }

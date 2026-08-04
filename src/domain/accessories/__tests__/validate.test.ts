@@ -85,6 +85,85 @@ describe("validateAccessory", () => {
   });
 });
 
+// Acquired date — added during implementation, mirroring `validateFirearm`'s
+// acquiredDate coverage exactly (service-intervals plan R22/KTD9-parity, see
+// the plan's "Scope added during implementation" note).
+describe("validateAccessory — acquiredDate", () => {
+  test("omitted acquiredDate is valid (unset)", () => {
+    expect(validateAccessory(base)).toEqual([]);
+  });
+
+  test("null acquiredDate is valid (explicit unset/clear)", () => {
+    expect(validateAccessory({ ...base, acquiredDate: null })).toEqual([]);
+  });
+
+  test("a real ISO calendar date is valid", () => {
+    expect(validateAccessory({ ...base, acquiredDate: "2026-06-14" })).toEqual(
+      [],
+    );
+  });
+
+  test("a malformed date string returns invalidAcquiredDate", () => {
+    expect(validateAccessory({ ...base, acquiredDate: "not-a-date" })).toEqual([
+      "invalidAcquiredDate",
+    ]);
+  });
+
+  test("an empty string is treated as malformed, not unset (the caller normalizes '' to null)", () => {
+    expect(validateAccessory({ ...base, acquiredDate: "" })).toEqual([
+      "invalidAcquiredDate",
+    ]);
+  });
+
+  test("an impossible calendar day (day overflow) returns invalidAcquiredDate", () => {
+    expect(validateAccessory({ ...base, acquiredDate: "2026-02-31" })).toEqual([
+      "invalidAcquiredDate",
+    ]);
+  });
+
+  test("combines with other failures rather than short-circuiting", () => {
+    expect(
+      validateAccessory({
+        category: "",
+        acquiredDate: "nope",
+      }),
+    ).toEqual(["emptyCategory", "invalidAcquiredDate"]);
+  });
+});
+
+// A future acquiredDate must be rejected with the same one-calendar-day
+// tolerance `validateFirearm` uses (shared `FUTURE_DATE_TOLERANCE_DAYS`) — a
+// future value would silently freeze this accessory's due state (KTD9).
+describe("validateAccessory — acquiredDateInFuture", () => {
+  test("an acquired date on the server's own day is accepted", () => {
+    const asOf = new Date(2026, 5, 15);
+    expect(
+      validateAccessory({ ...base, acquiredDate: "2026-06-15" }, asOf),
+    ).toEqual([]);
+  });
+
+  test("an acquired date one day ahead of the server's day is accepted (timezone-ahead submitter case)", () => {
+    const asOf = new Date(2026, 5, 15);
+    expect(
+      validateAccessory({ ...base, acquiredDate: "2026-06-16" }, asOf),
+    ).toEqual([]);
+  });
+
+  test("an acquired date two days ahead of the server's day is rejected", () => {
+    const asOf = new Date(2026, 5, 15);
+    expect(
+      validateAccessory({ ...base, acquiredDate: "2026-06-17" }, asOf),
+    ).toEqual(["acquiredDateInFuture"]);
+  });
+
+  test("a far-future acquired date is rejected", () => {
+    const asOf = new Date(2026, 5, 15);
+    expect(
+      validateAccessory({ ...base, acquiredDate: "2099-01-01" }, asOf),
+    ).toEqual(["acquiredDateInFuture"]);
+  });
+});
+
 describe("ACCESSORY_CATEGORY_SUGGESTIONS", () => {
   test("contains suppressor and optic", () => {
     expect(ACCESSORY_CATEGORY_SUGGESTIONS).toContain("suppressor");

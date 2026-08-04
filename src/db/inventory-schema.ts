@@ -205,6 +205,16 @@ export const accessory = pgTable(
     serialNumber: text("serial_number").notNull().default(""),
     // NULL = unset (KTD-7); calendar date, no time component.
     installedDate: date("installed_date"),
+    // NULL = unset (KTD-7-style); calendar date, no time component. Mirrors
+    // `firearm.acquiredDate` (service-intervals plan R22) — added during
+    // implementation (see the plan's "Scope added during implementation"
+    // note) because leaving it out reproduced R22's cold-start problem on
+    // accessories: one entered today with no acquired date reads as not-due
+    // on day one even when it's actually been owned for years. It is also
+    // the origin date the service-interval day axis measures from when set
+    // (KTD9), falling back to `createdAt` when null — `installedDate` can
+    // never serve that role since it is force-nulled on unmount.
+    acquiredDate: date("acquired_date"),
     costCents: integer("cost_cents"),
     notes: text("notes").notNull().default(""),
     isNfa: boolean("is_nfa").notNull().default(false),

@@ -67,6 +67,17 @@ export interface DemoAccessorySeed {
   isNfa?: boolean;
   /** Mount target, by firearm `name` — resolved to an id at seed time. */
   mount?: DemoFirearmName;
+  /**
+   * Days before "now" this accessory was acquired — added during
+   * implementation, mirroring `DemoFirearmSeed.acquiredDaysAgo` exactly (see
+   * the service-intervals plan's "Scope added during implementation" note).
+   * A day COUNT, not a stored date; resolved via `isoDateDaysAgo` at seed
+   * time. Omitted means no acquired date (the origin date falls back to
+   * record creation, KTD9) — at least one seed sets this so the demo proves
+   * the cold-start difference: a backdated accessory reads due on day one,
+   * one without an acquired date does not.
+   */
+  acquiredDaysAgo?: number;
 }
 
 export const DEMO_FIREARMS = [
@@ -227,6 +238,10 @@ export const DEMO_ACCESSORIES: readonly DemoAccessorySeed[] = [
     serialNumber: "AP-CM5-88213",
     costCents: 85_000,
     mount: 'BCM 11.5" SBR',
+    // Bought alongside the SBR it's mounted on (R22-parity; demonstrates the
+    // cold-start fix — see DemoAccessorySeed.acquiredDaysAgo's doc). The
+    // ACOG below carries no acquired date, so the demo shows both states.
+    acquiredDaysAgo: 900,
   },
   {
     category: "Suppressor",

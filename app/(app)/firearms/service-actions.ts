@@ -4,9 +4,13 @@ import { revalidatePath } from "next/cache";
 import { NotFoundError } from "@/src/auth/errors";
 import type { ActionResult } from "@/src/domain/action-result";
 import {
+  deleteServiceEvent,
   logServiceEvent,
+  resolveServiceEventParent,
   type ServiceEventInput,
   type ServiceEventRow,
+  type ServiceEventUpdateInput,
+  updateServiceEvent,
 } from "@/src/domain/service-intervals/events-service";
 import {
   createItemRule,
@@ -23,9 +27,12 @@ import { withActionContext } from "@/src/lib/logging/entry-context";
 /**
  * Server actions for the item-detail service panel (U8) — log-service and
  * the five rule actions (override, reset-to-inherited, suppress, restore,
- * add-item-only). Shared by both families: `service-rules-panel.tsx` is the
- * one panel component for firearms and accessories alike, and it imports
- * this single module regardless of which detail view mounts it (mirroring
+ * add-item-only) — plus, for the service-history list, the correction path's
+ * two actions: `updateServiceEventAction` ("Save changes") and
+ * `deleteServiceEventAction` ("Delete"). Shared by both families:
+ * `service-rules-panel.tsx` and `service-history.tsx` are the one panel/
+ * history component for firearms and accessories alike, and both import this
+ * single module regardless of which detail view mounts them (mirroring
  * `mounted-accessories.tsx` already living in `firearms/` and being
  * referenced from the accessories side) — `accessories/actions.ts` gains no
  * parallel copy of these, since every domain call here is already generic
@@ -88,6 +95,45 @@ export async function logServiceEventAction(
     const event = await logServiceEvent(userId, parentType, parentId, input);
     revalidateItemPath(parentType, parentId);
     return { ok: true, data: { event } };
+  });
+}
+
+/**
+ * The service-history "Save changes" action: correct an existing event's
+ * date and/or notes (the correction path this unit adds). `eventId` is the
+ * only handle the client has on the target event — no `parentType`/
+ * `parentId` is accepted from it — `updateServiceEvent` resolves the true
+ * parent off the row itself and authorizes against THAT, never a value this
+ * action could otherwise be tricked into trusting. The returned row's own
+ * parent is what's used to revalidate, via `resolveServiceEventParent`.
+ */
+export async function updateServiceEventAction(
+  eventId: string,
+  input: ServiceEventUpdateInput,
+): Promise<ActionResult<{ event: ServiceEventRow }>> {
+  return withActionContext("service-update-event", async (userId) => {
+    const event = await updateServiceEvent(userId, eventId, input);
+    const { parentType, parentId } = resolveServiceEventParent(event);
+    revalidateItemPath(parentType, parentId);
+    return { ok: true, data: { event } };
+  });
+}
+
+/**
+ * The service-history "Delete" action: remove an event outright. Same
+ * caller-supplies-only-an-id shape as `updateServiceEventAction` above —
+ * `deleteServiceEvent` hands back the just-deleted row so this action can
+ * still revalidate the correct detail route despite never having been given
+ * a parent to trust.
+ */
+export async function deleteServiceEventAction(
+  eventId: string,
+): Promise<ActionResult> {
+  return withActionContext("service-delete-event", async (userId) => {
+    const deleted = await deleteServiceEvent(userId, eventId);
+    const { parentType, parentId } = resolveServiceEventParent(deleted);
+    revalidateItemPath(parentType, parentId);
+    return { ok: true };
   });
 }
 

@@ -10,15 +10,33 @@
  * must be a non-negative integer within the int4 bound (#53). `installedDate`
  * is nullable and, when present, must be a real ISO calendar date (mirrors
  * range-sessions' `date` check).
+ *
+ * `acquiredDate` is nullable and, when present, must be a real ISO calendar
+ * date, and not more than `FUTURE_DATE_TOLERANCE_DAYS` after `asOf` — added
+ * during implementation, mirroring `firearm.acquiredDate`'s validator
+ * (service-intervals plan R22/KTD9) exactly, including the same one-
+ * calendar-day future tolerance and the same reason for it: `asOf` is the
+ * SERVER's clock, and a submitter whose local calendar day genuinely runs
+ * ahead of it must not be rejected for submitting their own today. It also
+ * feeds the service-interval origin date (`due-service.ts`), so a future
+ * value would silently freeze that accessory's due state until the clock
+ * caught up — rejected here rather than left to the Postgres `date` cast.
  */
 
-import { ISO_DATE, isRealCalendarDate } from "@/src/lib/dates";
+import { differenceInCalendarDays, parseISO } from "date-fns";
+import {
+  FUTURE_DATE_TOLERANCE_DAYS,
+  ISO_DATE,
+  isRealCalendarDate,
+} from "@/src/lib/dates";
 
 export type AccessoryValidationCode =
   | "emptyCategory"
   | "negativeCostCents"
   | "invalidCostCents"
-  | "invalidInstalledDate";
+  | "invalidInstalledDate"
+  | "invalidAcquiredDate"
+  | "acquiredDateInFuture";
 
 /**
  * Upper bound for `costCents`: Postgres int4 max (#53). Validated here so an
@@ -33,13 +51,22 @@ export interface AccessoryFields {
   model?: string;
   serialNumber?: string;
   installedDate?: string | null;
+  /** ISO calendar date, or null/undefined when unset. See file header. */
+  acquiredDate?: string | null;
   costCents?: number | null;
   notes?: string;
   isNfa?: boolean;
 }
 
+/**
+ * `asOf` is the reference "now" the not-in-the-future `acquiredDate` check
+ * compares against — an explicit parameter (default `new Date()`, the
+ * server's clock) so this stays a pure, deterministic function for tests,
+ * mirroring `validateFirearm`'s shape exactly.
+ */
 export function validateAccessory(
   input: AccessoryFields,
+  asOf: Date = new Date(),
 ): AccessoryValidationCode[] {
   const codes: AccessoryValidationCode[] = [];
 
@@ -59,6 +86,18 @@ export function validateAccessory(
     const date = input.installedDate.trim();
     if (date === "" || !ISO_DATE.test(date) || !isRealCalendarDate(date)) {
       codes.push("invalidInstalledDate");
+    }
+  }
+
+  if (input.acquiredDate !== null && input.acquiredDate !== undefined) {
+    const date = input.acquiredDate.trim();
+    if (date === "" || !ISO_DATE.test(date) || !isRealCalendarDate(date)) {
+      codes.push("invalidAcquiredDate");
+    } else if (
+      differenceInCalendarDays(parseISO(date), asOf) >
+      FUTURE_DATE_TOLERANCE_DAYS
+    ) {
+      codes.push("acquiredDateInFuture");
     }
   }
 

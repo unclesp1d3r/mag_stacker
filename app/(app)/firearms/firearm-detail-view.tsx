@@ -266,7 +266,11 @@ export function FirearmDetailView({
         onChange={() => router.refresh()}
       />
 
-      <ServiceHistory entries={serviceHistory} />
+      <ServiceHistory
+        entries={serviceHistory}
+        canWrite={canEdit}
+        onChange={() => router.refresh()}
+      />
 
       <InventoryLogHistory
         parentType="firearm"

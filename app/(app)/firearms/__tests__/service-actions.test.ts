@@ -7,6 +7,7 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { NotFoundError } from "@/src/auth/errors";
 import { ValidationError } from "@/src/domain/errors";
 import * as eventsService from "@/src/domain/service-intervals/events-service";
 import * as rulesService from "@/src/domain/service-intervals/rules-service";
@@ -44,6 +45,8 @@ mock.module("next/cache", () => ({
 
 const {
   logServiceEventAction,
+  updateServiceEventAction,
+  deleteServiceEventAction,
   overrideServiceRuleAction,
   addItemOnlyRuleAction,
   resetServiceRuleAction,
@@ -64,6 +67,8 @@ describe("service-actions (U8)", () => {
   let updateItemRuleSpy: ReturnType<typeof spyOn>;
   let deleteItemRuleSpy: ReturnType<typeof spyOn>;
   let logServiceEventSpy: ReturnType<typeof spyOn>;
+  let updateServiceEventSpy: ReturnType<typeof spyOn>;
+  let deleteServiceEventSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     currentUserId = null;
@@ -84,6 +89,24 @@ describe("service-actions (U8)", () => {
       eventsService,
       "logServiceEvent",
     ).mockResolvedValue({ id: "event-1", ruleName: "Cleaning" } as never);
+    updateServiceEventSpy = spyOn(
+      eventsService,
+      "updateServiceEvent",
+    ).mockResolvedValue({
+      id: "event-1",
+      ruleName: "Cleaning",
+      firearmId: "fa-1",
+      accessoryId: null,
+    } as never);
+    deleteServiceEventSpy = spyOn(
+      eventsService,
+      "deleteServiceEvent",
+    ).mockResolvedValue({
+      id: "event-1",
+      ruleName: "Cleaning",
+      firearmId: "fa-1",
+      accessoryId: null,
+    } as never);
   });
 
   afterEach(() => {
@@ -92,6 +115,8 @@ describe("service-actions (U8)", () => {
     updateItemRuleSpy.mockRestore();
     deleteItemRuleSpy.mockRestore();
     logServiceEventSpy.mockRestore();
+    updateServiceEventSpy.mockRestore();
+    deleteServiceEventSpy.mockRestore();
   });
 
   describe("logServiceEventAction", () => {
@@ -413,6 +438,125 @@ describe("service-actions (U8)", () => {
 
       expect(result.ok).toBe(false);
       expect(deleteItemRuleSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---- correction path: updateServiceEventAction / deleteServiceEventAction ----
+
+  describe("updateServiceEventAction", () => {
+    test("rejects an unauthenticated caller without touching the service", async () => {
+      currentUserId = null;
+
+      const result = await updateServiceEventAction("event-1", {
+        servicedOn: "2026-01-02",
+      });
+
+      expect(result.ok).toBe(false);
+      expect(updateServiceEventSpy).not.toHaveBeenCalled();
+    });
+
+    test("forwards the resolved actor id, eventId, and input — never a parentType/parentId the client supplied", async () => {
+      currentUserId = "user-1";
+
+      const result = await updateServiceEventAction("event-1", {
+        servicedOn: "2026-01-02",
+        notes: "corrected",
+      });
+
+      expect(result.ok).toBe(true);
+      expect(updateServiceEventSpy).toHaveBeenCalledWith("user-1", "event-1", {
+        servicedOn: "2026-01-02",
+        notes: "corrected",
+      });
+    });
+
+    test("revalidates the firearm's path using the returned row's own parent", async () => {
+      currentUserId = "user-1";
+      updateServiceEventSpy.mockResolvedValue({
+        id: "event-1",
+        ruleName: "Cleaning",
+        firearmId: "fa-1",
+        accessoryId: null,
+      } as never);
+
+      await updateServiceEventAction("event-1", { servicedOn: "2026-01-02" });
+
+      expect(revalidateCalls).toContain("/firearms/fa-1");
+    });
+
+    test("revalidates the accessory's path using the returned row's own parent", async () => {
+      currentUserId = "user-1";
+      updateServiceEventSpy.mockResolvedValue({
+        id: "event-2",
+        ruleName: "Cleaning",
+        firearmId: null,
+        accessoryId: "acc-1",
+      } as never);
+
+      await updateServiceEventAction("event-2", { servicedOn: "2026-01-02" });
+
+      expect(revalidateCalls).toContain("/accessories/acc-1");
+    });
+
+    test("maps a thrown ValidationError to a failed ActionResult with codes", async () => {
+      currentUserId = "user-1";
+      updateServiceEventSpy.mockImplementation(() => {
+        throw new ValidationError(["servicedOnInFuture"]);
+      });
+
+      const result = await updateServiceEventAction("event-1", {
+        servicedOn: "2099-01-01",
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.ok === false && result.codes).toEqual([
+        "servicedOnInFuture",
+      ]);
+    });
+  });
+
+  describe("deleteServiceEventAction", () => {
+    test("rejects an unauthenticated caller without touching the service", async () => {
+      currentUserId = null;
+
+      const result = await deleteServiceEventAction("event-1");
+
+      expect(result.ok).toBe(false);
+      expect(deleteServiceEventSpy).not.toHaveBeenCalled();
+    });
+
+    test("forwards the resolved actor id and eventId only", async () => {
+      currentUserId = "user-1";
+
+      const result = await deleteServiceEventAction("event-1");
+
+      expect(result.ok).toBe(true);
+      expect(deleteServiceEventSpy).toHaveBeenCalledWith("user-1", "event-1");
+    });
+
+    test("revalidates the accessory's path using the deleted row's own parent", async () => {
+      currentUserId = "user-1";
+      deleteServiceEventSpy.mockResolvedValue({
+        id: "event-3",
+        ruleName: "Cleaning",
+        firearmId: null,
+        accessoryId: "acc-9",
+      } as never);
+
+      await deleteServiceEventAction("event-3");
+
+      expect(revalidateCalls).toContain("/accessories/acc-9");
+    });
+
+    test("returns a non-leaking error when the event is not found", async () => {
+      currentUserId = "user-1";
+      deleteServiceEventSpy.mockImplementation(() => {
+        throw new NotFoundError();
+      });
+
+      const result = await deleteServiceEventAction("missing-event");
+
+      expect(result.ok).toBe(false);
     });
   });
 });

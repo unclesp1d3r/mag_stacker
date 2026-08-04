@@ -16,7 +16,10 @@ import {
   listServiceHistory,
   type ServiceEventRow,
 } from "@/src/domain/service-intervals/events-service";
-import { listItemRules } from "@/src/domain/service-intervals/rules-service";
+import {
+  listItemRules,
+  listOwnerAccessoryCategories,
+} from "@/src/domain/service-intervals/rules-service";
 import { isUuid } from "@/src/lib/uuid";
 import type { ServiceHistoryEntry } from "../../firearms/service-history";
 import { AccessoryDetailView } from "../accessory-detail-view";
@@ -111,11 +114,17 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
 
   const isOwner = permission === "owner";
 
-  const [firearms, permissions, serviceProps] = await Promise.all([
-    listFirearms(user.id),
-    visibleFirearmPermissions(db, user.id),
-    loadAccessoryServiceProps(user.id, id, isOwner),
-  ]);
+  const [firearms, permissions, serviceProps, ownerCategories] =
+    await Promise.all([
+      listFirearms(user.id),
+      visibleFirearmPermissions(db, user.id),
+      loadAccessoryServiceProps(user.id, id, isOwner),
+      // The ACCESSORY'S OWNER's categories (row.ownerId, not the actor) —
+      // suggestions should reflect the owner whose category defaults (KD10)
+      // this accessory actually inherits from, even when an edit-grantee is
+      // the one editing a shared mount.
+      listOwnerAccessoryCategories(row.ownerId),
+    ]);
 
   // The reassign-mount picker must offer only firearms owned by the
   // ACCESSORY's owner (`row.ownerId`, not the actor — an edit-grantee acting
@@ -137,6 +146,7 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
         model: row.model,
         serialNumber: row.serialNumber,
         installedDate: row.installedDate ?? "",
+        acquiredDate: row.acquiredDate ?? "",
         cost: costCentsToInputValue(row.costCents),
         notes: row.notes,
         isNfa: row.isNfa,
@@ -148,6 +158,7 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
       serviceRules={serviceProps.serviceRules}
       suppressedServiceRuleNames={serviceProps.suppressedServiceRuleNames}
       serviceHistory={serviceProps.serviceHistory}
+      ownerCategories={ownerCategories}
     />
   );
 }

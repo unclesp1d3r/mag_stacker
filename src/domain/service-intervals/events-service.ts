@@ -23,12 +23,18 @@ import {
 } from "./rules-service";
 import {
   type ServiceEventInput,
+  type ServiceEventUpdateInput,
   type ServiceEventValidationCode,
   validateServicedOn,
   validateServiceEventInput,
+  validateServiceEventUpdateInput,
 } from "./validate-event";
 
-export type { ServiceEventInput, ServiceEventValidationCode };
+export type {
+  ServiceEventInput,
+  ServiceEventUpdateInput,
+  ServiceEventValidationCode,
+};
 
 /**
  * Service-events layer (service-intervals plan, U4). Logging one event, the
@@ -351,6 +357,129 @@ export async function logServiceEventsBulk(
         })),
       )
       .returning();
+  });
+}
+
+/**
+ * Resolve which parent family and id a `service_event` row belongs to,
+ * straight off the row itself — `service_event`'s exactly-one-parent CHECK
+ * (KTD2) guarantees exactly one of these is non-null for a real row.
+ * Exported so `service-actions.ts` can revalidate the correct detail route
+ * after an edit or delete using only the row the domain layer handed back,
+ * never a parent the client would otherwise have to supply and be trusted.
+ */
+export function resolveServiceEventParent(
+  row: Pick<ServiceEventRow, "firearmId" | "accessoryId">,
+): { parentType: ServiceParentType; parentId: string } {
+  if (row.firearmId !== null) {
+    return { parentType: "firearm", parentId: row.firearmId };
+  }
+  if (row.accessoryId !== null) {
+    return { parentType: "accessory", parentId: row.accessoryId };
+  }
+  // Defensive only — the DB's exactly-one-parent CHECK guarantees a real row
+  // never reaches here. Not found is the safest response to an impossible
+  // row shape: it reveals nothing and matches every other "can't resolve
+  // this event" outcome in this file.
+  throw new NotFoundError();
+}
+
+/**
+ * Correct an existing service event's `servicedOn` and/or `notes` — the
+ * correction path this unit adds. Before this, `events-service.ts` exported
+ * only `logServiceEvent`/`logServiceEventsBulk`/`listServiceHistory`: once an
+ * event was written, a mis-logged date had no in-app fix, and because due
+ * state is `MAX(serviced_on)` grouped by (item, rule_name) with nothing else
+ * stored (KD5), that one bad row silently skewed the rule's due state
+ * forever.
+ *
+ * `ruleName` and the parent are deliberately NOT accepted here — only
+ * `ServicedOn`/`notes` may change (see `ServiceEventUpdateInput`'s doc).
+ * Letting an edit move an event to a different rule or a different item
+ * would let one write silently rewrite TWO rules' derived due state at once
+ * (the old rule loses an entry from its `MAX`, the new one gains one) with
+ * no signal that either happened. Renaming a rule (`updateItemRule` in
+ * `rules-service.ts`, which re-points its events in the same transaction,
+ * KTD1) and re-logging a fresh event under the correct rule are the
+ * supported paths for those cases.
+ *
+ * The parent is resolved from the ROW ITSELF (`resolveServiceEventParent`),
+ * never from a caller-supplied value — an event id is the only trustworthy
+ * handle a caller has on an existing event. Authorization is the EXACT SAME
+ * per-family check `logServiceEvent` uses (`authorizeEventWrite`, KTD3): an
+ * edit-grantee may correct an event on a shared firearm; accessories are
+ * owner-only throughout. An event outside the actor's visible set raises
+ * `NotFoundError`, never a permission error — the same "not-owner and
+ * not-found are indistinguishable" shape every accessory path in this file
+ * already follows.
+ */
+export async function updateServiceEvent(
+  actorId: string,
+  eventId: string,
+  input: ServiceEventUpdateInput,
+): Promise<ServiceEventRow> {
+  const codes = validateServiceEventUpdateInput(input);
+  if (codes.length > 0) throw new ValidationError(codes);
+  const servicedOn = input.servicedOn.trim();
+
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(serviceEvent)
+      .where(eq(serviceEvent.id, eventId))
+      .limit(1);
+    if (!existing) throw new NotFoundError();
+
+    const { parentType, parentId } = resolveServiceEventParent(existing);
+    await authorizeEventWrite(tx, actorId, parentType, parentId);
+
+    const [row] = await tx
+      .update(serviceEvent)
+      .set({ servicedOn, notes: input.notes ?? "" })
+      .where(eq(serviceEvent.id, eventId))
+      .returning();
+    if (!row) throw new NotFoundError();
+    return row;
+  });
+}
+
+/**
+ * Delete a service event outright — the other half of the correction path.
+ * Because due state is derived on read from `MAX(serviced_on)` per (item,
+ * rule_name) with nothing stored (KD5), deleting the newest event for a rule
+ * needs no special-case handling here at all: the very next read
+ * (`due-service.ts`'s `loadLastServicePointBatch`, a grouped `max` over
+ * whatever rows remain) simply finds the next-newest remaining event for
+ * that name, or finds none and falls back to the item's origin date (R10).
+ * Nothing is recomputed or cascaded by this function — that is the entire
+ * point of nothing being stored.
+ *
+ * Same authorization and parent-resolution shape as `updateServiceEvent`:
+ * the parent is read off the row, never supplied by the caller, and
+ * `authorizeEventWrite` enforces the same per-family split `logServiceEvent`
+ * uses. Returns the now-deleted row (not `void`) so a caller that only ever
+ * had an `eventId` to begin with — `service-actions.ts`'s delete action —
+ * can still learn which detail route to revalidate via
+ * `resolveServiceEventParent`, without the client supplying (and this layer
+ * having to trust) a parent of its own.
+ */
+export async function deleteServiceEvent(
+  actorId: string,
+  eventId: string,
+): Promise<ServiceEventRow> {
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(serviceEvent)
+      .where(eq(serviceEvent.id, eventId))
+      .limit(1);
+    if (!existing) throw new NotFoundError();
+
+    const { parentType, parentId } = resolveServiceEventParent(existing);
+    await authorizeEventWrite(tx, actorId, parentType, parentId);
+
+    await tx.delete(serviceEvent).where(eq(serviceEvent.id, eventId));
+    return existing;
   });
 }
 

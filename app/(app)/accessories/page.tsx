@@ -9,6 +9,7 @@ import {
   dueParentIds,
   listDueForVisibleCollection,
 } from "@/src/domain/service-intervals/due-service";
+import { listOwnerAccessoryCategories } from "@/src/domain/service-intervals/rules-service";
 import { AccessoriesView, type AccessoryListItem } from "./accessories-view";
 
 interface PageProps {
@@ -21,11 +22,17 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
 
   const { mountFirearm } = await searchParams;
 
-  const [accessories, firearms, permissions] = await Promise.all([
-    listAccessories(user.id),
-    listFirearms(user.id),
-    visibleFirearmPermissions(db, user.id),
-  ]);
+  const [accessories, firearms, permissions, ownerCategories] =
+    await Promise.all([
+      listAccessories(user.id),
+      listFirearms(user.id),
+      visibleFirearmPermissions(db, user.id),
+      // Suggestions only (KD10 stays exact-string free text) — reuses the
+      // defaults surface's KTD8 query rather than duplicating it. On create,
+      // the actor IS the new accessory's owner (this UI never collects an
+      // on-behalf `ownerId`), so the actor's own categories are the right set.
+      listOwnerAccessoryCategories(user.id),
+    ]);
   // U9/R20: bounded (never per-item, KTD4) — marks rows with at least one due
   // service rule of their own (never merely because a mounting firearm is
   // due). Passes the already-fetched `firearms` through — `listFirearms`'s
@@ -81,6 +88,7 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
         editableFirearms={editableFirearms}
         firearmNames={firearmNames}
         initialMountFirearmId={initialMountFirearmId}
+        ownerCategories={ownerCategories}
       />
     </div>
   );

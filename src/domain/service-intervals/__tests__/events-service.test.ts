@@ -10,15 +10,26 @@ import {
   deleteUsers,
   makeAccessory,
   makeFirearm,
+  makeServiceEvent,
 } from "@/src/test-support/factories";
 import { MAX_BULK_SERVICE_ITEMS } from "../constants";
+import { getItemDueState } from "../due-service";
 import {
   type BulkServiceItem,
+  deleteServiceEvent,
   listServiceHistory,
   logServiceEvent,
   logServiceEventsBulk,
+  resolveServiceEventParent,
+  type ServiceEventUpdateInput,
+  updateServiceEvent,
 } from "../events-service";
 import { createItemRule, updateItemRule } from "../rules-service";
+
+/** Local-frame date fixture (KTD5) — never a UTC `...Z` literal. */
+function localDate(year: number, monthIndex: number, day: number): Date {
+  return new Date(year, monthIndex, day);
+}
 
 /**
  * Events-service integration tests (service-intervals plan, U4). Each test
@@ -584,5 +595,354 @@ describe("service-intervals events-service (U4)", () => {
       .from(serviceEvent)
       .where(eq(serviceEvent.firearmId, fa.id));
     expect(rows).toHaveLength(2);
+  });
+
+  // ---- correction path: updateServiceEvent / deleteServiceEvent ----
+  //
+  // U4 originally shipped only logServiceEvent/logServiceEventsBulk/
+  // listServiceHistory — a mis-logged event had no in-app fix. These two
+  // functions close that gap. Date fixtures below are ISO strings compared
+  // against an explicit, pinned `asOf` (KTD5's local-frame convention,
+  // mirroring `due-service.test.ts`'s `localDate` helper) so due-state
+  // assertions never depend on the moment the suite happens to run.
+
+  describe("correction path: updateServiceEvent / deleteServiceEvent", () => {
+    test("resolveServiceEventParent resolves a firearm-parented row and an accessory-parented row", () => {
+      expect(
+        resolveServiceEventParent({ firearmId: "fa-1", accessoryId: null }),
+      ).toEqual({ parentType: "firearm", parentId: "fa-1" });
+      expect(
+        resolveServiceEventParent({ firearmId: null, accessoryId: "acc-1" }),
+      ).toEqual({ parentType: "accessory", parentId: "acc-1" });
+    });
+
+    test("editing an event's date changes that rule's due state; editing only notes does not", async () => {
+      const owner = await newOwner("u4corrDateOwner");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      await createItemRule(owner, "firearm", fa.id, {
+        name: "Cleaning",
+        intervalDays: 10,
+      });
+      const asOf = localDate(2026, 5, 30); // 2026-06-30
+
+      const event = await logServiceEvent(owner, "firearm", fa.id, {
+        ruleName: "Cleaning",
+        servicedOn: "2026-06-25", // 5 days before asOf — not due (threshold 10)
+      });
+
+      const before = await getItemDueState(owner, "firearm", fa.id, asOf);
+      expect(before.find((r) => r.name === "Cleaning")?.due).toBe(false);
+
+      const corrected = await updateServiceEvent(owner, event.id, {
+        servicedOn: "2026-06-01", // 29 days before asOf — now past the threshold
+      });
+      expect(corrected).toMatchObject({
+        id: event.id,
+        ruleName: "Cleaning",
+        servicedOn: "2026-06-01",
+      });
+
+      const afterDateEdit = await getItemDueState(
+        owner,
+        "firearm",
+        fa.id,
+        asOf,
+      );
+      const cleaningAfterDate = afterDateEdit.find(
+        (r) => r.name === "Cleaning",
+      );
+      expect(cleaningAfterDate?.due).toBe(true);
+      expect(cleaningAfterDate?.counts.days).toBe(29);
+
+      // Editing ONLY notes must not move the measure-from date or due state.
+      await updateServiceEvent(owner, event.id, {
+        servicedOn: "2026-06-01",
+        notes: "corrected note",
+      });
+      const afterNotesEdit = await getItemDueState(
+        owner,
+        "firearm",
+        fa.id,
+        asOf,
+      );
+      const cleaningAfterNotes = afterNotesEdit.find(
+        (r) => r.name === "Cleaning",
+      );
+      expect(cleaningAfterNotes?.due).toBe(true);
+      expect(cleaningAfterNotes?.counts.days).toBe(29);
+
+      const history = await listServiceHistory(owner, "firearm", fa.id);
+      expect(history).toHaveLength(1);
+      expect(history[0]).toMatchObject({
+        servicedOn: "2026-06-01",
+        notes: "corrected note",
+      });
+    });
+
+    test("updateServiceEvent ignores any ruleName smuggled onto the input — an event's rule never changes via edit", async () => {
+      const owner = await newOwner("u4corrRuleImmutableOwner");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      await createItemRule(owner, "firearm", fa.id, {
+        name: "Cleaning",
+        intervalDays: 10,
+      });
+      await createItemRule(owner, "firearm", fa.id, {
+        name: "Barrel",
+        intervalDays: 10,
+      });
+      const event = await logServiceEvent(owner, "firearm", fa.id, {
+        ruleName: "Cleaning",
+        servicedOn: "2026-01-01",
+      });
+
+      // `ServiceEventUpdateInput` has no `ruleName` field at all — this cast
+      // simulates a caller that bypasses the type system, proving the
+      // constraint holds at runtime too, not just at compile time.
+      const sneaky = {
+        servicedOn: "2026-01-02",
+        ruleName: "Barrel",
+      } as unknown as ServiceEventUpdateInput;
+
+      const updated = await updateServiceEvent(owner, event.id, sneaky);
+      expect(updated.ruleName).toBe("Cleaning");
+    });
+
+    test("deleting the newest event for a rule falls back to the previous event", async () => {
+      const owner = await newOwner("u4corrFallbackPrevOwner");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      await createItemRule(owner, "firearm", fa.id, {
+        name: "Cleaning",
+        intervalDays: 10,
+      });
+      const asOf = localDate(2026, 5, 30); // 2026-06-30
+
+      const older = await makeServiceEvent(
+        { firearmId: fa.id },
+        { ruleName: "Cleaning", servicedOn: "2026-06-01", actorId: owner },
+      );
+      const newest = await logServiceEvent(owner, "firearm", fa.id, {
+        ruleName: "Cleaning",
+        servicedOn: "2026-06-25",
+      });
+
+      // Before deletion: measures from the NEWEST event (June 25) — not due.
+      const before = await getItemDueState(owner, "firearm", fa.id, asOf);
+      expect(before.find((r) => r.name === "Cleaning")?.due).toBe(false);
+
+      const deleted = await deleteServiceEvent(owner, newest.id);
+      expect(deleted.id).toBe(newest.id);
+
+      // After deletion: falls back to the PREVIOUS event (June 1) — due.
+      const after = await getItemDueState(owner, "firearm", fa.id, asOf);
+      const cleaningAfter = after.find((r) => r.name === "Cleaning");
+      expect(cleaningAfter?.due).toBe(true);
+      expect(cleaningAfter?.counts.days).toBe(29);
+
+      const history = await listServiceHistory(owner, "firearm", fa.id);
+      expect(history).toHaveLength(1);
+      expect(history[0].id).toBe(older.id);
+    });
+
+    test("deleting the only event for a rule falls back to the item's origin date", async () => {
+      const owner = await newOwner("u4corrFallbackOriginOwner");
+      const fa = await makeFirearm(owner, {
+        type: "rifle",
+        acquiredDate: "2026-01-01",
+      });
+      await createItemRule(owner, "firearm", fa.id, {
+        name: "Cleaning",
+        intervalDays: 10,
+      });
+      const asOf = localDate(2026, 5, 30); // 2026-06-30
+
+      const onlyEvent = await logServiceEvent(owner, "firearm", fa.id, {
+        ruleName: "Cleaning",
+        servicedOn: "2026-06-25",
+      });
+
+      const before = await getItemDueState(owner, "firearm", fa.id, asOf);
+      expect(before.find((r) => r.name === "Cleaning")?.due).toBe(false);
+
+      await deleteServiceEvent(owner, onlyEvent.id);
+
+      // No service event remains — falls back to the firearm's acquired date
+      // (2026-01-01), 180 days before asOf, well past the 10-day threshold.
+      const after = await getItemDueState(owner, "firearm", fa.id, asOf);
+      const cleaningAfter = after.find((r) => r.name === "Cleaning");
+      expect(cleaningAfter?.due).toBe(true);
+      expect(cleaningAfter?.counts.days).toBe(180);
+
+      const history = await listServiceHistory(owner, "firearm", fa.id);
+      expect(history).toHaveLength(0);
+    });
+
+    test("an edit-grantee can edit and delete a service event on a shared firearm", async () => {
+      const owner = await newOwner("u4corrEditGranteeOwner");
+      const editor = await newOwner("u4corrEditGranteeEditor");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      await armCleaningRule(owner, "firearm", fa.id);
+      await createGrant(db, {
+        actorId: owner,
+        granteeId: editor,
+        parentType: "firearm",
+        parentId: fa.id,
+        permission: "edit",
+      });
+      const event = await logServiceEvent(owner, "firearm", fa.id, {
+        ruleName: "Cleaning",
+        servicedOn: "2026-01-01",
+      });
+
+      const updated = await updateServiceEvent(editor, event.id, {
+        servicedOn: "2026-01-02",
+        notes: "edited by grantee",
+      });
+      expect(updated.servicedOn).toBe("2026-01-02");
+
+      await deleteServiceEvent(editor, event.id);
+      const rows = await db
+        .select()
+        .from(serviceEvent)
+        .where(eq(serviceEvent.id, event.id));
+      expect(rows).toHaveLength(0);
+    });
+
+    test("a view-grantee cannot edit or delete a service event on a shared firearm", async () => {
+      const owner = await newOwner("u4corrViewGranteeOwner");
+      const viewer = await newOwner("u4corrViewGranteeViewer");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      await armCleaningRule(owner, "firearm", fa.id);
+      await createGrant(db, {
+        actorId: owner,
+        granteeId: viewer,
+        parentType: "firearm",
+        parentId: fa.id,
+        permission: "view",
+      });
+      const event = await logServiceEvent(owner, "firearm", fa.id, {
+        ruleName: "Cleaning",
+        servicedOn: "2026-01-01",
+      });
+
+      await expect(
+        updateServiceEvent(viewer, event.id, { servicedOn: "2026-01-02" }),
+      ).rejects.toBeInstanceOf(NotAuthorizedError);
+      await expect(deleteServiceEvent(viewer, event.id)).rejects.toBeInstanceOf(
+        NotAuthorizedError,
+      );
+
+      const rows = await db
+        .select()
+        .from(serviceEvent)
+        .where(eq(serviceEvent.id, event.id));
+      expect(rows).toHaveLength(1);
+      expect(rows[0].servicedOn).toBe("2026-01-01");
+    });
+
+    test("a non-owner cannot edit or delete a service event on an accessory even when they can see the firearm it is mounted to", async () => {
+      const owner = await newOwner("u4corrAccOwner");
+      const viewer = await newOwner("u4corrAccViewer");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      const acc = await makeAccessory(owner, { currentFirearmId: fa.id });
+      await armCleaningRule(owner, "accessory", acc.id);
+      await createGrant(db, {
+        actorId: owner,
+        granteeId: viewer,
+        parentType: "firearm",
+        parentId: fa.id,
+        permission: "edit",
+      });
+      const event = await logServiceEvent(owner, "accessory", acc.id, {
+        ruleName: "Cleaning",
+        servicedOn: "2026-01-01",
+      });
+
+      await expect(
+        updateServiceEvent(viewer, event.id, { servicedOn: "2026-01-02" }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      await expect(deleteServiceEvent(viewer, event.id)).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+
+      const rows = await db
+        .select()
+        .from(serviceEvent)
+        .where(eq(serviceEvent.id, event.id));
+      expect(rows).toHaveLength(1);
+    });
+
+    test("editing or deleting an event the actor cannot see at all raises NotFoundError", async () => {
+      const owner = await newOwner("u4corrStrangerOwner");
+      const stranger = await newOwner("u4corrStranger");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      await armCleaningRule(owner, "firearm", fa.id);
+      const event = await logServiceEvent(owner, "firearm", fa.id, {
+        ruleName: "Cleaning",
+        servicedOn: "2026-01-01",
+      });
+
+      await expect(
+        updateServiceEvent(stranger, event.id, { servicedOn: "2026-01-02" }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      await expect(
+        deleteServiceEvent(stranger, event.id),
+      ).rejects.toBeInstanceOf(NotFoundError);
+
+      const rows = await db
+        .select()
+        .from(serviceEvent)
+        .where(eq(serviceEvent.id, event.id));
+      expect(rows).toHaveLength(1);
+    });
+
+    test("updating or deleting a nonexistent event id raises NotFoundError", async () => {
+      const owner = await newOwner("u4corrMissingOwner");
+      const missingId = "00000000-0000-0000-0000-000000000000";
+
+      await expect(
+        updateServiceEvent(owner, missingId, { servicedOn: "2026-01-02" }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      await expect(deleteServiceEvent(owner, missingId)).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+    });
+
+    test("editing to a servicedOn more than one day in the future throws ValidationError and writes no change", async () => {
+      const owner = await newOwner("u4corrFutureOwner");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      await armCleaningRule(owner, "firearm", fa.id);
+      const event = await logServiceEvent(owner, "firearm", fa.id, {
+        ruleName: "Cleaning",
+        servicedOn: "2026-01-01",
+      });
+
+      await expect(
+        updateServiceEvent(owner, event.id, {
+          servicedOn: isoDateOffset(2),
+        }),
+      ).rejects.toBeInstanceOf(ValidationError);
+
+      const rows = await db
+        .select()
+        .from(serviceEvent)
+        .where(eq(serviceEvent.id, event.id));
+      expect(rows[0].servicedOn).toBe("2026-01-01");
+    });
+
+    test("editing to a servicedOn exactly one day in the future is accepted (same one-day tolerance as logging)", async () => {
+      const owner = await newOwner("u4corrTomorrowOwner");
+      const fa = await makeFirearm(owner, { type: "rifle" });
+      await armCleaningRule(owner, "firearm", fa.id);
+      const event = await logServiceEvent(owner, "firearm", fa.id, {
+        ruleName: "Cleaning",
+        servicedOn: "2026-01-01",
+      });
+      const tomorrow = isoDateOffset(1);
+
+      const updated = await updateServiceEvent(owner, event.id, {
+        servicedOn: tomorrow,
+      });
+      expect(updated.servicedOn).toBe(tomorrow);
+    });
   });
 });

@@ -103,19 +103,47 @@ function writeJournal(dir: string, journal: Journal): void {
 }
 
 /**
- * A migrations folder truncated to 0019 — 0020's SQL file is removed and its
- * journal entry dropped, so `migrate()` against this folder brings a fresh
- * database to exactly the pre-0020 schema (firearm `cleaned`/`lubed` still
- * legal, `service_event` already exists since U1 shipped in 0019).
+ * A migrations folder truncated to 0019 — 0020's SQL file AND EVERY
+ * migration after it (not just 0020 itself) are removed from both the
+ * journal and the directory, so `migrate()` against this folder brings a
+ * fresh database to exactly the pre-0020 schema (firearm `cleaned`/`lubed`
+ * still legal, `service_event` already exists since U1 shipped in 0019).
+ *
+ * Slicing at 0020's INDEX (not filtering just its own tag) matters once any
+ * migration ships after 0020 (e.g. 0021's `accessory.acquired_date` column,
+ * added later in the same plan): drizzle-orm's migrator applies every
+ * journal entry newer than the latest one already recorded for a given
+ * database, tracked by the entry's `when` timestamp — NOT by an independent
+ * per-file hash check. Leaving a later migration's file+entry in this
+ * "through 0019" folder would apply it here (out of order, since it has no
+ * dependency on 0020), and its `when` would then become the newest
+ * timestamp this database has recorded. A subsequent full-folder
+ * `runMigrations(pool, REPO_MIGRATIONS_DIR)` compares each pending entry's
+ * `when` against that recorded high-water mark — and 0020's own `when` is
+ * OLDER than a migration generated after it, so it would read as
+ * already-applied and get silently skipped, never running its
+ * cleaned/lubed conversion or narrowing the CHECK at all. Truncating by
+ * index removes that whole class of migration for good, not just today's.
  */
 function buildMigrationsFolderThrough0019(): string {
   const dir = copyMigrationsFolder();
   const journal = readJournal(dir);
-  writeJournal(dir, {
-    ...journal,
-    entries: journal.entries.filter((e) => e.tag !== MIGRATION_0020_TAG),
-  });
-  rmSync(path.join(dir, MIGRATION_0020_FILE));
+  const cutoffIndex = journal.entries.findIndex(
+    (e) => e.tag === MIGRATION_0020_TAG,
+  );
+  if (cutoffIndex === -1) {
+    throw new Error(
+      `${MIGRATION_0020_TAG} not found in the journal — has it been renamed?`,
+    );
+  }
+  const [keep, drop] = [
+    journal.entries.slice(0, cutoffIndex),
+    journal.entries.slice(cutoffIndex),
+  ];
+  writeJournal(dir, { ...journal, entries: keep });
+  for (const entry of drop) {
+    rmSync(path.join(dir, `${entry.tag}.sql`));
+  }
   return dir;
 }
 

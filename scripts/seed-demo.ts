@@ -190,6 +190,12 @@ async function seed(ownerId: string): Promise<void> {
       costCents: s.costCents ?? null,
       isNfa: s.isNfa ?? false,
       firearmId,
+      // Relative to "now" (R22-parity, KTD9) — resolved here, not stored in
+      // the demo data, mirroring the firearm acquiredDate seed above.
+      acquiredDate:
+        s.acquiredDaysAgo !== undefined
+          ? isoDateDaysAgo(s.acquiredDaysAgo)
+          : null,
     });
   }
 

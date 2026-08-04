@@ -58,6 +58,9 @@ interface AccessoriesViewProps {
   /** Firearm to pre-select as the mount target, from a firearm detail page's
    * "Add accessory" link (F1). Auto-opens the create form when present. */
   initialMountFirearmId?: string;
+  /** The actor's own previously-typed categories (KTD8-reuse), merged into
+   * the create form's category suggestions — see `AccessoryForm`'s doc. */
+  ownerCategories: string[];
 }
 
 type FormState = { open: false } | { open: true };
@@ -68,6 +71,7 @@ export function AccessoriesView({
   editableFirearms,
   firearmNames,
   initialMountFirearmId,
+  ownerCategories,
 }: AccessoriesViewProps) {
   const router = useRouter();
   // Auto-open the create form pre-mounted to a firearm when arriving from that
@@ -267,6 +271,7 @@ export function AccessoriesView({
           <AccessoryForm
             editableFirearms={editableFirearms}
             initialFirearmId={initialMountFirearmId}
+            ownerCategories={ownerCategories}
             onDone={refresh}
             onCancel={() => setForm({ open: false })}
           />
