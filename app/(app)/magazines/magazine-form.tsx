@@ -10,6 +10,11 @@ import {
   useState,
   useTransition,
 } from "react";
+import {
+  CompatibleFirearmsField,
+  type FirearmOption,
+  toggleCompatibleFirearm,
+} from "@/components/inventory/compatible-firearms-field";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Callout } from "@/components/ui/feedback";
@@ -31,12 +36,7 @@ import {
   updateMagazineAction,
 } from "./actions";
 
-export interface FirearmOption {
-  id: string;
-  name: string;
-  /** Non-sensitive disambiguator for same-named firearms (never the serial, R52). */
-  hint?: string;
-}
+export type { FirearmOption };
 
 export interface MagazineFormValues {
   id?: string;
@@ -150,9 +150,7 @@ export function MagazineForm({
   function toggleFirearm(id: string) {
     setValues((v) => ({
       ...v,
-      compatibleFirearmIds: v.compatibleFirearmIds.includes(id)
-        ? v.compatibleFirearmIds.filter((x) => x !== id)
-        : [...v.compatibleFirearmIds, id],
+      compatibleFirearmIds: toggleCompatibleFirearm(v.compatibleFirearmIds, id),
     }));
   }
 
@@ -514,44 +512,11 @@ export function MagazineForm({
         </Field>
       </div>
 
-      <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium text-foreground">
-          Compatible firearms
-        </legend>
-        {firearmOptions.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            <Link
-              href="/firearms"
-              className="font-medium text-primary underline-offset-2 hover:underline"
-            >
-              Add a firearm
-            </Link>{" "}
-            first to link compatibility.
-          </p>
-        ) : (
-          <div className="max-h-44 overflow-y-auto rounded-md border border-border bg-card p-1">
-            {firearmOptions.map((f) => (
-              <label
-                key={f.id}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
-              >
-                <input
-                  type="checkbox"
-                  className="size-4 accent-primary"
-                  checked={values.compatibleFirearmIds.includes(f.id)}
-                  onChange={() => toggleFirearm(f.id)}
-                />
-                <span>{f.name}</span>
-                {f.hint ? (
-                  <span className="text-xs text-muted-foreground">
-                    ({f.hint})
-                  </span>
-                ) : null}
-              </label>
-            ))}
-          </div>
-        )}
-      </fieldset>
+      <CompatibleFirearmsField
+        options={firearmOptions}
+        selectedIds={values.compatibleFirearmIds}
+        onToggle={toggleFirearm}
+      />
 
       <div className="flex items-center gap-2">
         <Button type="submit" disabled={pending}>

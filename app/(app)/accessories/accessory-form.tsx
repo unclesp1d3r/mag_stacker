@@ -1,6 +1,11 @@
 "use client";
 
 import { useId, useMemo, useState, useTransition } from "react";
+import {
+  CompatibleFirearmsField,
+  type FirearmOption,
+  toggleCompatibleFirearm,
+} from "@/components/inventory/compatible-firearms-field";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/feedback";
 import { Field } from "@/components/ui/field";
@@ -44,6 +49,12 @@ export interface AccessoryFormValues {
   cost: string;
   notes: string;
   isNfa: boolean;
+  /**
+   * Firearms this accessory FITS (#23 R4/R14) — a capability claim, and
+   * deliberately not the mount select below. An accessory can be compatible
+   * with five hosts while mounted on none of them.
+   */
+  compatibleFirearmIds: string[];
 }
 
 const DEFAULTS: AccessoryFormValues = {
@@ -61,6 +72,7 @@ const DEFAULTS: AccessoryFormValues = {
   cost: "",
   notes: "",
   isNfa: false,
+  compatibleFirearmIds: [],
 };
 
 const MAX_COST_DOLLARS = MAX_COST_CENTS / 100;
@@ -79,6 +91,12 @@ interface AccessoryFormProps {
    * `updateAccessory` intentionally omits `firearmId`.
    */
   editableFirearms: EditableFirearmOption[];
+  /**
+   * Firearms offered by the compatibility picker — every firearm the actor can
+   * SEE, which is wider than `editableFirearms` on purpose (see
+   * `buildFirearmMountContext`).
+   */
+  visibleFirearms: FirearmOption[];
   /**
    * Pre-selected mount target on create — set when the form is opened from a
    * firearm's detail page ("Add accessory", F1). Ignored on edit.
@@ -110,6 +128,7 @@ interface AccessoryFormProps {
 export function AccessoryForm({
   initial,
   editableFirearms,
+  visibleFirearms,
   initialFirearmId,
   currentFirearmId,
   ownerCategories = [],
@@ -168,6 +187,13 @@ export function AccessoryForm({
     return merged;
   }, [ownerCategories]);
 
+  function toggleFirearm(id: string) {
+    setValues((v) => ({
+      ...v,
+      compatibleFirearmIds: toggleCompatibleFirearm(v.compatibleFirearmIds, id),
+    }));
+  }
+
   function set<K extends keyof AccessoryFormValues>(
     key: K,
     value: AccessoryFormValues[K],
@@ -214,6 +240,7 @@ export function AccessoryForm({
 
     const input = {
       ...fields,
+      compatibleFirearmIds: values.compatibleFirearmIds,
       brand: values.brand,
       model: values.model,
       serialNumber: values.serialNumber,
@@ -405,6 +432,17 @@ export function AccessoryForm({
         />
         NFA-regulated item
       </label>
+
+      {/* Compatibility ("what does it fit") is separate from the mount below
+          ("what is it on right now") — #23 KD2 keeps both, since a suppressor
+          fits many hosts but is mounted on at most one. Shared verbatim with
+          the magazine form (#23's DRY ask). */}
+      <CompatibleFirearmsField
+        options={visibleFirearms}
+        selectedIds={values.compatibleFirearmIds}
+        onToggle={toggleFirearm}
+        legend="Fits these firearms"
+      />
 
       {/* Mount target is create-only (R4/R17) — omitted on edit; reassigning
           an existing accessory uses the detail view's mount control instead. */}

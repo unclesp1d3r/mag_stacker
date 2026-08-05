@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
+import type { FirearmOption } from "@/components/inventory/compatible-firearms-field";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -57,6 +58,9 @@ interface AccessoriesViewProps {
   currentUserId: string;
   /** Firearms the actor can mount to (owner or edit permission, R17). */
   editableFirearms: EditableFirearmOption[];
+  /** Firearms the compatibility picker may offer — everything the actor can
+   * see, which is wider than `editableFirearms` (#23 R4). */
+  visibleFirearms: FirearmOption[];
   /** Display names for every firearm visible to the actor, for the
    * mounted-firearm indicator column. */
   firearmNames: Record<string, string>;
@@ -84,6 +88,7 @@ export function AccessoriesView({
   accessories,
   currentUserId,
   editableFirearms,
+  visibleFirearms,
   firearmNames,
   initialMountFirearmId,
   ownerCategories,
@@ -296,6 +301,7 @@ export function AccessoriesView({
           </h2>
           <AccessoryForm
             editableFirearms={editableFirearms}
+            visibleFirearms={visibleFirearms}
             initialFirearmId={initialMountFirearmId}
             ownerCategories={ownerCategories}
             onDone={refresh}

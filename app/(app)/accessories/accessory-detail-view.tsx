@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
+import type { FirearmOption } from "@/components/inventory/compatible-firearms-field";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DetailRow, orDash } from "@/components/ui/detail-row";
@@ -40,6 +41,9 @@ interface AccessoryDetailViewProps {
   /** Display names for every firearm visible to the actor, for the read-only
    * "current firearm" link even when it falls outside `editableFirearms`. */
   firearmNames: Record<string, string>;
+  /** Firearms the compatibility picker may offer (#23 R4) — everything the
+   * actor can see, wider than `editableFirearms`. */
+  visibleFirearms: FirearmOption[];
   /**
    * Service data (U8) — owner-only throughout for accessories (KTD3), so
    * these are `null` for a non-owner viewer rather than empty: the page
@@ -120,6 +124,7 @@ export function AccessoryDetailView({
   permission,
   editableFirearms,
   firearmNames,
+  visibleFirearms,
   serviceRules,
   suppressedServiceRuleNames,
   serviceHistory,
@@ -202,6 +207,7 @@ export function AccessoryDetailView({
           <AccessoryForm
             initial={accessory}
             editableFirearms={editableFirearms}
+            visibleFirearms={visibleFirearms}
             currentFirearmId={accessory.currentFirearmId}
             ownerCategories={ownerCategories}
             onDone={() => {
@@ -246,6 +252,31 @@ export function AccessoryDetailView({
                   </Link>
                 ) : (
                   orDash("")
+                )
+              }
+            />
+            {/* #23 R15/R17: "fits these" is shown to every viewer, including
+                a view-only grantee. It is only EDITABLE through the edit form
+                above, which a viewer is never offered — so no separate
+                read-only variant of the picker is needed. */}
+            <DetailRow
+              label="Fits firearms"
+              value={
+                accessory.compatibleFirearmIds.length === 0 ? (
+                  orDash("")
+                ) : (
+                  <ul className="flex flex-col gap-1">
+                    {accessory.compatibleFirearmIds.map((id) => (
+                      <li key={id}>
+                        <Link
+                          href={`/firearms/${id}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {firearmNames[id] ?? "Unknown firearm"}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
                 )
               }
             />

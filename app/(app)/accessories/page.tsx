@@ -52,11 +52,8 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
   // on — but doesn't own — would pass permission but fail
   // `authorizeCreateMount`'s cross-tenant check at submit; excluding it here
   // keeps the picker's options a strict subset of what will actually save.
-  const { firearmNames, editableFirearms } = buildFirearmMountContext(
-    firearms,
-    permissions,
-    user.id,
-  );
+  const { firearmNames, editableFirearms, visibleFirearms } =
+    buildFirearmMountContext(firearms, permissions, user.id);
 
   // Honor a pre-fill target from a firearm's "Add accessory" link (F1) only
   // when the actor can actually mount to it.
@@ -87,6 +84,7 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
         accessories={items}
         currentUserId={user.id}
         editableFirearms={editableFirearms}
+        visibleFirearms={visibleFirearms}
         firearmNames={firearmNames}
         initialMountFirearmId={initialMountFirearmId}
         ownerCategories={ownerCategories}

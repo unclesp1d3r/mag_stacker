@@ -122,11 +122,8 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
   // that owner's own guns, accessories-tracker plan KTD5's cross-tenant
   // guard) AND editable by the
   // acting user.
-  const { firearmNames, editableFirearms } = buildFirearmMountContext(
-    firearms,
-    permissions,
-    row.ownerId,
-  );
+  const { firearmNames, editableFirearms, visibleFirearms } =
+    buildFirearmMountContext(firearms, permissions, row.ownerId);
 
   return (
     <AccessoryDetailView
@@ -142,10 +139,12 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
         cost: costCentsToInputValue(row.costCents),
         notes: row.notes,
         isNfa: row.isNfa,
+        compatibleFirearmIds: row.compatibleFirearmIds,
         currentFirearmId: row.currentFirearmId,
       }}
       permission={permission}
       editableFirearms={editableFirearms}
+      visibleFirearms={visibleFirearms}
       firearmNames={firearmNames}
       serviceRules={serviceProps.serviceRules}
       suppressedServiceRuleNames={serviceProps.suppressedServiceRuleNames}
