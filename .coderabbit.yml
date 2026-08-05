@@ -24,12 +24,19 @@ reviews:
     Generate PR titles following conventional commit format:
     - Type: feat, fix, refactor, docs, test, chore, style, perf, ci
     - Scope: component name, feature area, or module (optional)
+    - Breaking change: append `!` before the colon
     - Description: concise, imperative mood
 
     Examples:
     - "fix(auth): handle BetterAuth session refresh errors"
+    - "feat(inventory-log)!: retire the cleaned and lubed event types"
 
     Prefer specific scopes over generic ones. Use kebab-case for multi-word scopes.
+
+    This repo squash-merges with the PR title as the commit subject, so the
+    title is the permanent commit message. If the PR contains a breaking
+    change, the `!` is REQUIRED — never drop or omit it when suggesting a
+    title, because the branch commits that carried it are discarded at merge.
   collapse_walkthrough: false
   estimate_code_review_effort: false
   labeling_instructions:
@@ -132,8 +139,21 @@ reviews:
     title:
       requirements: |
         The PR title must follow Conventional Commits
-        (https://www.conventionalcommits.org): `<type>(<scope>): <description>`.
+        (https://www.conventionalcommits.org):
+        `<type>(<scope>)<!>: <description>`, where the `!` is optional and
+        marks a breaking change.
         Types: feat, fix, refactor, docs, test, chore, style, perf, ci.
+
+        A `!` before the colon is valid and must not be flagged.
+
+        This repo squash-merges with the PR title as the commit subject, so a
+        breaking change MUST carry the `!` here — the branch commits that
+        marked it are discarded at merge, making the title the only surviving
+        record. If the diff removes or renames a public behavior, event type,
+        column, route, or exported API, or ships an irreversible data
+        migration, require the `!` and a `BREAKING CHANGE: <what breaks>`
+        footer in the PR body. A prose "Breaking change" heading is not that
+        footer.
 
   tools:
     ruff:

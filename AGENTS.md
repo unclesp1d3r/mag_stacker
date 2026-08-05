@@ -24,6 +24,10 @@ This repo runs a **trimmed ECC surface**, not the full bundle. Full map + ration
 ## Workflow & boundaries
 
 - **Git workflow:** feature branches + PRs only — never commit directly to `main`. Conventional Commits, semver. For agent tasks, prefer an isolated worktree: `git worktree add -b ai/<task> .worktrees/<task>` (check `git worktree list` first; merge and clean up when done).
+- **PRs squash-merge, so the PR title and body ARE the commit message.** This repo merges with `squash_title: PR_TITLE` and `squash_msg: PR_BODY`; every branch commit message is discarded at merge. Therefore:
+  - The **PR title MUST be a valid Conventional Commit subject** — `<type>(<scope>): <description>`, since it becomes the subject line on `main` verbatim.
+  - A breaking change **MUST be marked on the PR itself**: a `!` before the colon in the PR title (`feat(scope)!: …`) **and** a `BREAKING CHANGE: <what breaks>` footer in the PR body. Marking it only on a branch commit does not work — the marker is destroyed by the squash. A prose "Breaking change" heading in the body is not the footer and does not count.
+  - Releases are cut by pushing a `v*.*.*` tag by hand; nothing parses commits to compute the bump, so these markers are the only record of what the next version should be. A merged PR carrying a breaking change means the next tag is a **major**.
 - **Releases/deploy:** container image `ghcr.io/unclesp1d3r/mag_stacker` via GitHub Actions; project docs at <https://unclesp1d3r.github.io/mag_stacker/>. Style/structure reference repo: <https://github.com/EvilBit-Labs/hash_hive>.
 - **Do without asking:** create/delete/rename files, rewrite sections, change dependencies, modify DB schema or Docker config, update docs.
 - **Ask first:** anything touching secrets/credentials, auth logic changes, deleting failing tests.
