@@ -63,9 +63,13 @@ function persistableFields(
 ) {
   return {
     // Raw values persisted verbatim (R18/R19); optional text is empty-not-null.
+    // `type` is already validated against the controlled set before any write.
+    type: input.type,
     // `category` is trimmed so the list view's exact-match category grouping
-    // can't be split by incidental leading/trailing whitespace.
-    category: input.category.trim(),
+    // can't be split by incidental leading/trailing whitespace. Optional since
+    // #23 R3 — omitted means empty, not "unclassified", because `type` now
+    // carries the classification.
+    category: (input.category ?? "").trim(),
     brand: input.brand ?? "",
     model: input.model ?? "",
     serialNumber: input.serialNumber ?? "",

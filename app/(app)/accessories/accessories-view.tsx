@@ -21,6 +21,7 @@ import { Card, PageHeader } from "@/components/ui/surface";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import { useRowFlash } from "@/hooks/use-row-flash";
 import { useTableViewState } from "@/hooks/use-table-view-state";
+import { accessoryTypeLabel } from "@/src/domain/accessories/constants";
 import {
   accessoryDisplayName,
   formatCostCents,
@@ -31,6 +32,10 @@ import { deleteAccessoryAction } from "./actions";
 export interface AccessoryListItem {
   id: string;
   ownerId: string;
+  /** Controlled structural discriminator (#23 R1) — rendered as its own
+   * column so the list answers "what kind of thing is this" without relying
+   * on the now-optional free-text category. */
+  type: string;
   category: string;
   brand: string;
   model: string;
@@ -65,6 +70,16 @@ interface AccessoriesViewProps {
 
 type FormState = { open: false } | { open: true };
 
+/**
+ * The row's primary label. Falls back to the type's display label because
+ * `category` became optional (#23 R3) — without this the link would render
+ * empty text, leaving a link with no accessible name.
+ */
+function rowLabel(item: AccessoryListItem): string {
+  const category = item.category.trim();
+  return category !== "" ? category : accessoryTypeLabel(item.type);
+}
+
 export function AccessoriesView({
   accessories,
   currentUserId,
@@ -91,22 +106,26 @@ export function AccessoriesView({
   // ammo/magazines/firearms views.
   const requestDelete = del.request;
 
-  // Same-category items get a non-sensitive id-fragment suffix on the row
-  // link's accessible name so a screen-reader link list stays unambiguous
+  // Same-label items get a non-sensitive id-fragment suffix on the row link's
+  // accessible name so a screen-reader link list stays unambiguous
   // (R17/R52-style), mirroring the ammo view's dedup on its caliber column.
-  const categoryCounts = useMemo(() => {
+  const labelCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const a of accessories)
-      counts.set(a.category, (counts.get(a.category) ?? 0) + 1);
+    for (const a of accessories) {
+      const label = rowLabel(a);
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
     return counts;
   }, [accessories]);
-  const categoryCountsRef = useRef(categoryCounts);
-  categoryCountsRef.current = categoryCounts;
+  const labelCountsRef = useRef(labelCounts);
+  labelCountsRef.current = labelCounts;
   const linkLabel = useCallback(
-    (item: AccessoryListItem): string | undefined =>
-      (categoryCountsRef.current.get(item.category) ?? 0) > 1
-        ? `${item.category} (#${item.id.slice(0, 6)})`
-        : undefined,
+    (item: AccessoryListItem): string | undefined => {
+      const label = rowLabel(item);
+      return (labelCountsRef.current.get(label) ?? 0) > 1
+        ? `${label} (#${item.id.slice(0, 6)})`
+        : undefined;
+    },
     [],
   );
 
@@ -123,9 +142,16 @@ export function AccessoriesView({
             aria-label={linkLabel(row.original)}
             className="font-medium text-primary hover:underline"
           >
-            {row.original.category}
+            {rowLabel(row.original)}
           </Link>
         ),
+      },
+      {
+        accessorKey: "type",
+        id: "type",
+        header: "Type",
+        meta: { label: "Type" },
+        cell: ({ getValue }) => accessoryTypeLabel(getValue<string>()),
       },
       {
         accessorKey: "brand",

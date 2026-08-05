@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ACCESSORY_CATEGORY_SUGGESTIONS } from "../constants";
+import { ACCESSORY_CATEGORY_SUGGESTIONS, ACCESSORY_TYPES } from "../constants";
 import {
   type AccessoryFields,
   MAX_COST_CENTS,
@@ -7,21 +7,53 @@ import {
 } from "../validate";
 
 const base: AccessoryFields = {
-  category: "optic",
+  type: "optic",
 };
 
 describe("validateAccessory", () => {
-  test("a valid minimal accessory (category only) returns no codes", () => {
+  test("a valid minimal accessory (type only) returns no codes", () => {
     expect(validateAccessory(base)).toEqual([]);
   });
 
-  test("blank category (incl. whitespace-only) yields emptyCategory", () => {
-    expect(validateAccessory({ ...base, category: "" })).toEqual([
-      "emptyCategory",
+  for (const type of ACCESSORY_TYPES) {
+    test(`${type} is an accepted type`, () => {
+      expect(validateAccessory({ ...base, type })).toEqual([]);
+    });
+  }
+
+  test("a type outside the controlled set yields invalidAccessoryType", () => {
+    expect(validateAccessory({ ...base, type: "bipod" })).toEqual([
+      "invalidAccessoryType",
     ]);
-    expect(validateAccessory({ ...base, category: "   " })).toEqual([
-      "emptyCategory",
+  });
+
+  test("a blank or whitespace-only type yields invalidAccessoryType", () => {
+    expect(validateAccessory({ ...base, type: "" })).toEqual([
+      "invalidAccessoryType",
     ]);
+    expect(validateAccessory({ ...base, type: "   " })).toEqual([
+      "invalidAccessoryType",
+    ]);
+  });
+
+  test("type matching is exact — casing is not coerced (#23 R1)", () => {
+    // The backfill lower()s on the way in; past that point the stored value is
+    // always canonical, so the validator must not quietly accept variants.
+    expect(validateAccessory({ ...base, type: "Suppressor" })).toEqual([
+      "invalidAccessoryType",
+    ]);
+  });
+
+  test("category is optional now that type carries the classification (#23 R3)", () => {
+    expect(validateAccessory({ ...base, category: "" })).toEqual([]);
+    expect(validateAccessory({ ...base, category: "   " })).toEqual([]);
+    expect(validateAccessory({ ...base, category: undefined })).toEqual([]);
+  });
+
+  test("a long-tail free-text category is still accepted verbatim (#8 preserved)", () => {
+    expect(validateAccessory({ ...base, category: "red dot mount" })).toEqual(
+      [],
+    );
   });
 
   test("negative costCents yields negativeCostCents", () => {
@@ -74,11 +106,11 @@ describe("validateAccessory", () => {
 
   test("returns all failure codes together, not first-only", () => {
     const codes = validateAccessory({
-      category: "",
+      type: "",
       costCents: -1,
       installedDate: "bogus",
     });
-    expect(codes).toContain("emptyCategory");
+    expect(codes).toContain("invalidAccessoryType");
     expect(codes).toContain("negativeCostCents");
     expect(codes).toContain("invalidInstalledDate");
     expect(codes).toHaveLength(3);
@@ -130,10 +162,10 @@ describe("validateAccessory — acquiredDate", () => {
   test("combines with other failures rather than short-circuiting", () => {
     expect(
       validateAccessory({
-        category: "",
+        type: "",
         acquiredDate: "nope",
       }),
-    ).toEqual(["emptyCategory", "invalidAcquiredDate"]);
+    ).toEqual(["invalidAccessoryType", "invalidAcquiredDate"]);
   });
 });
 
@@ -174,5 +206,13 @@ describe("ACCESSORY_CATEGORY_SUGGESTIONS", () => {
   test("contains suppressor and optic", () => {
     expect(ACCESSORY_CATEGORY_SUGGESTIONS).toContain("suppressor");
     expect(ACCESSORY_CATEGORY_SUGGESTIONS).toContain("optic");
+  });
+
+  test("keeps long-tail values that have no controlled type equivalent", () => {
+    // #23 KD4: `category` was NOT collapsed into `type`. If this list is ever
+    // reduced to ACCESSORY_TYPES, the two classifications have silently merged
+    // and the deferred consolidation decision was made by accident.
+    expect(ACCESSORY_CATEGORY_SUGGESTIONS).toContain("magwell");
+    expect(ACCESSORY_CATEGORY_SUGGESTIONS).toContain("sling");
   });
 });

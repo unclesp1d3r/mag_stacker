@@ -73,6 +73,7 @@ test("an edit-grantee logs service but gets no rule actions; a view-grantee gets
       .getByRole("button", { name: "Add your first accessory" })
       .click();
     const form = page.locator("form");
+    await form.getByLabel("Type").selectOption("optic");
     await form.getByLabel("Category").fill("Optic");
     await form.getByLabel("Model").fill("Shared Optic");
     await form

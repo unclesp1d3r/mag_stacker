@@ -7,7 +7,11 @@ import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import { ACCESSORY_CATEGORY_SUGGESTIONS } from "@/src/domain/accessories/constants";
+import {
+  ACCESSORY_CATEGORY_SUGGESTIONS,
+  ACCESSORY_TYPES,
+  accessoryTypeLabel,
+} from "@/src/domain/accessories/constants";
 import {
   accessoryDisplayName,
   parseCostInputToCents,
@@ -21,6 +25,10 @@ import { createAccessoryAction, updateAccessoryAction } from "./actions";
 
 export interface AccessoryFormValues {
   id?: string;
+  /** Controlled structural discriminator (#23 R1/R14). Required. */
+  type: string;
+  /** Free-text descriptive kind (#23 R3). Optional since the type select
+   * took over the required classification. */
   category: string;
   brand: string;
   model: string;
@@ -39,6 +47,11 @@ export interface AccessoryFormValues {
 }
 
 const DEFAULTS: AccessoryFormValues = {
+  // Deliberately blank rather than pre-selecting "other": a silent default
+  // would let an owner save every accessory as unclassified without ever
+  // seeing the question, which is exactly what the discriminator exists to
+  // prevent. The empty option below is not submittable.
+  type: "",
   category: "",
   brand: "",
   model: "",
@@ -127,6 +140,7 @@ export function AccessoryForm({
   // via the detail view's mount control, not this form).
   const isMounted = isEdit ? Boolean(currentFirearmId) : firearmId !== "";
 
+  const typeId = useId();
   const categoryId = useId();
   const brandId = useId();
   const modelId = useId();
@@ -166,6 +180,7 @@ export function AccessoryForm({
     setServerError(null);
     const costCents = parseCostInputToCents(values.cost);
     const fields = {
+      type: values.type,
       category: values.category,
       costCents,
       // Hidden/unmounted → submits nothing (R6); the service layer also
@@ -179,8 +194,8 @@ export function AccessoryForm({
     const found = validateAccessory(fields);
     setCodes(found);
     if (found.length > 0) {
-      if (found.includes("emptyCategory")) {
-        document.getElementById(categoryId)?.focus();
+      if (found.includes("invalidAccessoryType")) {
+        document.getElementById(typeId)?.focus();
       } else if (
         found.includes("negativeCostCents") ||
         found.includes("invalidCostCents")
@@ -238,20 +253,43 @@ export function AccessoryForm({
       </datalist>
 
       <div className="grid gap-4 sm:grid-cols-2">
+        {/* Type is the required, controlled classification (#23 R1/R14) —
+            it decides which subtype's rules apply and is what future
+            per-type detail tables key off. Category below stays free text. */}
         <Field
-          label="Category"
-          controlId={categoryId}
+          label="Type"
+          controlId={typeId}
           required
-          error={firstMessage(codes, ["emptyCategory"])}
+          error={firstMessage(codes, ["invalidAccessoryType"])}
         >
+          <Select
+            id={typeId}
+            value={values.type}
+            onChange={(e) => set("type", e.target.value)}
+            aria-invalid={codes.includes("invalidAccessoryType")}
+          >
+            <option value="">Select a type…</option>
+            {ACCESSORY_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {accessoryTypeLabel(t)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {/* Category is free text and OPTIONAL (#23 R3/KD4) — it captures what
+            the owner calls the thing ("red dot mount", "bipod"), which the
+            controlled type set deliberately does not enumerate. */}
+        <Field label="Category" controlId={categoryId} hint="Optional">
           <Input
             id={categoryId}
             list="accessory-categories"
             value={values.category}
             onChange={(e) => set("category", e.target.value)}
-            aria-invalid={codes.includes("emptyCategory")}
           />
         </Field>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Brand" controlId={brandId} hint="Optional">
           <Input
             id={brandId}

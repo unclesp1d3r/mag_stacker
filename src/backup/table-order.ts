@@ -2,6 +2,8 @@ import type { PgTable } from "drizzle-orm/pg-core";
 import { account, user, verification } from "../db/auth-schema";
 import {
   accessory,
+  accessoryAttachment,
+  accessoryFirearm,
   ammo,
   firearm,
   firearmDocument,
@@ -44,6 +46,10 @@ import { operatorAudit } from "../db/operator-audit-schema";
  * - `service_rule_default` (service-intervals plan, U1) FKs to `user` only,
  *   so it can sit anywhere after `user`; placed right after `accessory` since
  *   it is category-keyed configuration, not an item child. `service_rule` and
+ *   `accessory_firearm` (accessory + firearm) and `accessory_attachment`
+ *   (accessory) are accessory children and follow it for the same reason
+ *   `magazine_firearm` follows `magazine` (#23).
+ * - `service_rule` and
  *   `service_event` each FK to both `firearm` and `accessory` (nullable,
  *   exactly-one CHECK — KTD2), so both must follow `accessory`; `service_rule`
  *   before `service_event` mirrors no dependency between the two (rows in
@@ -64,6 +70,8 @@ export const EXPORT_TABLE_ORDER: readonly PgTable[] = [
   serviceEvent,
   magazineLabelPrefix,
   magazineFirearm,
+  accessoryFirearm,
+  accessoryAttachment,
   rangeSession,
   rangeSessionAccessory,
   firearmPhoto,

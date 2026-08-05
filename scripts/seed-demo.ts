@@ -183,6 +183,7 @@ async function seed(ownerId: string): Promise<void> {
       firearmId = mounted;
     }
     await createAccessory(ownerId, {
+      type: s.type,
       category: s.category,
       brand: s.brand,
       model: s.model,

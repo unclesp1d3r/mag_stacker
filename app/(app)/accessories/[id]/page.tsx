@@ -132,6 +132,7 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
     <AccessoryDetailView
       accessory={{
         id: row.id,
+        type: row.type,
         category: row.category,
         brand: row.brand,
         model: row.model,

@@ -91,6 +91,7 @@ test("accessory CRUD, mount move, valuation, NFA display, sharing inheritance, a
       .getByRole("button", { name: "Add your first accessory" })
       .click();
     const form = page.locator("form");
+    await form.getByLabel("Type").selectOption("optic");
     await form.getByLabel("Category").fill("Optic");
     await form.getByLabel("Brand").fill("Vortex");
     await form.getByLabel("Model").fill("Viper PST");
@@ -115,6 +116,7 @@ test("accessory CRUD, mount move, valuation, NFA display, sharing inheritance, a
   await test.step("create a mounted accessory (Light, NFA) on Host A → row shows category/cost/NFA/mount (R1)", async () => {
     await page.getByRole("button", { name: "Add accessory" }).click();
     const form = page.locator("form");
+    await form.getByLabel("Type").selectOption("light");
     await form.getByLabel("Category").fill("Light");
     await form.getByLabel("Brand").fill("Surefire");
     await form.getByLabel("Model").fill("X300");
@@ -138,6 +140,7 @@ test("accessory CRUD, mount move, valuation, NFA display, sharing inheritance, a
   await test.step("mount two more accessories on Host A: Rail ($50) and Sling (costless)", async () => {
     await page.getByRole("button", { name: "Add accessory" }).click();
     const railForm = page.locator("form");
+    await railForm.getByLabel("Type").selectOption("other");
     await railForm.getByLabel("Category").fill("Rail");
     await railForm.getByLabel("Cost").fill("50.00");
     await railForm
@@ -150,6 +153,7 @@ test("accessory CRUD, mount move, valuation, NFA display, sharing inheritance, a
 
     await page.getByRole("button", { name: "Add accessory" }).click();
     const slingForm = page.locator("form");
+    await slingForm.getByLabel("Type").selectOption("other");
     await slingForm.getByLabel("Category").fill("Sling");
     await slingForm
       .getByLabel("Mount on firearm")

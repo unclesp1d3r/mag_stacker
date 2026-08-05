@@ -44,17 +44,36 @@ describe("accessory service (accessory plan U4)", () => {
     await deleteUsers(owner, outsider);
   });
 
-  test("covers invalid input: blank category throws ValidationError and writes no row", async () => {
+  test("covers invalid input: a blank type throws ValidationError and writes no row", async () => {
+    // `type` replaced `category` as the required classification (#23 R1/R3),
+    // so this is the same guarantee the #8 blank-category test made: an
+    // unclassified accessory is never persisted.
     const before = await listAccessories(owner);
     await expect(
-      createAccessory(owner, { category: "" }),
+      createAccessory(owner, { type: "", category: "optic" }),
     ).rejects.toBeInstanceOf(ValidationError);
     const after = await listAccessories(owner);
     expect(after.length).toBe(before.length);
   });
 
+  test("a type outside the controlled set throws ValidationError and writes no row", async () => {
+    const before = await listAccessories(owner);
+    await expect(
+      createAccessory(owner, { type: "bipod" }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    const after = await listAccessories(owner);
+    expect(after.length).toBe(before.length);
+  });
+
+  test("a blank category is now accepted and persists as empty (#23 R3)", async () => {
+    const acc = await createAccessory(owner, { type: "suppressor" });
+    expect(acc.category).toBe("");
+    expect(acc.type).toBe("suppressor");
+  });
+
   test("createAccessory persists an unmounted accessory; getAccessory returns it with permission 'owner'", async () => {
     const acc = await createAccessory(owner, {
+      type: "optic",
       category: "optic",
       brand: "Trijicon",
     });
@@ -72,6 +91,7 @@ describe("accessory service (accessory plan U4)", () => {
   test("createAccessory with a firearmId persists a mounted accessory", async () => {
     const fa = await makeFirearm(owner, { name: "Mount target FA" });
     const acc = await createAccessory(owner, {
+      type: "other",
       category: "sling",
       firearmId: fa.id,
     });
@@ -82,6 +102,7 @@ describe("accessory service (accessory plan U4)", () => {
     const faOne = await makeFirearm(owner, { name: "Source FA" });
     const faTwo = await makeFirearm(owner, { name: "Destination FA" });
     const acc = await createAccessory(owner, {
+      type: "optic",
       category: "optic",
       serialNumber: "SN-123",
       costCents: 25000,
@@ -102,6 +123,7 @@ describe("accessory service (accessory plan U4)", () => {
   test("mountAccessory: unmounting clears currentFirearmId and installedDate", async () => {
     const fa = await makeFirearm(owner, { name: "Unmount source FA" });
     const acc = await createAccessory(owner, {
+      type: "other",
       category: "grip",
       firearmId: fa.id,
     });
@@ -114,8 +136,8 @@ describe("accessory service (accessory plan U4)", () => {
 
   test("listAccessories returns only the visible set", async () => {
     const userD = await createUser("AccSvcD");
-    await createAccessory(userD, { category: "optic" });
-    await createAccessory(userD, { category: "grip" });
+    await createAccessory(userD, { type: "optic", category: "optic" });
+    await createAccessory(userD, { type: "other", category: "grip" });
 
     const list = await listAccessories(userD);
     expect(list.length).toBe(2);
@@ -128,7 +150,10 @@ describe("accessory service (accessory plan U4)", () => {
   });
 
   test("getAccessory on an unmounted accessory outside the visible set throws NotFoundError", async () => {
-    const acc = await createAccessory(owner, { category: "stock" });
+    const acc = await createAccessory(owner, {
+      type: "other",
+      category: "stock",
+    });
     await expect(getAccessory(outsider, acc.id)).rejects.toBeInstanceOf(
       NotFoundError,
     );
@@ -145,11 +170,13 @@ describe("accessory service (accessory plan U4)", () => {
       permission: "edit",
     });
     const mounted = await createAccessory(owner, {
+      type: "light",
       category: "light",
       firearmId: fa.id,
     });
 
     const updated = await updateAccessory(grantee, mounted.id, {
+      type: "light",
       category: "light",
       brand: "SureFire",
     });
@@ -160,16 +187,25 @@ describe("accessory service (accessory plan U4)", () => {
       NotFoundError,
     );
 
-    const unmounted = await createAccessory(owner, { category: "bipod" });
+    const unmounted = await createAccessory(owner, {
+      type: "other",
+      category: "bipod",
+    });
     await expectRejects(() => deleteAccessory(grantee, unmounted.id));
 
     await deleteUsers(grantee);
   });
 
   test("updateAccessory/deleteAccessory on a non-visible accessory throws NotFoundError", async () => {
-    const acc = await createAccessory(owner, { category: "muzzle device" });
+    const acc = await createAccessory(owner, {
+      type: "muzzle device",
+      category: "muzzle device",
+    });
     await expect(
-      updateAccessory(outsider, acc.id, { category: "muzzle device" }),
+      updateAccessory(outsider, acc.id, {
+        type: "muzzle device",
+        category: "muzzle device",
+      }),
     ).rejects.toBeInstanceOf(NotFoundError);
     await expect(deleteAccessory(outsider, acc.id)).rejects.toBeInstanceOf(
       NotFoundError,
@@ -187,12 +223,17 @@ describe("accessory service (accessory plan U4)", () => {
       permission: "view",
     });
     const mounted = await createAccessory(owner, {
+      type: "optic",
       category: "optic",
       firearmId: fa.id,
     });
 
     await expect(
-      updateAccessory(viewer, mounted.id, { category: "optic", brand: "X" }),
+      updateAccessory(viewer, mounted.id, {
+        type: "optic",
+        category: "optic",
+        brand: "X",
+      }),
     ).rejects.toBeInstanceOf(NotAuthorizedError);
     await expect(deleteAccessory(viewer, mounted.id)).rejects.toBeInstanceOf(
       NotAuthorizedError,
@@ -222,6 +263,7 @@ describe("accessory service (accessory plan U4)", () => {
 
     await expect(
       createAccessory(owner, {
+        type: "optic",
         category: "optic",
         firearmId: otherOwnersFirearm.id,
       }),
@@ -246,12 +288,16 @@ describe("accessory service — acquired date", () => {
   });
 
   test("creating without an acquired date stores null", async () => {
-    const acc = await createAccessory(userA, { category: "optic" });
+    const acc = await createAccessory(userA, {
+      type: "optic",
+      category: "optic",
+    });
     expect(acc.acquiredDate).toBeNull();
   });
 
   test("creating with an acquired date persists it", async () => {
     const acc = await createAccessory(userA, {
+      type: "optic",
       category: "optic",
       acquiredDate: "2026-06-14",
     });
@@ -259,9 +305,13 @@ describe("accessory service — acquired date", () => {
   });
 
   test("an update can set an acquired date that was previously unset", async () => {
-    const acc = await createAccessory(userA, { category: "optic" });
+    const acc = await createAccessory(userA, {
+      type: "optic",
+      category: "optic",
+    });
     expect(acc.acquiredDate).toBeNull();
     const updated = await updateAccessory(userA, acc.id, {
+      type: "optic",
       category: "optic",
       acquiredDate: "2026-03-01",
     });
@@ -270,11 +320,13 @@ describe("accessory service — acquired date", () => {
 
   test("an update can clear a previously-set acquired date back to null", async () => {
     const acc = await createAccessory(userA, {
+      type: "optic",
       category: "optic",
       acquiredDate: "2026-01-01",
     });
     expect(acc.acquiredDate).toBe("2026-01-01");
     const cleared = await updateAccessory(userA, acc.id, {
+      type: "optic",
       category: "optic",
       acquiredDate: null,
     });
@@ -285,6 +337,7 @@ describe("accessory service — acquired date", () => {
     const before = await listAccessories(userA);
     await expect(
       createAccessory(userA, {
+        type: "optic",
         category: "optic",
         acquiredDate: "not-a-date",
       }),
@@ -295,11 +348,13 @@ describe("accessory service — acquired date", () => {
 
   test("a malformed acquired date is rejected and leaves the existing row unchanged (update)", async () => {
     const acc = await createAccessory(userA, {
+      type: "optic",
       category: "optic",
       acquiredDate: "2026-01-01",
     });
     await expect(
       updateAccessory(userA, acc.id, {
+        type: "optic",
         category: "optic",
         acquiredDate: "2026-13-40",
       }),
@@ -311,6 +366,7 @@ describe("accessory service — acquired date", () => {
   test("acquiredDate is independent of mount/unmount — unmounting never clears it (unlike installedDate)", async () => {
     const fa = await makeFirearm(userA, { name: "AcquiredIndependentFA" });
     const acc = await createAccessory(userA, {
+      type: "optic",
       category: "optic",
       acquiredDate: "2020-05-01",
       firearmId: fa.id,

@@ -69,6 +69,7 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
   const items: AccessoryListItem[] = accessories.map((a) => ({
     id: a.id,
     ownerId: a.ownerId,
+    type: a.type,
     category: a.category,
     brand: a.brand,
     model: a.model,

@@ -44,7 +44,8 @@ export const VALIDATION_MESSAGES: Record<string, string> = {
   invalidQuantity: "Quantity must be a whole number of at most 2,147,483,647",
   invalidThreshold:
     "Low-stock threshold must be a whole number of at most 2,147,483,647",
-  emptyCategory: "Category is required",
+  invalidAccessoryType: "Select a valid accessory type",
+  invalidAttachmentType: "Select a valid attachment type",
   negativeCostCents: "Cost cannot be negative",
   invalidCostCents: "Enter a valid cost (up to $21,474,836.47)",
   invalidInstalledDate: "Enter a valid installed date",

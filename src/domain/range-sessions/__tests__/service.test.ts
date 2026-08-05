@@ -243,10 +243,14 @@ describe("range-session service (#11)", () => {
     test("covers R19: creating a session snapshots the firearm's currently-mounted accessories", async () => {
       const fa = await makeFirearm(owner);
       const mounted = await createAccessory(owner, {
+        type: "optic",
         category: "optic",
         firearmId: fa.id,
       });
-      const unmounted = await createAccessory(owner, { category: "bipod" });
+      const unmounted = await createAccessory(owner, {
+        type: "other",
+        category: "bipod",
+      });
 
       const session = await createRangeSession(owner, {
         firearmId: fa.id,
@@ -281,6 +285,7 @@ describe("range-session service (#11)", () => {
     test("accessoryRoundsFired sums rounds across the sessions an accessory was linked to", async () => {
       const fa = await makeFirearm(owner);
       const acc = await createAccessory(owner, {
+        type: "optic",
         category: "optic",
         firearmId: fa.id,
       });
@@ -308,6 +313,7 @@ describe("range-session service (#11)", () => {
     test("covers R19: deleting an accessory leaves its join rows intact with accessoryId null", async () => {
       const fa = await makeFirearm(owner);
       const acc = await createAccessory(owner, {
+        type: "optic",
         category: "optic",
         firearmId: fa.id,
       });
@@ -333,6 +339,7 @@ describe("range-session service (#11)", () => {
       const fa = await makeFirearm(owner);
       const otherFa = await makeFirearm(owner);
       const acc = await createAccessory(owner, {
+        type: "optic",
         category: "optic",
         firearmId: fa.id,
       });
@@ -355,10 +362,12 @@ describe("range-session service (#11)", () => {
     test("covers R7: listSessionAccessories hides an accessory the viewer can no longer see, shows one still mounted", async () => {
       const fa = await makeFirearm(owner);
       const stillMounted = await createAccessory(owner, {
+        type: "optic",
         category: "optic",
         firearmId: fa.id,
       });
       const laterUnmounted = await createAccessory(owner, {
+        type: "other",
         category: "grip",
         firearmId: fa.id,
       });

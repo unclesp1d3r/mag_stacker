@@ -2,8 +2,12 @@
  * Accessory validation (#8 plan). Pure — no DB, no Next.js.
  *
  * Returns ALL failure codes together (parity with the ammo/firearm/magazine
- * validators), not first-only. `category` is the only required text field
- * (mirrors ammo's `caliber`); `brand`/`model`/`serialNumber`/`notes` are
+ * validators), not first-only. `type` is the only required field (#23 R1) —
+ * it must name a member of the controlled `ACCESSORY_TYPES` set, mirroring
+ * `validateFirearm`'s `isFirearmType` check. `category` was required under #8
+ * and is now optional free text (#23 R3): `type` carries the required
+ * classification, so demanding both would make the form ask for two
+ * overlapping required answers. `brand`/`model`/`serialNumber`/`notes` are
  * optional free text handled entirely by the service layer's empty-not-null
  * defaulting (R18), so they carry no validation code here. `costCents` is
  * nullable (unset cost is unknown, not zero) and, when present,
@@ -29,9 +33,10 @@ import {
   ISO_DATE,
   isRealCalendarDate,
 } from "@/src/lib/dates";
+import { isAccessoryType } from "./constants";
 
 export type AccessoryValidationCode =
-  | "emptyCategory"
+  | "invalidAccessoryType"
   | "negativeCostCents"
   | "invalidCostCents"
   | "invalidInstalledDate"
@@ -46,7 +51,10 @@ export type AccessoryValidationCode =
 export const MAX_COST_CENTS = 2_147_483_647;
 
 export interface AccessoryFields {
-  category: string;
+  /** Controlled structural discriminator (#23 R1). Required. */
+  type: string;
+  /** Free-text descriptive kind (#23 R3). Optional; empty-not-null on persist. */
+  category?: string;
   brand?: string;
   model?: string;
   serialNumber?: string;
@@ -70,7 +78,10 @@ export function validateAccessory(
 ): AccessoryValidationCode[] {
   const codes: AccessoryValidationCode[] = [];
 
-  if (input.category.trim() === "") codes.push("emptyCategory");
+  // Blank and out-of-set both land here: an unset select and a crafted payload
+  // are the same failure to the owner ("pick a real type"), and the
+  // `accessory_type_valid` CHECK backstops whatever slips past.
+  if (!isAccessoryType(input.type)) codes.push("invalidAccessoryType");
 
   if (input.costCents !== null && input.costCents !== undefined) {
     if (input.costCents < 0) codes.push("negativeCostCents");
