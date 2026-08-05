@@ -140,11 +140,16 @@ reviews:
       requirements: |
         The PR title must follow Conventional Commits
         (https://www.conventionalcommits.org):
-        `<type>(<scope>)<!>: <description>`, where the `!` is optional and
-        marks a breaking change.
+        `<type>[(<scope>)][!]: <description>`.
         Types: feat, fix, refactor, docs, test, chore, style, perf, ci.
 
-        A `!` before the colon is valid and must not be flagged.
+        Both the scope and the `!` are OPTIONAL and independent. All four of
+        these are valid and must not be flagged:
+          - `docs: clarify the release process`
+          - `docs(agents): clarify the release process`
+          - `feat!: drop the legacy import path`
+          - `feat(inventory-log)!: retire the cleaned and lubed event types`
+        Do not require a scope, and do not treat `!` as only valid after one.
 
         This repo squash-merges with the PR title as the commit subject, so a
         breaking change MUST carry the `!` here — the branch commits that
