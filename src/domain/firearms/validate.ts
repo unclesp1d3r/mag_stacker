@@ -13,9 +13,10 @@
  *
  * `acquiredDate` is nullable and, when present, must be a real ISO calendar
  * date, and not more than `FUTURE_DATE_TOLERANCE_DAYS` after `asOf`
- * (service-intervals plan R22, mirrors `accessories.installedDate` /
- * range-sessions' `date` check). Unlike `magazine`/`ammo`'s acquired date —
- * which the service layer persists unvalidated — a firearm's feeds the
+ * (service-intervals plan R22, mirrors `accessories.acquiredDate`'s own
+ * validator exactly — that column was added later on this branch). Unlike
+ * `magazine`/`ammo`'s acquired date — which the service layer persists
+ * unvalidated — a firearm's feeds the
  * service-interval origin date (KTD9): `measureFrom` in `derive.ts` is built
  * from it directly, so a FUTURE acquired date would make every rule's
  * elapsed-days count clamp to 0 forever, silently freezing its due state

@@ -150,9 +150,11 @@ describe("service-intervals schema (U1)", () => {
   test("a suppressed service_rule row with no thresholds is accepted", async () => {
     const f = await makeFirearm(ownerId);
 
+    // The factory nulls all three thresholds itself when `suppressed` is
+    // true, so this doesn't need to null `intervalRounds` by hand.
     const row = await makeServiceRule(
       { firearmId: f.id },
-      { name: "Cleaning", suppressed: true, intervalRounds: null },
+      { name: "Cleaning", suppressed: true },
     );
     expect(row.suppressed).toBe(true);
     expect(row.intervalRounds).toBeNull();

@@ -201,14 +201,6 @@ export async function makeFirearmPhoto(
 }
 
 /**
- * Insert an inventory-log row directly (U5). `actor_id` is a real FK to `user`
- * (`ON DELETE SET NULL`), so callers must always supply a valid user id via
- * `overrides.actorId` — there is no sensible default actor to fall back to.
- * `overrides` excludes `parentType`/`parentId`: those are separate params, so
- * a caller can't accidentally insert a row for a different parent than the
- * one it passed explicitly.
- */
-/**
  * Insert a service-rule-default row directly (service-intervals plan, U1).
  * Owner-scoped configuration, no parent item — defaults to a firearm-scope
  * "rifle" category "Cleaning" rule with a single rounds threshold, since at
@@ -293,6 +285,14 @@ export async function makeServiceEvent(
   return row;
 }
 
+/**
+ * Insert an inventory-log row directly (U5). `actor_id` is a real FK to `user`
+ * (`ON DELETE SET NULL`), so callers must always supply a valid user id via
+ * `overrides.actorId` — there is no sensible default actor to fall back to.
+ * `overrides` excludes `parentType`/`parentId`: those are separate params, so
+ * a caller can't accidentally insert a row for a different parent than the
+ * one it passed explicitly.
+ */
 export async function makeLogEntry(
   parentType: ParentType,
   parentId: string,

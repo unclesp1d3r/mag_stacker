@@ -617,6 +617,17 @@ describe("service-intervals events-service (U4)", () => {
       ).toEqual({ parentType: "accessory", parentId: "acc-1" });
     });
 
+    // The DB's exactly-one-parent CHECK (KTD2) forbids a real row from ever
+    // having both FKs null, but `resolveServiceEventParent` now routes
+    // through the shared `resolveParent` helper (rules-service.ts) for that
+    // resolution — this pins the defensive fallback's behavior in the one
+    // place it's exercisable at all: a plain object literal, not a real row.
+    test("resolveServiceEventParent throws NotFoundError for a row with neither parent set", () => {
+      expect(() =>
+        resolveServiceEventParent({ firearmId: null, accessoryId: null }),
+      ).toThrow(NotFoundError);
+    });
+
     test("editing an event's date changes that rule's due state; editing only notes does not", async () => {
       const owner = await newOwner("u4corrDateOwner");
       const fa = await makeFirearm(owner, { type: "rifle" });

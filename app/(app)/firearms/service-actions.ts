@@ -195,7 +195,7 @@ export async function addItemOnlyRuleAction(
  * Shared delete-by-name core behind two DIFFERENT rule actions that happen to
  * be the same write: "Reset to inherited" (an overridden rule falling back
  * to its category default) and "Remove" (an item-only rule, which has no
- * default underneath to fall back to — code-review finding #2). Both are
+ * default underneath to fall back to). Both are
  * structurally "delete this item's row for `ruleName`"; keeping one function
  * avoids the two diverging while each call site's own name still says why it
  * invokes it.
@@ -230,8 +230,8 @@ export async function resetServiceRuleAction(
 }
 
 /**
- * The "Remove" action: delete an ITEM-ONLY rule outright (code-review
- * finding #2). An item-only rule has no category default underneath it, so
+ * The "Remove" action: delete an ITEM-ONLY rule outright. An item-only rule
+ * has no category default underneath it, so
  * unlike "Reset to inherited" there is nothing left to measure once the row
  * is gone — this is a real deletion, not a fallback, and the panel's toast
  * copy says so ("removed", never "restored"/"reset").

@@ -1,7 +1,7 @@
 "use client";
 
 // U8/KTD-8: `page.tsx` stays a server component that hand-aggregates via
-// `computeSummary()`; the aggregate rows it produces are fed straight into
+// `inventorySummary()`; the aggregate rows it produces are fed straight into
 // this thin client wrapper, which layers the shared `DataTable` (sort +
 // column show/hide + pagination only — no filter, no grouping, since the
 // rows are already aggregated) over each of the two roll-up tables.

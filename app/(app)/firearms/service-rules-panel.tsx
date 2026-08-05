@@ -122,9 +122,8 @@ function RuleActions({
   // (mask an inherited default) has nothing to mask — offer "Remove" (delete
   // the row outright) instead, so the removal path this action was always
   // the only way to reach doesn't silently destroy an item-only rule's
-  // thresholds behind a button and toast that both say "restored"
-  // (code-review finding #2). Suppress stays exactly as-is for an inherited
-  // or overridden rule.
+  // thresholds behind a button and toast that both say "restored". Suppress
+  // stays exactly as-is for an inherited or overridden rule.
   const isItemOnly = rule.inheritanceState === "item-only";
 
   return (
@@ -261,9 +260,9 @@ export function ServiceRulesPanel({
   }
 
   /**
-   * The "Remove" action for an item-only rule (finding #2): a real deletion,
-   * not a fallback — an item-only rule has no category default underneath it
-   * to fall back to, so the toast says "removed", never "restored".
+   * The "Remove" action for an item-only rule: a real deletion, not a
+   * fallback — an item-only rule has no category default underneath it to
+   * fall back to, so the toast says "removed", never "restored".
    */
   function remove(ruleName: string) {
     runRuleAction(

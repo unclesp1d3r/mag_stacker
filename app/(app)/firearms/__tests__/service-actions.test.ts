@@ -387,7 +387,7 @@ describe("service-actions (U8)", () => {
     });
   });
 
-  describe("removeItemOnlyRuleAction (finding #2: item-only rules get Remove, not Suppress)", () => {
+  describe("removeItemOnlyRuleAction (item-only rules get Remove, not Suppress)", () => {
     test("deletes the existing item-only rule by its resolved id", async () => {
       currentUserId = "user-1";
       listItemRulesSpy.mockResolvedValue([ruleRow("rule-11", "Lens cleaning")]);

@@ -37,8 +37,10 @@ import {
  * derived on read, reflects the correction on the very next render.
  *
  * `canWrite` defaults to `false` so a caller that hasn't wired it through yet
- * renders read-only rather than failing to compile — see this component's
- * report for which detail view currently passes it.
+ * renders read-only rather than failing to compile. Both current callers wire
+ * it through: `firearm-detail-view.tsx` passes `canEdit` (owner or
+ * edit-grantee), `accessory-detail-view.tsx` passes `isOwner` (accessories
+ * are owner-only throughout, KTD3).
  *
  * R21 (advisory only): no `ConfirmDialog` here. Deleting a service event has
  * no undo, but this feature is advisory throughout, and every other

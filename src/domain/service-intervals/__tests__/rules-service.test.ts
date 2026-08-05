@@ -23,9 +23,38 @@ import {
   listItemRules,
   listOwnerAccessoryCategories,
   listServiceRuleDefaults,
+  resolveParent,
   updateItemRule,
   updateServiceRuleDefault,
 } from "../rules-service";
+
+/**
+ * `resolveParent` is the shared, pure implementation behind three call sites
+ * that used to each re-derive "which parent does this row belong to"
+ * independently (`belongsToParent` here, `resolveServiceEventParent` in
+ * `events-service.ts`, and `loadItemRulesBatch`'s per-row extraction in
+ * `due-service.ts`) — no DB needed, unlike the rest of this file's
+ * Testcontainers-backed suite.
+ */
+describe("resolveParent", () => {
+  test("resolves a firearm-parented row", () => {
+    expect(resolveParent({ firearmId: "fa-1", accessoryId: null })).toEqual({
+      parentType: "firearm",
+      parentId: "fa-1",
+    });
+  });
+
+  test("resolves an accessory-parented row", () => {
+    expect(resolveParent({ firearmId: null, accessoryId: "acc-1" })).toEqual({
+      parentType: "accessory",
+      parentId: "acc-1",
+    });
+  });
+
+  test("returns null for a row with neither parent set (the exactly-one-parent CHECK forbids this for a real row)", () => {
+    expect(resolveParent({ firearmId: null, accessoryId: null })).toBeNull();
+  });
+});
 
 /**
  * Rules-service integration tests (service-intervals plan, U3). Each test

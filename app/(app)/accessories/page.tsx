@@ -47,8 +47,8 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
   );
   const dueAccessoryIds = dueParentIds(dueEntries, "accessory");
 
-  // On create, the accessory's owner is the actor themself (KTD5's
-  // same-owner mount guard), so a firearm the actor merely has an edit GRANT
+  // On create, the accessory's owner is the actor themself (accessories-tracker
+  // plan KTD5's same-owner mount guard), so a firearm the actor merely has an edit GRANT
   // on — but doesn't own — would pass permission but fail
   // `authorizeCreateMount`'s cross-tenant check at submit; excluding it here
   // keeps the picker's options a strict subset of what will actually save.

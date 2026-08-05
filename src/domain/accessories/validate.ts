@@ -6,7 +6,7 @@
  * (mirrors ammo's `caliber`); `brand`/`model`/`serialNumber`/`notes` are
  * optional free text handled entirely by the service layer's empty-not-null
  * defaulting (R18), so they carry no validation code here. `costCents` is
- * nullable (unset cost is unknown, not zero — KTD-7-style) and, when present,
+ * nullable (unset cost is unknown, not zero) and, when present,
  * must be a non-negative integer within the int4 bound (#53). `installedDate`
  * is nullable and, when present, must be a real ISO calendar date (mirrors
  * range-sessions' `date` check).

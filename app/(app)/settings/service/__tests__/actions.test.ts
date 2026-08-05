@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { NotAuthorizedError, NotFoundError } from "@/src/auth/errors";
 import { ValidationError } from "@/src/domain/errors";
 import type {
@@ -6,15 +6,30 @@ import type {
   ServiceRuleDefaultRow,
   ServiceRuleDefaultUpdateInput,
 } from "@/src/domain/service-intervals/rules-service";
+import * as rulesService from "@/src/domain/service-intervals/rules-service";
 
 /**
  * Server-action unit tests for the service-defaults settings surface (U7).
- * Mocks the session and the domain service (`mock.module`, mirroring
+ * Mocks the session (`mock.module`, mirroring
  * `app/(app)/firearms/__tests__/documents-actions.test.ts`) rather than
  * hitting the DB — this only exercises the `"use server"` action boundary:
  * auth gating and `ActionResult` mapping. Rules-service behavior itself
  * (validation, owner-scoping, duplicate names) is covered by
  * `src/domain/service-intervals/__tests__/rules-service.test.ts`.
+ *
+ * The three default-CRUD functions are `spyOn`-stubbed on the REAL
+ * `rules-service` module namespace rather than `mock.module`-replaced: a
+ * `mock.module` factory here can only export the handful of functions this
+ * file cares about, and that narrow shape then "wins" for every other file's
+ * import of the same specifier for the rest of the `bun test` process
+ * (confirmed by direct repro, mirrors the tradeoff documented in
+ * `firearms/__tests__/service-actions.test.ts`) — including
+ * `accessories/[id]/__tests__/service-props.test.ts`, whose imported
+ * `due-service.ts` statically imports OTHER rules-service exports
+ * (`loadItemRules`, `requireAccessoryOwner`) that a narrow mock omits
+ * entirely, breaking that file's import at load time. `spyOn` overrides only
+ * the three named exports this file needs, leaving the rest of the module's
+ * real surface intact for everyone else.
  */
 
 let currentUserId: string | null = null;
@@ -50,30 +65,6 @@ interface DeleteCall {
 let deleteCalls: DeleteCall[] = [];
 let deleteThrows: unknown = null;
 
-mock.module("@/src/domain/service-intervals/rules-service", () => ({
-  createServiceRuleDefault: async (
-    actorId: string,
-    input: ServiceRuleDefaultInput,
-  ) => {
-    createCalls.push({ actorId, input });
-    if (createThrows) throw createThrows;
-    return createResult;
-  },
-  updateServiceRuleDefault: async (
-    actorId: string,
-    id: string,
-    input: ServiceRuleDefaultUpdateInput,
-  ) => {
-    updateCalls.push({ actorId, id, input });
-    if (updateThrows) throw updateThrows;
-    return updateResult;
-  },
-  deleteServiceRuleDefault: async (actorId: string, id: string) => {
-    deleteCalls.push({ actorId, id });
-    if (deleteThrows) throw deleteThrows;
-  },
-}));
-
 // Server actions revalidate on every mutation; a bare bun test has no Next.js
 // request/render context for this to hook into (mirrors documents-actions.test.ts).
 let revalidateCalls: string[] = [];
@@ -100,6 +91,31 @@ beforeEach(() => {
   deleteCalls = [];
   deleteThrows = null;
   revalidateCalls = [];
+
+  spyOn(rulesService, "createServiceRuleDefault").mockImplementation(
+    async (actorId: string, input: ServiceRuleDefaultInput) => {
+      createCalls.push({ actorId, input });
+      if (createThrows) throw createThrows;
+      return createResult;
+    },
+  );
+  spyOn(rulesService, "updateServiceRuleDefault").mockImplementation(
+    async (
+      actorId: string,
+      id: string,
+      input: ServiceRuleDefaultUpdateInput,
+    ) => {
+      updateCalls.push({ actorId, id, input });
+      if (updateThrows) throw updateThrows;
+      return updateResult;
+    },
+  );
+  spyOn(rulesService, "deleteServiceRuleDefault").mockImplementation(
+    async (actorId: string, id: string) => {
+      deleteCalls.push({ actorId, id });
+      if (deleteThrows) throw deleteThrows;
+    },
+  );
 });
 
 const SAMPLE_INPUT: ServiceRuleDefaultInput = {
@@ -208,6 +224,23 @@ describe("updateServiceRuleDefaultAction", () => {
 
     expect(result.ok).toBe(false);
   });
+
+  // Consistency gap this suite guards against: only the create action had
+  // this guard previously — update read `input.name.trim()` unguarded, which
+  // throws a raw TypeError on a malformed (`null`) payload instead of the
+  // normal failed ActionResult every other malformed submission takes.
+  test("a malformed non-object payload is rejected as a failed ActionResult, without reaching the service", async () => {
+    currentUserId = "user-1";
+
+    const result = await updateServiceRuleDefaultAction(
+      "default-1",
+      null as unknown as ServiceRuleDefaultUpdateInput,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.codes).toEqual(["invalidPayload"]);
+    expect(updateCalls).toHaveLength(0);
+  });
 });
 
 describe("deleteServiceRuleDefaultAction", () => {
@@ -238,5 +271,21 @@ describe("deleteServiceRuleDefaultAction", () => {
 
     expect(result.ok).toBe(false);
     expect(revalidateCalls).toEqual([]);
+  });
+
+  // Delete's payload IS the id (no wrapping object) — a non-string id (a
+  // client sending `null` in its place) would otherwise reach
+  // `deleteServiceRuleDefault` and only fail deep inside the query, rather
+  // than at this boundary like the other two actions' malformed-payload case.
+  test("a non-string id is rejected as a failed ActionResult, without reaching the service", async () => {
+    currentUserId = "user-1";
+
+    const result = await deleteServiceRuleDefaultAction(
+      null as unknown as string,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.codes).toEqual(["invalidPayload"]);
+    expect(deleteCalls).toHaveLength(0);
   });
 });

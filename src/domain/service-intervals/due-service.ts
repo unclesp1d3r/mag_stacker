@@ -12,9 +12,9 @@ import {
   serviceRuleDefault,
 } from "@/src/db/schema";
 import { listFirearms } from "../firearms/service";
-import type { ServiceAxis } from "./constants";
 import {
   type DefaultRule,
+  type DueResult,
   type ElapsedCounts,
   elapsedCounts,
   type ItemRule,
@@ -28,6 +28,7 @@ import {
   loadItemRules,
   requireAccessoryOwner,
   requireFirearmVisible,
+  resolveParent,
   type ServiceParentType,
   toDefaultRule,
   toItemRule,
@@ -66,13 +67,19 @@ import {
  * day comparison only ever reads its local Y/M/D, never its time-of-day.
  */
 
-/** One resolved rule plus its computed elapsed counts and due state. */
-export interface RuleDueState extends ResolvedRule {
+/**
+ * One resolved rule plus its computed elapsed counts and due state.
+ *
+ * Intersected with `DueResult` (a discriminated union) rather than declared
+ * as a flat interface with `due: boolean; trippedAxis: ServiceAxis | null`,
+ * so a `due: true` entry carries a guaranteed non-null `trippedAxis` at the
+ * type level, matching what `isDue` actually ever produces — no consumer has
+ * to null-check an axis the logic already guarantees is present.
+ */
+export type RuleDueState = ResolvedRule & {
   measureFrom: Date;
   counts: ElapsedCounts;
-  due: boolean;
-  trippedAxis: ServiceAxis | null;
-}
+} & DueResult;
 
 /**
  * One visible item's resolved, due-annotated rule set. Omitted entirely from
@@ -101,8 +108,22 @@ function applyDue(
 ): RuleDueState {
   const measureFrom = measureFromFor(lastServicedOn, originDate);
   const counts = elapsedCounts(measureFrom, sessions, asOf);
-  const { due, trippedAxis } = isDue(rule, counts);
-  return { ...rule, measureFrom, counts, due, trippedAxis };
+  const dueResult = isDue(rule, counts);
+  // Branch explicitly on the discriminant (rather than spreading `dueResult`
+  // directly) so each branch's literal `trippedAxis` type is preserved —
+  // spreading a union type into an object literal does not reliably narrow
+  // the result back to a union, which is what `RuleDueState` needs to keep
+  // its `due: true` branch's `trippedAxis` guaranteed non-null.
+  if (dueResult.due) {
+    return {
+      ...rule,
+      measureFrom,
+      counts,
+      due: true,
+      trippedAxis: dueResult.trippedAxis,
+    };
+  }
+  return { ...rule, measureFrom, counts, due: false, trippedAxis: null };
 }
 
 function resolveDueRules(
@@ -183,11 +204,11 @@ async function loadItemRulesBatch(
     .where(inArray(column, parentIds));
 
   for (const row of rows) {
-    const parentId = parentType === "firearm" ? row.firearmId : row.accessoryId;
-    if (parentId === null) continue; // defensive; the exactly-one-parent CHECK guarantees this
-    const rules = byItem.get(parentId) ?? [];
+    const parent = resolveParent(row);
+    if (parent === null) continue; // defensive; the exactly-one-parent CHECK guarantees this
+    const rules = byItem.get(parent.parentId) ?? [];
     rules.push(toItemRule(row));
-    byItem.set(parentId, rules);
+    byItem.set(parent.parentId, rules);
   }
   return byItem;
 }
@@ -489,20 +510,6 @@ function buildAccessoryEntry(
 }
 
 /**
- * Due state for EVERY item visible to `actorId`, in a bounded number of
- * queries regardless of how many items are visible (Definition of Done,
- * U4) — one batched load per data source (owners' defaults, item rules,
- * last-service-points, session rows), never a per-item query. An owner with
- * no defaults anywhere and no item-only rules yields an empty array, not an
- * error (every item resolves zero effective rules and is omitted).
- *
- * `visibleFirearmsAlreadyLoaded`, when supplied, is used verbatim as the
- * visible-firearm set instead of re-running `listFirearms` — see
- * `loadVisibleItems`. The name is the contract: a caller MUST pass a set
- * already filtered to the actor's own visible firearms (e.g. `listFirearms(actorId)`'s
- * result) — never an unfiltered list, which would leak cross-visibility data.
- */
-/**
  * The actor's visible firearms and OWNED (never granted/mounted-inherited)
  * accessories — see the accessory-scope comment on `listDueForVisibleCollection`.
  * Accepts an optional `visibleFirearmsAlreadyLoaded` — the same visible-firearm
@@ -588,6 +595,20 @@ async function loadBatchedDueData(
 
 const isPresent = (e: ItemDueEntry | null): e is ItemDueEntry => e !== null;
 
+/**
+ * Due state for EVERY item visible to `actorId`, in a bounded number of
+ * queries regardless of how many items are visible (Definition of Done,
+ * U4) — one batched load per data source (owners' defaults, item rules,
+ * last-service-points, session rows), never a per-item query. An owner with
+ * no defaults anywhere and no item-only rules yields an empty array, not an
+ * error (every item resolves zero effective rules and is omitted).
+ *
+ * `visibleFirearmsAlreadyLoaded`, when supplied, is used verbatim as the
+ * visible-firearm set instead of re-running `listFirearms` — see
+ * `loadVisibleItems`. The name is the contract: a caller MUST pass a set
+ * already filtered to the actor's own visible firearms (e.g. `listFirearms(actorId)`'s
+ * result) — never an unfiltered list, which would leak cross-visibility data.
+ */
 export async function listDueForVisibleCollection(
   actorId: string,
   asOf: Date = new Date(),

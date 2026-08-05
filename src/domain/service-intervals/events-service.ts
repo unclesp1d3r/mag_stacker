@@ -17,6 +17,7 @@ import {
   loadItemRules,
   requireAccessoryOwner,
   requireFirearmVisible,
+  resolveParent,
   type ServiceParentType,
   toDefaultRule,
   toItemRule,
@@ -371,12 +372,8 @@ export async function logServiceEventsBulk(
 export function resolveServiceEventParent(
   row: Pick<ServiceEventRow, "firearmId" | "accessoryId">,
 ): { parentType: ServiceParentType; parentId: string } {
-  if (row.firearmId !== null) {
-    return { parentType: "firearm", parentId: row.firearmId };
-  }
-  if (row.accessoryId !== null) {
-    return { parentType: "accessory", parentId: row.accessoryId };
-  }
+  const parent = resolveParent(row);
+  if (parent !== null) return parent;
   // Defensive only — the DB's exactly-one-parent CHECK guarantees a real row
   // never reaches here. Not found is the safest response to an impossible
   // row shape: it reveals nothing and matches every other "can't resolve

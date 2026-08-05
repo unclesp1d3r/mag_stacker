@@ -9,17 +9,23 @@ import type { ItemDueEntry, RuleDueState } from "../due-service";
  */
 
 function rule(name: string, due: boolean): RuleDueState {
-  return {
+  const base = {
     name,
     intervalDays: null,
     intervalSessions: null,
     intervalRounds: null,
-    inheritanceState: "inherited",
+    inheritanceState: "inherited" as const,
     measureFrom: new Date(2026, 0, 1),
     counts: { days: 0, sessions: 0, rounds: 0 },
-    due,
-    trippedAxis: due ? "days" : null,
   };
+  // Branched (rather than a flat `due, trippedAxis: due ? "days" : null`)
+  // because `RuleDueState` is now a discriminated union (Fix 1): only this
+  // shape lets TypeScript confirm the fixture actually matches what
+  // `isDue` ever produces, rather than a boolean-typed `due` masking a
+  // `due: true` + `trippedAxis: null` pairing the real code can't build.
+  return due
+    ? { ...base, due: true, trippedAxis: "days" }
+    : { ...base, due: false, trippedAxis: null };
 }
 
 describe("buildServiceBacklog", () => {

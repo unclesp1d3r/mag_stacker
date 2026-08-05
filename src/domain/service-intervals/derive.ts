@@ -158,10 +158,9 @@ export function elapsedCounts(
   return { days, sessions: sessionCount, rounds: roundsTotal };
 }
 
-export interface DueResult {
-  due: boolean;
-  trippedAxis: ServiceAxis | null;
-}
+export type DueResult =
+  | { due: true; trippedAxis: ServiceAxis }
+  | { due: false; trippedAxis: null };
 
 /**
  * A rule is due when any threshold it sets is met or exceeded (R7, R11) — the

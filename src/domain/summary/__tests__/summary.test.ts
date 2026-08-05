@@ -35,19 +35,25 @@ function firearmRow(s: ReturnType<typeof computeSummary>, id: string) {
   return s.firearmCounts.find((r) => r.id === id);
 }
 
-/** A minimal `RuleDueState` fixture — only `due` varies across these tests. */
+/**
+ * A minimal `RuleDueState` fixture — only `due` varies across these tests.
+ * Branched, not a flat `due, trippedAxis: due ? "days" : null`, because
+ * `RuleDueState` is a discriminated union: only this shape lets TypeScript
+ * confirm the fixture matches what `isDue` ever actually produces.
+ */
 function dueRule(name: string, due: boolean): RuleDueState {
-  return {
+  const base = {
     name,
-    inheritanceState: "item-only",
+    inheritanceState: "item-only" as const,
     intervalDays: null,
     intervalSessions: null,
     intervalRounds: null,
     measureFrom: new Date(2026, 0, 1),
     counts: { days: 0, sessions: 0, rounds: 0 },
-    due,
-    trippedAxis: due ? "days" : null,
   };
+  return due
+    ? { ...base, due: true, trippedAxis: "days" }
+    : { ...base, due: false, trippedAxis: null };
 }
 
 function dueEntry(
@@ -535,10 +541,11 @@ describe("inventorySummary — service roll-up (U9)", () => {
       name: "Zero check",
       ...OVERDUE,
     });
-    // Accessories have no acquired date (KTD9) — their origin is `createdAt`,
-    // which is "now" for a freshly-inserted row, so a 1-day threshold alone
-    // would never trip. A backdated service event gives the rule an old
-    // measure-from point instead, same as a real owner's history would.
+    // This fixture doesn't set an acquired date, so origin falls back to
+    // `createdAt` (KTD9), which is "now" for a freshly-inserted row, so a
+    // 1-day threshold alone would never trip. A backdated service event gives
+    // the rule an old measure-from point instead, same as a real owner's
+    // history would.
     await makeServiceEvent(
       { accessoryId: optic.id },
       { ruleName: "Zero check", servicedOn: LONG_AGO },
@@ -592,8 +599,9 @@ describe("inventorySummary — service roll-up (U9)", () => {
       name: "Cleaning",
       ...OVERDUE,
     });
-    // Accessory origin is `createdAt` (KTD9) — backdate a service event so
-    // the 1-day threshold actually trips (see the R19 test above).
+    // This fixture doesn't set an acquired date, so origin falls back to
+    // `createdAt` (KTD9) — backdate a service event so the 1-day threshold
+    // actually trips (see the R19 test above).
     await makeServiceEvent(
       { accessoryId: suppressor.id },
       { ruleName: "Cleaning", servicedOn: LONG_AGO },

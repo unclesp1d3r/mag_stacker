@@ -16,22 +16,12 @@ import { withActorNames } from "@/src/domain/service-intervals/actor-names";
 import { getItemDueState } from "@/src/domain/service-intervals/due-service";
 import { listServiceHistory } from "@/src/domain/service-intervals/events-service";
 import { listItemRules } from "@/src/domain/service-intervals/rules-service";
+import { asNotFound } from "@/src/lib/as-not-found";
 import { isUuid } from "@/src/lib/uuid";
 import { FirearmDetailView } from "../firearm-detail-view";
 
 interface PageProps {
   params: Promise<{ id: string }>;
-}
-
-/**
- * Shared 404 guard (mirrors the `getFirearm`/`listPhotos`/`listDocuments`
- * catches above): a loader that authorizes internally can throw
- * `NotFoundError` if access was revoked between `getFirearm` and this call —
- * that must surface as the page's clean 404, not an unhandled 500.
- */
-function asNotFound(error: unknown): never {
-  if (error instanceof NotFoundError) notFound();
-  throw error;
 }
 
 export default async function FirearmDetailPage({ params }: PageProps) {

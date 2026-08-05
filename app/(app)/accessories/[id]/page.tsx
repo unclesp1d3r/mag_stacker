@@ -17,6 +17,7 @@ import {
   listItemRules,
   listOwnerAccessoryCategories,
 } from "@/src/domain/service-intervals/rules-service";
+import { asNotFound } from "@/src/lib/as-not-found";
 import { isUuid } from "@/src/lib/uuid";
 import type { ServiceHistoryEntry } from "../../firearms/service-history";
 import { AccessoryDetailView } from "../accessory-detail-view";
@@ -25,7 +26,7 @@ interface PageProps {
   params: Promise<{ id: string }>;
 }
 
-interface AccessoryServiceProps {
+export interface AccessoryServiceProps {
   serviceRules: RuleDueState[] | null;
   suppressedServiceRuleNames: string[] | null;
   serviceHistory: ServiceHistoryEntry[] | null;
@@ -37,8 +38,14 @@ interface AccessoryServiceProps {
  * field rather than empty arrays, and the detail view doesn't render the
  * section at all for them (matching `requireAccessoryOwner` throwing were we
  * to call it for a non-owner anyway).
+ *
+ * Exported so `__tests__/service-props.test.ts` can exercise the 404-guard
+ * race (a loader throwing `NotFoundError` between the page's earlier
+ * `getAccessory` check and this call) directly, without standing up the rest
+ * of the page's dependency graph (`listFirearms`, `visibleFirearmPermissions`,
+ * `AccessoryDetailView`, ...) just to reach it.
  */
-async function loadAccessoryServiceProps(
+export async function loadAccessoryServiceProps(
   userId: string,
   accessoryId: string,
   isOwner: boolean,
@@ -50,10 +57,15 @@ async function loadAccessoryServiceProps(
       serviceHistory: null,
     };
   }
+  // These loaders route through `requireAccessoryOwner`, which authorizes
+  // internally and throws `NotFoundError` if the row is deleted or ownership
+  // changes between the page's earlier `getAccessory` check and this call (a
+  // narrow race, mirrors the equivalent guard on the firearm detail page) —
+  // that must surface as the page's clean 404, not an unhandled 500.
   const [dueRules, itemRules, history] = await Promise.all([
-    getItemDueState(userId, "accessory", accessoryId),
-    listItemRules(userId, "accessory", accessoryId),
-    listServiceHistory(userId, "accessory", accessoryId),
+    getItemDueState(userId, "accessory", accessoryId).catch(asNotFound),
+    listItemRules(userId, "accessory", accessoryId).catch(asNotFound),
+    listServiceHistory(userId, "accessory", accessoryId).catch(asNotFound),
   ]);
   return {
     serviceRules: dueRules,
@@ -107,7 +119,8 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
   // The reassign-mount picker must offer only firearms owned by the
   // ACCESSORY's owner (`row.ownerId`, not the actor — an edit-grantee acting
   // on someone else's mounted accessory must still only relocate it among
-  // that owner's own guns, KTD5's cross-tenant guard) AND editable by the
+  // that owner's own guns, accessories-tracker plan KTD5's cross-tenant
+  // guard) AND editable by the
   // acting user.
   const { firearmNames, editableFirearms } = buildFirearmMountContext(
     firearms,

@@ -41,7 +41,7 @@ function nowLocal(): string {
 interface LogEntryFormProps {
   parentType: ParentType;
   parentId: string;
-  /** The parent-appropriate event-type set (R11) — firearm surfaces maintenance types. */
+  /** The parent-appropriate event-type set (R11) — since U5 retired `cleaned`/`lubed`, both parent families offer only "inventoried". */
   eventTypes: readonly EventType[];
   onDone: () => void;
   onCancel: () => void;

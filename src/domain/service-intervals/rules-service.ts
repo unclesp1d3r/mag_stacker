@@ -151,14 +151,52 @@ export async function loadItemRules(
     .orderBy(asc(serviceRule.name));
 }
 
+/** A row's resolved parent family + id, off the shared two-nullable-FK shape. */
+export type ResolvedParent =
+  | { parentType: "firearm"; parentId: string }
+  | { parentType: "accessory"; parentId: string };
+
+/**
+ * Resolve which parent family and id a `service_rule`/`service_event` row
+ * belongs to, straight off its `{ firearmId, accessoryId }` shape — the
+ * single shared implementation behind three call sites that previously each
+ * re-derived this independently: `belongsToParent` below,
+ * `resolveServiceEventParent` (`events-service.ts`), and
+ * `loadItemRulesBatch`'s per-row extraction (`due-service.ts`). Exported for
+ * that reuse, alongside `toDefaultRule`/`toItemRule` (same precedent: shared
+ * row<->domain helpers live here).
+ *
+ * Returns `null` for a row with neither FK set — a shape `num_nonnulls(firearm_id,
+ * accessory_id) = 1` (KTD2) forbids for any real row, so this never happens
+ * in practice. Deliberately NOT the caller's decision baked in here: each
+ * call site's existing response to that impossible case differs (a thrown
+ * `NotFoundError`, a `false`, a skipped row), so this helper only resolves
+ * the parent and leaves that response to the caller.
+ */
+export function resolveParent(row: {
+  firearmId: string | null;
+  accessoryId: string | null;
+}): ResolvedParent | null {
+  if (row.firearmId !== null) {
+    return { parentType: "firearm", parentId: row.firearmId };
+  }
+  if (row.accessoryId !== null) {
+    return { parentType: "accessory", parentId: row.accessoryId };
+  }
+  return null;
+}
+
 function belongsToParent(
   row: Pick<ServiceRuleRow, "firearmId" | "accessoryId">,
   parentType: ServiceParentType,
   parentId: string,
 ): boolean {
-  return parentType === "firearm"
-    ? row.firearmId === parentId
-    : row.accessoryId === parentId;
+  const parent = resolveParent(row);
+  return (
+    parent !== null &&
+    parent.parentType === parentType &&
+    parent.parentId === parentId
+  );
 }
 
 /**
@@ -782,11 +820,13 @@ export async function listOwnerAccessoryCategories(
 
 /**
  * Every category the owner has configured at least one default for, in one
- * scope (U7) — alongside `listOwnerAccessoryCategories`, this is what lets
- * the defaults settings surface keep showing a category once it has been
- * armed (KTD8), even after its only matching accessory is deleted, or before
- * one ever existed. Firearm categories never need this: `FIREARM_TYPES` is
- * the fixed, already-known list.
+ * scope (U7) — a `SELECT DISTINCT category` over `service_rule_default`, not
+ * over `accessory` (that's `listOwnerAccessoryCategories`, KTD8, above).
+ * Alongside that function, this is what lets the defaults settings surface
+ * keep showing a category once it has been armed, even after its only
+ * matching accessory is deleted, or before one ever existed. Firearm
+ * categories never need this: `FIREARM_TYPES` is the fixed, already-known
+ * list.
  */
 export async function listConfiguredCategories(
   actorId: string,
