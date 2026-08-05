@@ -77,6 +77,50 @@ export async function resolveAccessoryPermission(
 }
 
 /**
+ * Require owner/edit on an accessory, or throw.
+ *
+ * The three-way outcome matters and is why this is one shared helper rather
+ * than an inline check per call site: a `view` holder is visible-but-forbidden
+ * (403), while anything outside the visible set is indistinguishable from
+ * absent (404) so the response cannot be used to probe for accessories the
+ * requester should not know exist.
+ *
+ * Also the single place `assertWritesAllowed` is enforced for accessory
+ * writes, so a new mutating path cannot forget the maintenance-mode gate.
+ */
+export async function requireAccessoryEdit(
+  tx: DbOrTx,
+  actorId: string,
+  accessoryId: string,
+): Promise<Permission> {
+  await assertWritesAllowed(tx);
+
+  const permission = await resolveAccessoryPermission(tx, actorId, accessoryId);
+  if (permission === "owner" || permission === "edit") return permission;
+  if (permission === "view") {
+    throw new NotAuthorizedError(
+      "read-only access; cannot modify this accessory",
+    );
+  }
+  throw new NotFoundError();
+}
+
+/**
+ * Require any level of access to an accessory (owner/edit/view), returning it.
+ * Not-found for anything outside the visible set — same non-probing rule as
+ * {@link requireAccessoryEdit}.
+ */
+export async function requireAccessoryView(
+  db: DbOrTx,
+  actorId: string,
+  accessoryId: string,
+): Promise<Permission> {
+  const permission = await resolveAccessoryPermission(db, actorId, accessoryId);
+  if (permission === null) throw new NotFoundError();
+  return permission;
+}
+
+/**
  * Authorize mounting/reassigning/unmounting an accessory. The actor must be
  * able to edit the accessory itself (owner or edit-grantee via its current
  * mount, if any). When mounting onto a firearm (`targetFirearmId` non-null),

@@ -27,6 +27,7 @@ import { ServiceRulesPanel } from "../firearms/service-rules-panel";
 import type { EditableFirearmOption } from "./accessory-form";
 import { AccessoryForm, type AccessoryFormValues } from "./accessory-form";
 import { deleteAccessoryAction, mountAccessoryAction } from "./actions";
+import { type AttachmentItem, AttachmentsSection } from "./attachments-section";
 
 export interface AccessoryDetail extends AccessoryFormValues {
   id: string;
@@ -44,6 +45,9 @@ interface AccessoryDetailViewProps {
   /** Firearms the compatibility picker may offer (#23 R4) — everything the
    * actor can see, wider than `editableFirearms`. */
   visibleFirearms: FirearmOption[];
+  /** This accessory's attachments (#23 R15) — shown to every viewer; only an
+   * owner/editor is offered the mutating controls (R17). */
+  attachments: AttachmentItem[];
   /**
    * Service data (U8) — owner-only throughout for accessories (KTD3), so
    * these are `null` for a non-owner viewer rather than empty: the page
@@ -125,6 +129,7 @@ export function AccessoryDetailView({
   editableFirearms,
   firearmNames,
   visibleFirearms,
+  attachments,
   serviceRules,
   suppressedServiceRuleNames,
   serviceHistory,
@@ -313,6 +318,13 @@ export function AccessoryDetailView({
           </dl>
         </Card>
       )}
+
+      <AttachmentsSection
+        accessoryId={accessory.id}
+        attachments={attachments}
+        permission={permission}
+        onChanged={() => router.refresh()}
+      />
 
       {isOwner &&
       serviceRules !== null &&

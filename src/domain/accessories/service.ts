@@ -2,6 +2,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import {
   authorizeMount,
   listVisibleAccessoryIds,
+  requireAccessoryEdit,
   resolveAccessoryPermission,
 } from "@/src/auth/accessory-visibility";
 import { authorizeUpdate, resolveCreateOwner } from "@/src/auth/authorize";
@@ -134,31 +135,6 @@ async function authorizeCreateMount(
   }
 }
 
-/**
- * Require owner/edit on an accessory (edit only ever arises via a mounted
- * accessory's firearm inheritance). A view-grantee is visible-but-forbidden
- * (R70-style); an item outside the visible set is not-found.
- */
-async function requireEditPermission(
-  tx: DbOrTx,
-  actorId: string,
-  id: string,
-): Promise<Permission> {
-  // Bespoke write gate (accessories aren't a grant `ParentType`, so this
-  // doesn't route through `authorize.ts`'s helpers) — guard it directly so
-  // `updateAccessory`/`deleteAccessory` are blocked during maintenance too.
-  await assertWritesAllowed(tx);
-
-  const permission = await resolveAccessoryPermission(tx, actorId, id);
-  if (permission === "owner" || permission === "edit") return permission;
-  if (permission === "view") {
-    throw new NotAuthorizedError(
-      "read-only access; cannot modify this accessory",
-    );
-  }
-  throw new NotFoundError();
-}
-
 /** Attach viewer-relative compatibility (ordinal order, unseen firearms dropped). */
 async function attachCompatibility(
   database: DbOrTx,
@@ -226,7 +202,7 @@ export async function updateAccessory(
   if (codes.length > 0) throw new ValidationError(codes);
 
   const row = await db.transaction(async (tx) => {
-    await requireEditPermission(tx, actorId, id);
+    await requireAccessoryEdit(tx, actorId, id);
     // A plain update never changes the mount (mount is a separate op via
     // `mountAccessory`) — load the CURRENT `currentFirearmId` so
     // `persistableFields` can force `installedDate` to null when the
@@ -359,7 +335,7 @@ export async function deleteAccessory(
   id: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    await requireEditPermission(tx, actorId, id);
+    await requireAccessoryEdit(tx, actorId, id);
     const deleted = await tx
       .delete(accessory)
       .where(eq(accessory.id, id))

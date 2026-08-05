@@ -3,6 +3,7 @@ import { NotFoundError } from "@/src/auth/errors";
 import { getCurrentUser } from "@/src/auth/session";
 import { visibleFirearmPermissions } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
+import { listAttachments } from "@/src/domain/accessories/attachments";
 import { costCentsToInputValue } from "@/src/domain/accessories/display";
 import { getAccessory } from "@/src/domain/accessories/service";
 import { buildFirearmMountContext } from "@/src/domain/firearms/mount-options";
@@ -122,6 +123,11 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
   // that owner's own guns, accessories-tracker plan KTD5's cross-tenant
   // guard) AND editable by the
   // acting user.
+  // Every viewer sees the attachments (R15); the domain layer authorizes the
+  // read through the parent accessory, which `getAccessory` above already
+  // proved is visible.
+  const attachments = await listAttachments(user.id, row.id);
+
   const { firearmNames, editableFirearms, visibleFirearms } =
     buildFirearmMountContext(firearms, permissions, row.ownerId);
 
@@ -145,6 +151,7 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
       permission={permission}
       editableFirearms={editableFirearms}
       visibleFirearms={visibleFirearms}
+      attachments={attachments}
       firearmNames={firearmNames}
       serviceRules={serviceProps.serviceRules}
       suppressedServiceRuleNames={serviceProps.suppressedServiceRuleNames}
