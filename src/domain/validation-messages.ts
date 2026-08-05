@@ -8,6 +8,7 @@ import {
   MAGPUL_LABEL_ALLOWED_DESCRIPTION,
   MAX_LABEL_LENGTH,
 } from "./magazines/constants";
+import { MAX_BULK_SERVICE_ITEMS } from "./service-intervals/constants";
 
 export const VALIDATION_MESSAGES: Record<string, string> = {
   emptyName: "Name is required",
@@ -16,6 +17,8 @@ export const VALIDATION_MESSAGES: Record<string, string> = {
   invalidAction: "Select a valid firearm action",
   typeRequired: "Choose a firearm type",
   actionRequired: "Choose a firearm action",
+  invalidAcquiredDate: "Enter a valid acquired date",
+  acquiredDateInFuture: "Acquired date cannot be in the future",
   emptyBrandModel: "Brand/model is required",
   baseCapacityTooLow: "Base capacity must be at least 1",
   baseCapacityInvalid:
@@ -45,6 +48,21 @@ export const VALIDATION_MESSAGES: Record<string, string> = {
   negativeCostCents: "Cost cannot be negative",
   invalidCostCents: "Enter a valid cost (up to $21,474,836.47)",
   invalidInstalledDate: "Enter a valid installed date",
+  duplicateName: "A rule with this name already exists here",
+  thresholdTooLow: "Thresholds must be at least 1",
+  missingThreshold: "Set at least one threshold (days, sessions, or rounds)",
+  emptyRuleName: "Rule name is required",
+  invalidScope: "Select a valid scope (firearm or accessory)",
+  invalidCategory: "Category must be text",
+  invalidRuleName: "Rule name must be text",
+  emptyServicedOn: "Date is required",
+  invalidServicedOn: "Enter a valid date",
+  servicedOnInFuture: "Date cannot be in the future",
+  ruleNotFound:
+    "This rule no longer exists on this item — refresh and try again",
+  bulkTooLarge: `Cannot mark more than ${MAX_BULK_SERVICE_ITEMS} items serviced at once`,
+  suppressedWithThresholds:
+    "A suppressed rule cannot also set thresholds — clear them or turn off suppression",
 };
 
 export function messageForCode(code: string): string {

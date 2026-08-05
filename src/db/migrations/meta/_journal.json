@@ -134,6 +134,27 @@
       "when": 1783890417560,
       "tag": "0018_spotty_blonde_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1785731323900,
+      "tag": "0019_perfect_nebula",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1785737503751,
+      "tag": "0020_naive_scarlet_spider",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1785849296341,
+      "tag": "0021_shocking_shooting_star",
+      "breakpoints": true
     }
   ]
 }

@@ -43,7 +43,7 @@ function inList(values: readonly string[]): string {
  *   Better Auth user ids are text) with an index for visibility lookups (R72).
  *   Parents use uuid PKs (R8, R64).
  * - Optional TEXT fields are NOT NULL DEFAULT '' (the empty-not-null rule, R18).
- *   Optional date/numeric fields that can be "unset" use NULL (KTD-7).
+ *   Optional date/numeric fields that can be "unset" use NULL, not zero.
  * - `magazine_firearm` carries the compatibility ordinal (KTD-8) with both FKs
  *   ON DELETE CASCADE (R35) and a composite PK preventing duplicate pairs (R34).
  * - A single polymorphic `grant` table attaches to a parent by type+id and
@@ -86,6 +86,12 @@ export const firearm = pgTable(
     // NFA-regulated item flag (#8). Backfills existing rows to
     // false on ADD COLUMN (R12-style).
     isNfa: boolean("is_nfa").notNull().default(false),
+    // NULL = unset, not zero; calendar date, no time component. Mirrors
+    // `magazine.acquiredDate` / `ammo.acquiredDate` (service-intervals plan
+    // R22) — it is also the origin date the service-interval day axis
+    // measures from when set (KTD9 in that plan), falling back to
+    // `createdAt` when null.
+    acquiredDate: date("acquired_date"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -116,7 +122,7 @@ export const magazine = pgTable(
     baseCapacity: integer("base_capacity").notNull(),
     extensionRounds: integer("extension_rounds").notNull().default(0),
     label: text("label").notNull().default(""),
-    // NULL = unset (KTD-7); calendar date, no time component.
+    // NULL = unset (not zero); calendar date, no time component.
     acquiredDate: date("acquired_date"),
     notes: text("notes").notNull().default(""),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -155,7 +161,7 @@ export const ammo = pgTable(
     grain: integer("grain").notNull().default(0),
     quantityRounds: integer("quantity_rounds").notNull().default(0),
     lowStockThreshold: integer("low_stock_threshold").notNull().default(0),
-    // NULL = unset (KTD-7); calendar date, no time component.
+    // NULL = unset (not zero); calendar date, no time component.
     acquiredDate: date("acquired_date"),
     notes: text("notes").notNull().default(""),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -178,8 +184,8 @@ export const ammo = pgTable(
  * `onDelete: "set null"` — deleting a firearm unmounts its accessories rather
  * than deleting them (they remain owner inventory). `category` is the only
  * required text field (mirrors ammo's `caliber`); the rest are empty-not-null
- * (R18). `cost_cents` is nullable (KTD-7-style: unset cost is unknown, not
- * zero) with a non-negative CHECK that only bounds non-null values. `is_nfa`
+ * (R18). `cost_cents` is nullable (unset cost is unknown, not zero) with a
+ * non-negative CHECK that only bounds non-null values. `is_nfa`
  * flags NFA-regulated accessories (suppressors, SBR stocks, etc.), mirroring
  * the new `firearm.is_nfa` column.
  */
@@ -197,8 +203,18 @@ export const accessory = pgTable(
     brand: text("brand").notNull().default(""),
     model: text("model").notNull().default(""),
     serialNumber: text("serial_number").notNull().default(""),
-    // NULL = unset (KTD-7); calendar date, no time component.
+    // NULL = unset (not zero); calendar date, no time component.
     installedDate: date("installed_date"),
+    // NULL = unset, not zero; calendar date, no time component. Mirrors
+    // `firearm.acquiredDate` (service-intervals plan R22) — added during
+    // implementation (see the plan's "Scope added during implementation"
+    // note) because leaving it out reproduced R22's cold-start problem on
+    // accessories: one entered today with no acquired date reads as not-due
+    // on day one even when it's actually been owned for years. It is also
+    // the origin date the service-interval day axis measures from when set
+    // (KTD9), falling back to `createdAt` when null — `installedDate` can
+    // never serve that role since it is force-nulled on unmount.
+    acquiredDate: date("acquired_date"),
     costCents: integer("cost_cents"),
     notes: text("notes").notNull().default(""),
     isNfa: boolean("is_nfa").notNull().default(false),
@@ -450,6 +466,185 @@ export const firearmDocument = pgTable(
   ],
 );
 
+/**
+ * Service rule default (service-intervals plan, U1) — an owner-scoped default
+ * rule set keyed by category: `scope` is `'firearm'` (category = firearm
+ * `type`) or `'accessory'` (category = accessory `category` as typed, KD10).
+ * `unique(owner_id, scope, category, name)` prevents two default rules
+ * sharing a name within one owner's category (R2). At least one of the three
+ * thresholds must be non-null (R2) and every non-null threshold must be >= 1
+ * (R26-style backstop) — enforced by the two CHECKs below rather than one
+ * combined expression, so a failure names which invariant broke. No FK to
+ * `firearm`/`accessory`: a default's category is a value, not a reference
+ * (KTD8 — the accessory-category list itself is derived on read, never
+ * stored here).
+ */
+export const serviceRuleDefault = pgTable(
+  "service_rule_default",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    scope: text("scope").notNull(),
+    category: text("category").notNull(),
+    name: text("name").notNull(),
+    // Nullable thresholds (unset means "not tracked on this axis", not
+    // zero). At least one must be set — see the CHECK below.
+    intervalDays: integer("interval_days"),
+    intervalSessions: integer("interval_sessions"),
+    intervalRounds: integer("interval_rounds"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("service_rule_default_owner_id_idx").on(t.ownerId),
+    unique("service_rule_default_owner_scope_category_name_unique").on(
+      t.ownerId,
+      t.scope,
+      t.category,
+      t.name,
+    ),
+    check(
+      "service_rule_default_scope_valid",
+      sql`${t.scope} in ('firearm', 'accessory')`,
+    ),
+    check(
+      "service_rule_default_has_threshold",
+      sql`num_nonnulls(${t.intervalDays}, ${t.intervalSessions}, ${t.intervalRounds}) >= 1`,
+    ),
+    check(
+      "service_rule_default_thresholds_min",
+      sql`(${t.intervalDays} IS NULL OR ${t.intervalDays} >= 1) AND (${t.intervalSessions} IS NULL OR ${t.intervalSessions} >= 1) AND (${t.intervalRounds} IS NULL OR ${t.intervalRounds} >= 1)`,
+    ),
+  ],
+);
+
+/**
+ * Service rule (service-intervals plan, U1) — a per-item rule row attached to
+ * a firearm or an accessory through two nullable FKs with an exactly-one
+ * CHECK (KTD2), rather than the `parent_type`/`parent_id` shape `grant` and
+ * `inventory_log` use. Real FKs give native `ON DELETE CASCADE`, so no
+ * hand-written cleanup trigger (of the kind `0002_grant_cleanup_triggers.sql`
+ * / `0008_brown_bulldozer.sql` carry) is needed here. A row is one of three
+ * things (KTD6): an override (thresholds set, not suppressed), a suppression
+ * (`suppressed = true`, no thresholds — suppressing and restoring is
+ * inserting/deleting this row, not toggling a separate flag), or an
+ * item-only rule with no matching default (also thresholds set, not
+ * suppressed — indistinguishable at the row level from an override; that
+ * distinction is resolved against the defaults set in the domain layer, not
+ * stored). `unique(firearm_id, name)` / `unique(accessory_id, name)` rely on
+ * Postgres treating NULLs as distinct, so a firearm rule and an accessory
+ * rule never collide with each other even when they share a name. Exactly
+ * one parent, never zero or both: a row with neither FK set would be a
+ * meaningless orphan, and one with both would mean a single rule belongs to
+ * two items at once — incoherent alongside those same per-parent unique
+ * constraints, which only make sense scoped to one item apiece.
+ */
+export const serviceRule = pgTable(
+  "service_rule",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    firearmId: uuid("firearm_id").references(() => firearm.id, {
+      onDelete: "cascade",
+    }),
+    accessoryId: uuid("accessory_id").references(() => accessory.id, {
+      onDelete: "cascade",
+    }),
+    name: text("name").notNull(),
+    suppressed: boolean("suppressed").notNull().default(false),
+    intervalDays: integer("interval_days"),
+    intervalSessions: integer("interval_sessions"),
+    intervalRounds: integer("interval_rounds"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("service_rule_firearm_id_idx").on(t.firearmId),
+    index("service_rule_accessory_id_idx").on(t.accessoryId),
+    unique("service_rule_firearm_name_unique").on(t.firearmId, t.name),
+    unique("service_rule_accessory_name_unique").on(t.accessoryId, t.name),
+    check(
+      "service_rule_exactly_one_parent",
+      sql`num_nonnulls(${t.firearmId}, ${t.accessoryId}) = 1`,
+    ),
+    check(
+      "service_rule_thresholds_min",
+      sql`(${t.intervalDays} IS NULL OR ${t.intervalDays} >= 1) AND (${t.intervalSessions} IS NULL OR ${t.intervalSessions} >= 1) AND (${t.intervalRounds} IS NULL OR ${t.intervalRounds} >= 1)`,
+    ),
+    // Suppressed rows carry no thresholds; unsuppressed rows carry at least
+    // one (approach step 2) — the same shape rule the defaults table
+    // enforces, plus the suppression/threshold exclusivity.
+    check(
+      "service_rule_suppressed_thresholds_consistent",
+      sql`(${t.suppressed} AND num_nonnulls(${t.intervalDays}, ${t.intervalSessions}, ${t.intervalRounds}) = 0) OR (NOT ${t.suppressed} AND num_nonnulls(${t.intervalDays}, ${t.intervalSessions}, ${t.intervalRounds}) >= 1)`,
+    ),
+  ],
+);
+
+/**
+ * Service event (service-intervals plan, U1) — one logged act of service
+ * against a named rule on a firearm or an accessory, same exactly-one-parent
+ * shape as `service_rule` (KTD2) and the same reason for it: a row belongs to
+ * one item's history, never zero (an orphan event nothing can display) and
+ * never two (an event can't have happened to two separate items).
+ * `rule_name` is a plain text column, not an
+ * FK to `service_rule` (KTD1): a rule's identity is its name, and an event
+ * must be able to exist (via the U5 `cleaned`/`lubed` conversion) without a
+ * corresponding rule row ever having been created, so renaming an item rule
+ * re-points its events' `rule_name` in the same transaction rather than
+ * following a reference. `serviced_on` is a calendar `date` (KTD5 — compared
+ * as a calendar day, never an instant); `created_at` is a separate
+ * not-null-defaulted timestamp so several rules serviced on the same
+ * calendar day still sort in a stable insertion order, and so the R15
+ * conversion has somewhere to carry the source `inventory_log` row's
+ * insertion time. `actor_id` FKs to `user` with `ON DELETE SET NULL` —
+ * mirroring `inventory_log.actorId`'s reasoning: the event is a child of its
+ * parent item (already cleaned up by the FK cascade above), not of the
+ * actor, so deleting a user account must never be blocked by service events
+ * that user logged against someone else's shared item.
+ */
+export const serviceEvent = pgTable(
+  "service_event",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    firearmId: uuid("firearm_id").references(() => firearm.id, {
+      onDelete: "cascade",
+    }),
+    accessoryId: uuid("accessory_id").references(() => accessory.id, {
+      onDelete: "cascade",
+    }),
+    ruleName: text("rule_name").notNull(),
+    servicedOn: date("serviced_on").notNull(),
+    actorId: text("actor_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    // Empty-not-null (R18-style).
+    notes: text("notes").notNull().default(""),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("service_event_firearm_id_idx").on(t.firearmId),
+    index("service_event_accessory_id_idx").on(t.accessoryId),
+    // Latest-service-point lookup per item and rule name (grouped `max`,
+    // mirroring `loadLastInventoriedBatch`'s query shape).
+    index("service_event_firearm_rule_serviced_idx").on(
+      t.firearmId,
+      t.ruleName,
+      t.servicedOn,
+    ),
+    index("service_event_accessory_rule_serviced_idx").on(
+      t.accessoryId,
+      t.ruleName,
+      t.servicedOn,
+    ),
+    check(
+      "service_event_exactly_one_parent",
+      sql`num_nonnulls(${t.firearmId}, ${t.accessoryId}) = 1`,
+    ),
+  ],
+);
+
 export const grant = pgTable(
   "grant",
   {
@@ -487,7 +682,9 @@ export const grant = pgTable(
 
 /**
  * Inventory event log (U2/U3) — an append-only audit trail of actions taken
- * against a firearm or magazine (inventoried, cleaned, lubed). Polymorphic
+ * against a firearm or magazine (`inventoried`, the only event type either
+ * parent family carries — `cleaned` and `lubed` were retired and converted to
+ * `service_event` rows by the service-intervals plan's U5). Polymorphic
  * `parent_type`/`parent_id` mirrors `grant`: no FK on `parent_id` (it spans
  * two parent tables), with a `parent_type` CHECK plus a parent-gated
  * `event_type` CHECK sourced from `domain/inventory-log/constants.ts` (R3

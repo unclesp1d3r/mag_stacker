@@ -40,6 +40,11 @@ export interface FirearmCreateInput extends FirearmInput {
   ownerId?: string;
 }
 
+// `acquiredDate` (service-intervals plan R22) is already on `FirearmInput`,
+// validated by `validateFirearm`, and carried through both create and update
+// below — null means unset, not "unknown but zero" (KTD9's origin-date
+// fallback to `createdAt` depends on that distinction).
+
 export type FirearmUpdateInput = Omit<FirearmCreateInput, "ownerId">;
 
 function persistableFields(input: FirearmCreateInput | FirearmUpdateInput) {
@@ -60,6 +65,7 @@ function persistableFields(input: FirearmCreateInput | FirearmUpdateInput) {
     serialNumber: input.serialNumber ?? "",
     notes: input.notes ?? "",
     isNfa: input.isNfa ?? false,
+    acquiredDate: input.acquiredDate ?? null,
   };
 }
 

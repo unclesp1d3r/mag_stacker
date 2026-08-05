@@ -24,7 +24,7 @@ import {
   createDefaultTableViewState,
   type TableViewState,
 } from "@/components/ui/data-table/types";
-import { EmptyState } from "@/components/ui/feedback";
+import { Badge, EmptyState } from "@/components/ui/feedback";
 import {
   PhotoThumbnail,
   type ThumbnailPhoto,
@@ -57,6 +57,13 @@ export interface FirearmListItem extends FirearmFormValues {
   /** This firearm's primary photo, batch-resolved by the page loader via
    * `primaryThumbnailsFor` (R18) — `null` when it has none (R22). */
   primaryPhoto: ThumbnailPhoto | null;
+  /**
+   * True when this firearm itself has at least one due service rule (U9,
+   * R20) — never true merely because an accessory mounted to it is due; that
+   * marks the accessory's own row instead. Advisory only (R21): a marker, not
+   * a gate.
+   */
+  serviceDue: boolean;
 }
 
 interface FirearmsViewProps {
@@ -164,6 +171,16 @@ export function FirearmsView({
             ) : null}
           </>
         ),
+      },
+      {
+        id: "serviceDue",
+        header: "Service",
+        meta: { label: "Service" },
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.serviceDue ? (
+            <Badge tone="destructive">Service due</Badge>
+          ) : null,
       },
       {
         accessorKey: "caliber",

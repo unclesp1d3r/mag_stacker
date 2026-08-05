@@ -37,13 +37,13 @@ describe("inventory-log service (U3)", () => {
     await createLogEntry(owner, {
       parentType: "firearm",
       parentId: fa.id,
-      eventType: "cleaned",
+      eventType: "inventoried",
       occurredAt: "2026-01-01T00:00:00.000Z",
     });
     await createLogEntry(owner, {
       parentType: "firearm",
       parentId: fa.id,
-      eventType: "lubed",
+      eventType: "inventoried",
       occurredAt: "2026-03-01T00:00:00.000Z",
     });
     await createLogEntry(owner, {
@@ -54,10 +54,10 @@ describe("inventory-log service (U3)", () => {
     });
 
     const entries = await listLogForParent(owner, "firearm", fa.id);
-    expect(entries.map((e) => e.eventType)).toEqual([
-      "lubed",
-      "inventoried",
-      "cleaned",
+    expect(entries.map((e) => e.occurredAt.toISOString())).toEqual([
+      "2026-03-01T00:00:00.000Z",
+      "2026-02-01T00:00:00.000Z",
+      "2026-01-01T00:00:00.000Z",
     ]);
   });
 
@@ -95,7 +95,7 @@ describe("inventory-log service (U3)", () => {
     const created = await createLogEntry(editor, {
       parentType: "firearm",
       parentId: fa.id,
-      eventType: "cleaned",
+      eventType: "inventoried",
       occurredAt: "2026-01-01T00:00:00.000Z",
     });
     expect(created.actorId).toBe(editor);
@@ -148,7 +148,7 @@ describe("inventory-log service (U3)", () => {
       createLogEntry(viewer, {
         parentType: "firearm",
         parentId: fa.id,
-        eventType: "cleaned",
+        eventType: "inventoried",
         occurredAt: "2026-01-01T00:00:00.000Z",
       }),
     ).rejects.toBeInstanceOf(NotAuthorizedError);
@@ -160,7 +160,7 @@ describe("inventory-log service (U3)", () => {
       createLogEntry(stranger, {
         parentType: "firearm",
         parentId: fa.id,
-        eventType: "cleaned",
+        eventType: "inventoried",
         occurredAt: "2026-01-01T00:00:00.000Z",
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
@@ -169,26 +169,29 @@ describe("inventory-log service (U3)", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  test("covers AE2/R3: cleaned on a magazine throws ValidationError and writes no row", async () => {
-    const mag = await makeMagazine(owner);
+  // Covers R13/KTD1/KTD7 (service-intervals plan, U5): cleaned/lubed are
+  // retired event types entirely, not merely invalid on a magazine — a
+  // firearm parent throws the same ValidationError a magazine always did.
+  test("covers R13: cleaned throws ValidationError and writes no row (retired event type)", async () => {
+    const fa = await makeFirearm(owner);
     await expect(
       createLogEntry(owner, {
-        parentType: "magazine",
-        parentId: mag.id,
+        parentType: "firearm",
+        parentId: fa.id,
         eventType: "cleaned",
         occurredAt: "2026-01-01T00:00:00.000Z",
       }),
     ).rejects.toBeInstanceOf(ValidationError);
-    const entries = await listLogForParent(owner, "magazine", mag.id);
+    const entries = await listLogForParent(owner, "firearm", fa.id);
     expect(entries).toHaveLength(0);
   });
 
-  test("R3 backstop: a raw insert with an invalid (parent_type, event_type) pair is rejected by the DB CHECK", async () => {
-    const mag = await makeMagazine(owner);
+  test("R3 backstop: the DB rejects a direct insert of a retired 'cleaned' row for a firearm after the CHECK was narrowed (U5)", async () => {
+    const fa = await makeFirearm(owner);
     await expectRejects(() =>
       db.insert(inventoryLog).values({
-        parentType: "magazine",
-        parentId: mag.id,
+        parentType: "firearm",
+        parentId: fa.id,
         eventType: "cleaned",
         actorId: owner,
       }),
@@ -200,7 +203,7 @@ describe("inventory-log service (U3)", () => {
     await createLogEntry(owner, {
       parentType: "firearm",
       parentId: fa.id,
-      eventType: "cleaned",
+      eventType: "inventoried",
       occurredAt: "2026-01-01T00:00:00.000Z",
     });
     await db.delete(firearm).where(eq(firearm.id, fa.id));
@@ -340,7 +343,7 @@ describe("inventory-log service (U3)", () => {
       const created = await createLogEntry(isolatedGrantee, {
         parentType: "firearm",
         parentId: fa.id,
-        eventType: "cleaned",
+        eventType: "inventoried",
         occurredAt: "2026-01-01T00:00:00.000Z",
       });
       expect(created.actorId).toBe(isolatedGrantee);

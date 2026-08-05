@@ -18,6 +18,7 @@ import {
   firearmTypeLabel,
 } from "@/src/domain/firearms/constants";
 import { firearmDisplayName, hasNickname } from "@/src/domain/firearms/display";
+import type { RuleDueState } from "@/src/domain/service-intervals/due-service";
 import { InventoryLogHistory } from "../inventory-log/inventory-log-history";
 import { FirearmDocuments } from "./[id]/firearm-documents";
 import { type FirearmPhotoRow, FirearmPhotos } from "./[id]/firearm-photos";
@@ -28,6 +29,8 @@ import {
   type MountedAccessoryRow,
 } from "./mounted-accessories";
 import { RangeSessionHistory } from "./range-session-history";
+import { ServiceHistory, type ServiceHistoryEntry } from "./service-history";
+import { ServiceRulesPanel } from "./service-rules-panel";
 
 export interface FirearmDetail extends FirearmFormValues {
   id: string;
@@ -48,6 +51,12 @@ interface FirearmDetailViewProps {
   /** Server-loaded via `listDocuments` for the OWNER only (empty for a
    * non-owner, who never sees the section this feeds — U7, R16). */
   documents: FirearmDocumentRow[];
+  /** Resolved, due-annotated rule set (U8, U4's `getItemDueState`). */
+  serviceRules: RuleDueState[];
+  /** Names of this firearm's suppressed rules (U8, KTD6). */
+  suppressedServiceRuleNames: string[];
+  /** Service history, newest first (U8, R17). */
+  serviceHistory: ServiceHistoryEntry[];
 }
 
 export function FirearmDetailView({
@@ -61,6 +70,9 @@ export function FirearmDetailView({
   accessoryValueCents,
   photos,
   documents,
+  serviceRules,
+  suppressedServiceRuleNames,
+  serviceHistory,
 }: FirearmDetailViewProps) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -169,6 +181,10 @@ export function FirearmDetailView({
             />
             <DetailRow label="Subtype" value={orDash(firearm.subtype)} />
             <DetailRow
+              label="Acquired date"
+              value={orDash(firearm.acquiredDate)}
+            />
+            <DetailRow
               label="Serial number"
               value={
                 <span className="font-mono text-xs">
@@ -237,6 +253,22 @@ export function FirearmDetailView({
         firearmId={firearm.id}
         firearmName={displayName}
         canEdit={canEdit}
+        onChange={() => router.refresh()}
+      />
+
+      <ServiceRulesPanel
+        parentType="firearm"
+        parentId={firearm.id}
+        rules={serviceRules}
+        suppressedRuleNames={suppressedServiceRuleNames}
+        canManageRules={isOwner}
+        canLogService={canEdit}
+        onChange={() => router.refresh()}
+      />
+
+      <ServiceHistory
+        entries={serviceHistory}
+        canWrite={canEdit}
         onChange={() => router.refresh()}
       />
 

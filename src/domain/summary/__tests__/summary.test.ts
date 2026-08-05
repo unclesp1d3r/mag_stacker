@@ -1,10 +1,24 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { Pool } from "pg";
+import { createGrant } from "@/src/auth/grants";
+import { db } from "@/src/db/client";
 import { createMagazine } from "@/src/domain/magazines/service";
+import {
+  type ItemDueEntry,
+  listDueForVisibleCollection,
+  type RuleDueState,
+} from "@/src/domain/service-intervals/due-service";
+import {
+  createItemRule,
+  createServiceRuleDefault,
+} from "@/src/domain/service-intervals/rules-service";
 import {
   createUser,
   deleteUsers,
+  makeAccessory,
   makeAmmo,
   makeFirearm,
+  makeServiceEvent,
 } from "@/src/test-support/factories";
 import {
   type AmmoSnapshot,
@@ -19,6 +33,64 @@ function caliberRow(s: ReturnType<typeof computeSummary>, caliber: string) {
 }
 function firearmRow(s: ReturnType<typeof computeSummary>, id: string) {
   return s.firearmCounts.find((r) => r.id === id);
+}
+
+/**
+ * A minimal `RuleDueState` fixture — only `due` varies across these tests.
+ * Branched, not a flat `due, trippedAxis: due ? "days" : null`, because
+ * `RuleDueState` is a discriminated union: only this shape lets TypeScript
+ * confirm the fixture matches what `isDue` ever actually produces.
+ */
+function dueRule(name: string, due: boolean): RuleDueState {
+  const base = {
+    name,
+    inheritanceState: "item-only" as const,
+    intervalDays: null,
+    intervalSessions: null,
+    intervalRounds: null,
+    measureFrom: new Date(2026, 0, 1),
+    counts: { days: 0, sessions: 0, rounds: 0 },
+  };
+  return due
+    ? { ...base, due: true, trippedAxis: "days" }
+    : { ...base, due: false, trippedAxis: null };
+}
+
+function dueEntry(
+  parentType: ItemDueEntry["parentType"],
+  parentId: string,
+  rules: RuleDueState[],
+): ItemDueEntry {
+  return { parentType, parentId, rules };
+}
+
+/**
+ * Counts every SQL round trip issued through `pg`'s `Pool.prototype.query`
+ * while `fn` runs — mirrors `due-service.test.ts`'s helper (U4), which proved
+ * `listDueForVisibleCollection` is bounded; this proves `inventorySummary`
+ * stays bounded when it threads that same call through (U9's Definition of
+ * Done: "the summary loads without a per-item query as the visible set
+ * grows").
+ */
+async function countPoolQueries<T>(
+  fn: () => Promise<T>,
+): Promise<{ result: T; count: number }> {
+  const original = Pool.prototype.query;
+  let count = 0;
+  Pool.prototype.query = function (
+    this: Pool,
+    ...args: Parameters<typeof original>
+  ) {
+    count += 1;
+    // biome-ignore lint/suspicious/noExplicitAny: passthrough to the original overloaded pg method
+    return (original as any).apply(this, args);
+  } as typeof original;
+  try {
+    const result = await fn();
+    return { result, count };
+  } finally {
+    Pool.prototype.query = original;
+  }
 }
 
 // Pure aggregation — parity digest §12.3 (no DB).
@@ -134,9 +206,10 @@ describe("computeSummary (parity §7)", () => {
 
   test("empty inventory yields zeros/empty arrays, never null (R68)", () => {
     const s = computeSummary([], []);
-    // U5: computeSummary's return shape grew ammo roll-up fields — the
-    // magazine/firearm fields it originally asserted stay 0/[]/[] (regression),
-    // and the new ammo fields are asserted zero/empty too (never null, R68-style).
+    // U5: computeSummary's return shape grew ammo roll-up fields, and U9 grew
+    // it again with the service roll-up — the magazine/firearm fields it
+    // originally asserted stay 0/[]/[] (regression), and every added field is
+    // asserted zero/empty too (never null, R68-style).
     expect(s).toEqual({
       totalMagazines: 0,
       byCaliber: [],
@@ -145,6 +218,8 @@ describe("computeSummary (parity §7)", () => {
       ammoEntriesLow: 0,
       ammoCalibersLow: 0,
       caliberCoverage: [],
+      itemsDue: 0,
+      rulesDue: 0,
     });
   });
 });
@@ -272,6 +347,49 @@ describe("computeSummary — ammo roll-ups (U5)", () => {
   });
 });
 
+// Service due roll-up (service-intervals plan U9, R19). Pure — folds
+// pre-computed `ItemDueEntry[]` fixtures (never re-derives due state itself,
+// KTD4), mirroring the ammo roll-up block's style above.
+describe("computeSummary — service roll-up (U9)", () => {
+  test("covers R19: counts items with >=1 due rule (breadth) and due rules in total (volume) from one fold", () => {
+    const entries: ItemDueEntry[] = [
+      dueEntry("firearm", "f1", [
+        dueRule("Cleaning", true),
+        dueRule("Barrel", true),
+      ]),
+      dueEntry("firearm", "f2", [dueRule("Cleaning", false)]),
+      dueEntry("accessory", "a1", [dueRule("Cleaning", true)]),
+    ];
+    const s = computeSummary([], [], [], entries);
+    expect(s.itemsDue).toBe(2);
+    expect(s.rulesDue).toBe(3);
+  });
+
+  test("an item with no due rules contributes to neither count", () => {
+    const entries: ItemDueEntry[] = [
+      dueEntry("firearm", "f1", [
+        dueRule("Cleaning", false),
+        dueRule("Barrel", false),
+      ]),
+    ];
+    const s = computeSummary([], [], [], entries);
+    expect(s.itemsDue).toBe(0);
+    expect(s.rulesDue).toBe(0);
+  });
+
+  test("no dueEntries argument yields a zero roll-up, not an error (default param)", () => {
+    const s = computeSummary([], []);
+    expect(s.itemsDue).toBe(0);
+    expect(s.rulesDue).toBe(0);
+  });
+
+  test("an empty entries array (no visible items) yields a zero roll-up", () => {
+    const s = computeSummary([], [], [], []);
+    expect(s.itemsDue).toBe(0);
+    expect(s.rulesDue).toBe(0);
+  });
+});
+
 describe("inventorySummary (U7, viewer-relative)", () => {
   let userA = "";
   let userB = "";
@@ -330,5 +448,224 @@ describe("inventorySummary (U7, viewer-relative)", () => {
     expect(bSummary.ammoEntriesLow).toBe(0);
     expect(bSummary.ammoCalibersLow).toBe(0);
     expect(bSummary.caliberCoverage).toEqual([]);
+  });
+});
+
+/**
+ * `inventorySummary`'s service roll-up, end to end (service-intervals plan
+ * U9, R19/R20/R21). Each test creates its own isolated owner(s) (mirrors
+ * `due-service.test.ts`'s isolation style) rather than sharing the userA/userB
+ * pair above, so ordering never matters. A firearm's `acquiredDate` is always
+ * set far in the past with a 1-day threshold — due regardless of the actual
+ * run date, with no need to pin `asOf` (`inventorySummary` doesn't expose one).
+ */
+describe("inventorySummary — service roll-up (U9)", () => {
+  const createdUsers: string[] = [];
+
+  afterAll(async () => {
+    await deleteUsers(...createdUsers);
+  });
+
+  async function newOwner(label: string): Promise<string> {
+    const id = await createUser(label);
+    createdUsers.push(id);
+    return id;
+  }
+
+  const LONG_AGO = "2020-01-01";
+  const OVERDUE = { intervalDays: 1 };
+
+  test("covers AE5: a suppressed rule that would otherwise be due contributes to neither count", async () => {
+    const owner = await newOwner("u9ae5");
+    const fa = await makeFirearm(owner, {
+      type: "rifle",
+      acquiredDate: LONG_AGO,
+    });
+    await createServiceRuleDefault(owner, {
+      scope: "firearm",
+      category: "rifle",
+      name: "Cleaning",
+      ...OVERDUE,
+    });
+    await createItemRule(owner, "firearm", fa.id, {
+      name: "Cleaning",
+      suppressed: true,
+    });
+
+    const summary = await inventorySummary(owner);
+    expect(summary.itemsDue).toBe(0);
+    expect(summary.rulesDue).toBe(0);
+  });
+
+  test("covers R19: three items due across five rules — breadth and volume both visible", async () => {
+    const owner = await newOwner("u9r19");
+
+    await makeFirearm(owner, {
+      type: "rifle",
+      acquiredDate: LONG_AGO,
+    });
+    await createServiceRuleDefault(owner, {
+      scope: "firearm",
+      category: "rifle",
+      name: "Cleaning",
+      ...OVERDUE,
+    });
+    await createServiceRuleDefault(owner, {
+      scope: "firearm",
+      category: "rifle",
+      name: "Barrel",
+      ...OVERDUE,
+    });
+
+    await makeFirearm(owner, {
+      type: "pistol",
+      acquiredDate: LONG_AGO,
+    });
+    await createServiceRuleDefault(owner, {
+      scope: "firearm",
+      category: "pistol",
+      name: "Cleaning",
+      ...OVERDUE,
+    });
+    await createServiceRuleDefault(owner, {
+      scope: "firearm",
+      category: "pistol",
+      name: "Recoil spring",
+      ...OVERDUE,
+    });
+
+    const optic = await makeAccessory(owner, { category: "Optic" });
+    await createServiceRuleDefault(owner, {
+      scope: "accessory",
+      category: "Optic",
+      name: "Zero check",
+      ...OVERDUE,
+    });
+    // This fixture doesn't set an acquired date, so origin falls back to
+    // `createdAt` (KTD9), which is "now" for a freshly-inserted row, so a
+    // 1-day threshold alone would never trip. A backdated service event gives
+    // the rule an old measure-from point instead, same as a real owner's
+    // history would.
+    await makeServiceEvent(
+      { accessoryId: optic.id },
+      { ruleName: "Zero check", servicedOn: LONG_AGO },
+    );
+
+    const summary = await inventorySummary(owner);
+    expect(summary.itemsDue).toBe(3);
+    expect(summary.rulesDue).toBe(5);
+  });
+
+  test("a shared firearm that is due appears in the grantee's roll-up, using its owner's defaults", async () => {
+    const owner = await newOwner("u9shareOwner");
+    const grantee = await newOwner("u9shareGrantee");
+    const fa = await makeFirearm(owner, {
+      type: "rifle",
+      acquiredDate: LONG_AGO,
+    });
+    await createServiceRuleDefault(owner, {
+      scope: "firearm",
+      category: "rifle",
+      name: "Cleaning",
+      ...OVERDUE,
+    });
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: grantee,
+      parentType: "firearm",
+      parentId: fa.id,
+      permission: "view",
+    });
+
+    const summary = await inventorySummary(grantee);
+    expect(summary.itemsDue).toBe(1);
+    expect(summary.rulesDue).toBe(1);
+  });
+
+  test("an item due only because of an accessory mounted to it is not itself marked — the accessory's own entry carries the due rule", async () => {
+    const owner = await newOwner("u9accessoryOnly");
+    const fa = await makeFirearm(owner, {
+      type: "rifle",
+      acquiredDate: LONG_AGO,
+    });
+    // No default/rule ever tracks the firearm itself.
+    const suppressor = await makeAccessory(owner, {
+      category: "Suppressor",
+      currentFirearmId: fa.id,
+    });
+    await createServiceRuleDefault(owner, {
+      scope: "accessory",
+      category: "Suppressor",
+      name: "Cleaning",
+      ...OVERDUE,
+    });
+    // This fixture doesn't set an acquired date, so origin falls back to
+    // `createdAt` (KTD9) — backdate a service event so the 1-day threshold
+    // actually trips (see the R19 test above).
+    await makeServiceEvent(
+      { accessoryId: suppressor.id },
+      { ruleName: "Cleaning", servicedOn: LONG_AGO },
+    );
+
+    const summary = await inventorySummary(owner);
+    expect(summary.itemsDue).toBe(1);
+    expect(summary.rulesDue).toBe(1);
+
+    // The firearm has no effective rules of its own, so it's absent from
+    // `listDueForVisibleCollection`'s output entirely — never marked due on
+    // the accessory's account.
+    const dueEntries = await listDueForVisibleCollection(owner);
+    const firearmEntry = dueEntries.find(
+      (entry) => entry.parentType === "firearm" && entry.parentId === fa.id,
+    );
+    expect(firearmEntry).toBeUndefined();
+  });
+
+  test("an owner with no defaults configured anywhere sees a zero roll-up, not an empty-state error", async () => {
+    const owner = await newOwner("u9zero");
+    await makeFirearm(owner, { type: "rifle" }); // an item exists; nothing tracks it
+    const summary = await inventorySummary(owner);
+    expect(summary.itemsDue).toBe(0);
+    expect(summary.rulesDue).toBe(0);
+  });
+
+  test("inventorySummary's service roll-up loads in a bounded number of queries as the visible set grows (KTD4)", async () => {
+    const owner = await newOwner("u9bounded");
+    await createServiceRuleDefault(owner, {
+      scope: "firearm",
+      category: "rifle",
+      name: "Cleaning",
+      ...OVERDUE,
+    });
+
+    async function addRifles(n: number): Promise<void> {
+      for (let i = 0; i < n; i += 1) {
+        await makeFirearm(owner, {
+          type: "rifle",
+          name: `Rifle ${i}`,
+          acquiredDate: LONG_AGO,
+        });
+      }
+    }
+
+    await addRifles(2);
+    const { result: small, count: smallCount } = await countPoolQueries(() =>
+      inventorySummary(owner),
+    );
+    expect(small.itemsDue).toBe(2);
+
+    await addRifles(8); // 10 firearms total now
+    const { result: large, count: largeCount } = await countPoolQueries(() =>
+      inventorySummary(owner),
+    );
+    expect(large.itemsDue).toBe(10);
+
+    // Bounded regardless of collection size (Definition of Done, U9/U4) —
+    // never a per-item query: 5x the items must not grow the query count.
+    // `<=` rather than exact equality: the query count is measured
+    // process-wide, so an unrelated concurrent query landing in either
+    // window would make an exact-equality assertion flake without the
+    // underlying "no per-item growth" property actually regressing.
+    expect(largeCount).toBeLessThanOrEqual(smallCount);
   });
 });

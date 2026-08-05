@@ -6,6 +6,7 @@ import {
   firearm,
   magazine,
   magazineLabelPrefix,
+  serviceRuleDefault,
 } from "@/src/db/inventory-schema";
 import {
   bulkMagazines,
@@ -13,11 +14,20 @@ import {
   DEMO_AMMO,
   DEMO_FIREARMS,
   DEMO_MAGAZINES,
+  DEMO_SERVICE_DEFAULTS,
+  DEMO_SERVICE_HISTORY,
+  DEMO_SERVICE_OVERRIDES,
+  isoDateDaysAgo,
 } from "@/src/demo/inventory";
 import { createAccessory } from "@/src/domain/accessories/service";
 import { createAmmo } from "@/src/domain/ammo/service";
 import { createFirearm } from "@/src/domain/firearms/service";
 import { createMagazine } from "@/src/domain/magazines/service";
+import { logServiceEvent } from "@/src/domain/service-intervals/events-service";
+import {
+  createItemRule,
+  createServiceRuleDefault,
+} from "@/src/domain/service-intervals/rules-service";
 
 /**
  * Demo inventory seed for a local/dev database.
@@ -50,7 +60,13 @@ import { createMagazine } from "@/src/domain/magazines/service";
  * All or nothing instead.
  *
  * Child-first ordering: accessories reference firearms, so they go before
- * firearms. `magazine_firearm` rows cascade from either side.
+ * firearms. `magazine_firearm` rows cascade from either side. Deleting a
+ * firearm or accessory row cascades its own `service_rule`/`service_event`
+ * rows natively (U1, KTD2) — nothing to do for those here. `service_rule_default`
+ * is owner-scoped rather than a child of any item (it has no parent to cascade
+ * from), so it needs its own explicit delete or a `--reset` run would leave
+ * the demo's category defaults behind and the next seed's
+ * `createServiceRuleDefault` calls would fail on the duplicate-name guard.
  */
 async function resetInventory(ownerId: string): Promise<void> {
   await db.transaction(async (tx) => {
@@ -61,6 +77,9 @@ async function resetInventory(ownerId: string): Promise<void> {
     await tx
       .delete(magazineLabelPrefix)
       .where(eq(magazineLabelPrefix.ownerId, ownerId));
+    await tx
+      .delete(serviceRuleDefault)
+      .where(eq(serviceRuleDefault.ownerId, ownerId));
   });
 }
 
@@ -102,7 +121,20 @@ async function seed(ownerId: string): Promise<void> {
   // Firearms first — accessories mount to them by name, so we need their ids.
   const firearmIdByName = new Map<string, string>();
   for (const f of DEMO_FIREARMS) {
-    const row = await createFirearm(ownerId, f);
+    const row = await createFirearm(ownerId, {
+      name: f.name,
+      caliber: f.caliber,
+      type: f.type,
+      action: f.action,
+      isNfa: f.isNfa ?? false,
+      // Relative to "now" (service-intervals plan, R22/KTD9) — resolved here,
+      // not stored in the demo data, so the origin date (and everything
+      // measured from it) stays fresh across every future seed run.
+      acquiredDate:
+        f.acquiredDaysAgo !== undefined
+          ? isoDateDaysAgo(f.acquiredDaysAgo)
+          : null,
+    });
     firearmIdByName.set(f.name, row.id);
   }
 
@@ -158,6 +190,49 @@ async function seed(ownerId: string): Promise<void> {
       costCents: s.costCents ?? null,
       isNfa: s.isNfa ?? false,
       firearmId,
+      // Relative to "now" (R22-parity, KTD9) — resolved here, not stored in
+      // the demo data, mirroring the firearm acquiredDate seed above.
+      acquiredDate:
+        s.acquiredDaysAgo !== undefined
+          ? isoDateDaysAgo(s.acquiredDaysAgo)
+          : null,
+    });
+  }
+
+  // Service-interval defaults, overrides, and history (service-intervals
+  // plan, U10) — arms the collection from category defaults exactly as an
+  // owner would from settings, then diverges and services a couple of items
+  // so the demo shows a mix of due and not-due rules rather than a uniform
+  // (and uninformative) all-or-nothing state.
+  for (const d of DEMO_SERVICE_DEFAULTS) {
+    await createServiceRuleDefault(ownerId, d);
+  }
+
+  for (const o of DEMO_SERVICE_OVERRIDES) {
+    const firearmId = firearmIdByName.get(o.firearmName);
+    if (!firearmId) {
+      throw new Error(
+        `Demo service override references unknown firearm "${o.firearmName}".`,
+      );
+    }
+    await createItemRule(ownerId, "firearm", firearmId, {
+      name: o.name,
+      suppressed: o.suppressed ?? false,
+      intervalDays: o.intervalDays ?? null,
+    });
+  }
+
+  for (const h of DEMO_SERVICE_HISTORY) {
+    const firearmId = firearmIdByName.get(h.firearmName);
+    if (!firearmId) {
+      throw new Error(
+        `Demo service history references unknown firearm "${h.firearmName}".`,
+      );
+    }
+    await logServiceEvent(ownerId, "firearm", firearmId, {
+      ruleName: h.ruleName,
+      servicedOn: isoDateDaysAgo(h.daysAgo),
+      notes: h.notes ?? "",
     });
   }
 
@@ -187,10 +262,20 @@ async function main(): Promise<void> {
   const shouldReset =
     process.argv.includes("--reset") || process.env.SEED_RESET === "1";
 
-  if (await hasInventory(owner.id)) {
+  // `hasInventory` alone misses an owner who has `service_rule_default` rows
+  // but no inventory yet — a plain run would then try to recreate the same
+  // defaults and fail on the duplicate-name guard, so the preflight has to
+  // check both.
+  const existingDefaults = await db
+    .select({ id: serviceRuleDefault.id })
+    .from(serviceRuleDefault)
+    .where(eq(serviceRuleDefault.ownerId, owner.id))
+    .limit(1);
+
+  if ((await hasInventory(owner.id)) || existingDefaults.length > 0) {
     if (!shouldReset) {
       console.log(
-        "The target account already has inventory; nothing to do. Re-run with --reset to replace it.",
+        "The target account already has inventory or service defaults; nothing to do. Re-run with --reset to replace it.",
       );
       return;
     }

@@ -228,3 +228,98 @@ describe("accessory service (accessory plan U4)", () => {
     ).rejects.toBeInstanceOf(NotAuthorizedError);
   });
 });
+
+// Acquired date round-trip — added during implementation, mirroring
+// `src/domain/firearms/__tests__/service.test.ts`'s "acquired date (U6)"
+// suite exactly (service-intervals plan R22/KTD9-parity). The origin-date
+// derivation itself is covered in
+// `src/domain/service-intervals/__tests__/due-service.test.ts`; this suite
+// covers only create/update/clear and the validation gate.
+describe("accessory service — acquired date", () => {
+  let userA = "";
+
+  beforeAll(async () => {
+    userA = await createUser("AccAcquiredDate");
+  });
+  afterAll(async () => {
+    await deleteUsers(userA);
+  });
+
+  test("creating without an acquired date stores null", async () => {
+    const acc = await createAccessory(userA, { category: "optic" });
+    expect(acc.acquiredDate).toBeNull();
+  });
+
+  test("creating with an acquired date persists it", async () => {
+    const acc = await createAccessory(userA, {
+      category: "optic",
+      acquiredDate: "2026-06-14",
+    });
+    expect(acc.acquiredDate).toBe("2026-06-14");
+  });
+
+  test("an update can set an acquired date that was previously unset", async () => {
+    const acc = await createAccessory(userA, { category: "optic" });
+    expect(acc.acquiredDate).toBeNull();
+    const updated = await updateAccessory(userA, acc.id, {
+      category: "optic",
+      acquiredDate: "2026-03-01",
+    });
+    expect(updated.acquiredDate).toBe("2026-03-01");
+  });
+
+  test("an update can clear a previously-set acquired date back to null", async () => {
+    const acc = await createAccessory(userA, {
+      category: "optic",
+      acquiredDate: "2026-01-01",
+    });
+    expect(acc.acquiredDate).toBe("2026-01-01");
+    const cleared = await updateAccessory(userA, acc.id, {
+      category: "optic",
+      acquiredDate: null,
+    });
+    expect(cleared.acquiredDate).toBeNull();
+  });
+
+  test("a malformed acquired date is rejected and writes no row (create)", async () => {
+    const before = await listAccessories(userA);
+    await expect(
+      createAccessory(userA, {
+        category: "optic",
+        acquiredDate: "not-a-date",
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    const after = await listAccessories(userA);
+    expect(after.length).toBe(before.length);
+  });
+
+  test("a malformed acquired date is rejected and leaves the existing row unchanged (update)", async () => {
+    const acc = await createAccessory(userA, {
+      category: "optic",
+      acquiredDate: "2026-01-01",
+    });
+    await expect(
+      updateAccessory(userA, acc.id, {
+        category: "optic",
+        acquiredDate: "2026-13-40",
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    const { accessory: row } = await getAccessory(userA, acc.id);
+    expect(row.acquiredDate).toBe("2026-01-01");
+  });
+
+  test("acquiredDate is independent of mount/unmount — unmounting never clears it (unlike installedDate)", async () => {
+    const fa = await makeFirearm(userA, { name: "AcquiredIndependentFA" });
+    const acc = await createAccessory(userA, {
+      category: "optic",
+      acquiredDate: "2020-05-01",
+      firearmId: fa.id,
+      installedDate: "2026-01-01",
+    });
+    expect(acc.acquiredDate).toBe("2020-05-01");
+
+    const unmounted = await mountAccessory(userA, acc.id, null);
+    expect(unmounted.installedDate).toBeNull();
+    expect(unmounted.acquiredDate).toBe("2020-05-01");
+  });
+});

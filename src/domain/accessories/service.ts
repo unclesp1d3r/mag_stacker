@@ -70,6 +70,12 @@ function persistableFields(
     model: input.model ?? "",
     serialNumber: input.serialNumber ?? "",
     installedDate: mountedFirearmId ? (input.installedDate ?? null) : null,
+    // Added during implementation, mirroring `firearm.acquiredDate` (R22):
+    // null means unset, not "unknown but zero" — the service-interval origin
+    // date (KTD9) depends on that distinction. Unlike `installedDate`, this
+    // is NOT force-nulled on unmount — it records when the OWNER acquired
+    // the accessory, not when it was last mounted.
+    acquiredDate: input.acquiredDate ?? null,
     costCents: input.costCents ?? null,
     notes: input.notes ?? "",
     isNfa: input.isNfa ?? false,

@@ -13,6 +13,9 @@ import {
   magazineLabelPrefix,
   rangeSession,
   rangeSessionAccessory,
+  serviceEvent,
+  serviceRule,
+  serviceRuleDefault,
 } from "../db/inventory-schema";
 import { operatorAudit } from "../db/operator-audit-schema";
 
@@ -38,6 +41,14 @@ import { operatorAudit } from "../db/operator-audit-schema";
  *   `parent_id` carries no FK — see the schema doc comments) so they can sit
  *   anywhere after `user`; placed last among inventory tables since they
  *   logically depend on the items they reference existing first.
+ * - `service_rule_default` (service-intervals plan, U1) FKs to `user` only,
+ *   so it can sit anywhere after `user`; placed right after `accessory` since
+ *   it is category-keyed configuration, not an item child. `service_rule` and
+ *   `service_event` each FK to both `firearm` and `accessory` (nullable,
+ *   exactly-one CHECK — KTD2), so both must follow `accessory`; `service_rule`
+ *   before `service_event` mirrors no dependency between the two (rows in
+ *   either could theoretically restore in any order), but keeping rules
+ *   before events matches the order they are created in during normal use.
  * - `operator_audit` has no FK to anything and is appended last.
  */
 export const EXPORT_TABLE_ORDER: readonly PgTable[] = [
@@ -48,6 +59,9 @@ export const EXPORT_TABLE_ORDER: readonly PgTable[] = [
   magazine,
   ammo,
   accessory,
+  serviceRuleDefault,
+  serviceRule,
+  serviceEvent,
   magazineLabelPrefix,
   magazineFirearm,
   rangeSession,
