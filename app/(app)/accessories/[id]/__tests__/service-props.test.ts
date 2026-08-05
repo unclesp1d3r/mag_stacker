@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { NotFoundError } from "@/src/auth/errors";
 import * as dueService from "@/src/domain/service-intervals/due-service";
 import * as eventsService from "@/src/domain/service-intervals/events-service";
@@ -41,6 +41,15 @@ describe("loadAccessoryServiceProps", () => {
       eventsService,
       "listServiceHistory",
     ).mockResolvedValue([]);
+  });
+
+  // `bun test app` runs every file in one process and Bun's `spyOn`
+  // replacements persist until restored, so an unrestored spy here would leak
+  // into whichever file runs next.
+  afterEach(() => {
+    getItemDueStateSpy.mockRestore();
+    listItemRulesSpy.mockRestore();
+    listServiceHistorySpy.mockRestore();
   });
 
   test("a non-owner viewer gets null in every field, without calling any loader", async () => {

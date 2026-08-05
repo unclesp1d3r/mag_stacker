@@ -1,4 +1,12 @@
-import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import { NotAuthorizedError, NotFoundError } from "@/src/auth/errors";
 import { ValidationError } from "@/src/domain/errors";
 import type {
@@ -65,6 +73,10 @@ interface DeleteCall {
 let deleteCalls: DeleteCall[] = [];
 let deleteThrows: unknown = null;
 
+let createSpy: ReturnType<typeof spyOn>;
+let updateSpy: ReturnType<typeof spyOn>;
+let deleteSpy: ReturnType<typeof spyOn>;
+
 // Server actions revalidate on every mutation; a bare bun test has no Next.js
 // request/render context for this to hook into (mirrors documents-actions.test.ts).
 let revalidateCalls: string[] = [];
@@ -92,14 +104,20 @@ beforeEach(() => {
   deleteThrows = null;
   revalidateCalls = [];
 
-  spyOn(rulesService, "createServiceRuleDefault").mockImplementation(
+  createSpy = spyOn(
+    rulesService,
+    "createServiceRuleDefault",
+  ).mockImplementation(
     async (actorId: string, input: ServiceRuleDefaultInput) => {
       createCalls.push({ actorId, input });
       if (createThrows) throw createThrows;
       return createResult;
     },
   );
-  spyOn(rulesService, "updateServiceRuleDefault").mockImplementation(
+  updateSpy = spyOn(
+    rulesService,
+    "updateServiceRuleDefault",
+  ).mockImplementation(
     async (
       actorId: string,
       id: string,
@@ -110,12 +128,22 @@ beforeEach(() => {
       return updateResult;
     },
   );
-  spyOn(rulesService, "deleteServiceRuleDefault").mockImplementation(
-    async (actorId: string, id: string) => {
-      deleteCalls.push({ actorId, id });
-      if (deleteThrows) throw deleteThrows;
-    },
-  );
+  deleteSpy = spyOn(
+    rulesService,
+    "deleteServiceRuleDefault",
+  ).mockImplementation(async (actorId: string, id: string) => {
+    deleteCalls.push({ actorId, id });
+    if (deleteThrows) throw deleteThrows;
+  });
+});
+
+// `bun test app` runs every file in one process and Bun's `spyOn`
+// replacements persist until restored, so an unrestored spy here would leak
+// into whichever file runs next.
+afterEach(() => {
+  createSpy.mockRestore();
+  updateSpy.mockRestore();
+  deleteSpy.mockRestore();
 });
 
 const SAMPLE_INPUT: ServiceRuleDefaultInput = {
