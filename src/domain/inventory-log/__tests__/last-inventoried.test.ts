@@ -74,14 +74,9 @@ describe("loadLastInventoriedBatch (U1)", () => {
       eventType: "inventoried",
       occurredAt: new Date("2026-06-01T00:00:00.000Z"),
     });
-    await makeLogEntry("firearm", fa.id, {
-      actorId: owner,
-      eventType: "cleaned",
-      occurredAt: new Date("2026-07-01T00:00:00.000Z"),
-    });
 
-    // A magazine-scoped call must ignore both the firearm's inventoried entry
-    // and its cleaned entry (wrong parentType entirely).
+    // A magazine-scoped call must ignore the firearm's entry entirely (wrong
+    // parentType), even though both share "inventoried" as their eventType.
     const result = await loadLastInventoriedBatch(db, "magazine", [
       mag.id,
       fa.id,
@@ -89,7 +84,7 @@ describe("loadLastInventoriedBatch (U1)", () => {
     expect(result.get(mag.id)?.toISOString()).toBe("2026-01-01T00:00:00.000Z");
     expect(result.has(fa.id)).toBe(false);
 
-    // A firearm-scoped call sees only its own inventoried entry, not cleaned.
+    // A firearm-scoped call sees only its own entry.
     const firearmResult = await loadLastInventoriedBatch(db, "firearm", [
       fa.id,
     ]);

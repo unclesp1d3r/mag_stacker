@@ -1,7 +1,7 @@
 "use client";
 
 // U8/KTD-8: `page.tsx` stays a server component that hand-aggregates via
-// `computeSummary()`; the aggregate rows it produces are fed straight into
+// `inventorySummary()`; the aggregate rows it produces are fed straight into
 // this thin client wrapper, which layers the shared `DataTable` (sort +
 // column show/hide + pagination only — no filter, no grouping, since the
 // rows are already aggregated) over each of the two roll-up tables.
@@ -14,16 +14,24 @@ import {
 } from "@/components/ui/data-table/types";
 import { Data } from "@/components/ui/typography";
 import { useTableViewState } from "@/hooks/use-table-view-state";
+import type { BacklogRow } from "@/src/domain/service-intervals/backlog";
 import type {
   CaliberCoverage,
   CaliberSummary,
   FirearmCount,
 } from "@/src/domain/summary/summary";
+import { ServiceBacklogControl } from "./service-backlog-control";
 
 interface SummaryTablesProps {
   byCaliber: CaliberSummary[];
   firearmCounts: FirearmCount[];
   caliberCoverage: CaliberCoverage[];
+  /** Visible items with at least one due service rule (U9, R19). */
+  itemsDue: number;
+  /** Total due service rules across the visible collection (U9, R19). */
+  rulesDue: number;
+  /** One row per due item-and-rule pair (R16) — feeds the bulk mark-serviced control. */
+  serviceBacklog: BacklogRow[];
 }
 
 /** Visible text for each `CaliberCoverage.reason` (R12) — never color alone. */
@@ -36,6 +44,9 @@ export function SummaryTables({
   byCaliber,
   firearmCounts,
   caliberCoverage,
+  itemsDue,
+  rulesDue,
+  serviceBacklog,
 }: SummaryTablesProps) {
   const caliberColumns = useMemo<ColumnDef<CaliberSummary>[]>(
     () => [
@@ -123,6 +134,24 @@ export function SummaryTables({
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
+      {/* U9/R19: breadth (items) and volume (rules) from one line, beside the
+          ammo low-stock roll-up below — never re-derives due state, only
+          reads the counts `computeServiceRollup` already folded into
+          `Summary`. */}
+      <section
+        aria-labelledby="service-due"
+        className="space-y-3 lg:col-span-2"
+      >
+        <h2 id="service-due" className="text-sm font-semibold text-foreground">
+          Service
+        </h2>
+        <Data>
+          {itemsDue} {itemsDue === 1 ? "item" : "items"} due for service across{" "}
+          {rulesDue} {rulesDue === 1 ? "rule" : "rules"}
+        </Data>
+        <ServiceBacklogControl backlog={serviceBacklog} />
+      </section>
+
       <section aria-labelledby="by-caliber" className="space-y-3">
         <h2 id="by-caliber" className="text-sm font-semibold text-foreground">
           By caliber

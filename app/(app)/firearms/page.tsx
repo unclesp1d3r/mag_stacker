@@ -9,6 +9,10 @@ import {
   calibersForInput,
   manufacturers,
 } from "@/src/domain/reference/reference";
+import {
+  dueParentIds,
+  listDueForVisibleCollection,
+} from "@/src/domain/service-intervals/due-service";
 import { inventorySummary } from "@/src/domain/summary/summary";
 import { type FirearmListItem, FirearmsView } from "./firearms-view";
 
@@ -18,11 +22,23 @@ export default async function FirearmsPage() {
 
   // Needs the visible firearm id set, so it can't join the Promise.all below —
   // still a single batched query (R18), just sequenced after the list fetch
-  // rather than run per row.
+  // rather than run per row. Reused below (rather than re-fetched) by both
+  // `listDueForVisibleCollection` and `inventorySummary`, which would
+  // otherwise each re-run `listFirearms`'s own two round trips.
   const firearms = await listFirearms(user.id);
+  // U9/R20: fetched once, bounded (never per-item, KTD4), and reused for both
+  // `summary`'s roll-up counts and marking rows with at least one due service
+  // rule — `inventorySummary` would otherwise re-run this same batched
+  // pipeline (defaults + item rules + last-service-points + session rows)
+  // internally.
+  const dueEntries = await listDueForVisibleCollection(
+    user.id,
+    undefined,
+    firearms,
+  );
   const [summary, caliberSuggestions, permissions, primaryThumbnails] =
     await Promise.all([
-      inventorySummary(user.id),
+      inventorySummary(user.id, dueEntries, firearms),
       calibersForInput(db, user.id),
       visibleFirearmPermissions(db, user.id),
       primaryThumbnailsFor(
@@ -30,6 +46,7 @@ export default async function FirearmsPage() {
         firearms.map((f) => f.id),
       ),
     ]);
+  const dueFirearmIds = dueParentIds(dueEntries, "firearm");
   // Reuse the permission map's keys (the visible firearm set) so the round-total
   // aggregation doesn't re-derive owned∪granted a second time.
   const roundTotals = await lifetimeRoundTotals(
@@ -59,9 +76,11 @@ export default async function FirearmsPage() {
     serialNumber: f.serialNumber,
     notes: f.notes,
     isNfa: f.isNfa,
+    acquiredDate: f.acquiredDate ?? "",
     magazineCount: counts.get(f.id) ?? 0,
     roundTotal: roundTotals.get(f.id) ?? 0,
     primaryPhoto: primaryThumbnails.get(f.id) ?? null,
+    serviceDue: dueFirearmIds.has(f.id),
   }));
   // Serial column shows only when at least one visible firearm has a serial (R71).
   const showSerial = firearms.some((f) => f.serialNumber.trim() !== "");

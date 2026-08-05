@@ -13,8 +13,14 @@
 
 import type { ParentType } from "@/src/auth/visibility";
 
-/** Event types valid for a firearm parent (R2). */
-export const FIREARM_LOG_EVENTS = ["inventoried", "cleaned", "lubed"] as const;
+/**
+ * Event types valid for a firearm parent (R2). `cleaned` and `lubed` were
+ * retired here by the service-intervals plan's U5 (R13) — logging service
+ * against a named `service_rule` (see `src/domain/service-intervals/`) is now
+ * the single way to record either act, and every pre-existing `cleaned`/
+ * `lubed` row was converted to a `service_event` by that unit's migration.
+ */
+export const FIREARM_LOG_EVENTS = ["inventoried"] as const;
 
 /** Event types valid for a magazine parent (R2). */
 export const MAGAZINE_LOG_EVENTS = ["inventoried"] as const;

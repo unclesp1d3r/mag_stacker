@@ -700,3 +700,106 @@ describe("firearms service — action-log wiring (U6)", () => {
     spy.mockRestore();
   });
 });
+
+// Acquired date round-trip (service-intervals plan U6, R22/R10, KTD9). It
+// also feeds the service-interval origin date — that derivation itself is
+// covered where it's implemented, in
+// src/domain/service-intervals/__tests__/due-service.test.ts ("cold start
+// counts from the acquired date" / "a firearm with no acquired date measures
+// from its creation date"); this suite covers only create/update/clear and
+// the validation gate.
+describe("firearms service — acquired date (U6)", () => {
+  let userA = "";
+
+  beforeAll(async () => {
+    userA = await createUser("AcquiredDate");
+  });
+  afterAll(async () => {
+    await deleteUsers(userA);
+  });
+
+  test("creating without an acquired date stores null", async () => {
+    const fa = await createFirearm(userA, {
+      name: "No Date",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    expect(fa.acquiredDate).toBeNull();
+  });
+
+  test("creating with an acquired date persists it", async () => {
+    const fa = await createFirearm(userA, {
+      name: "Dated",
+      caliber: "9mm",
+      ...CLASS,
+      acquiredDate: "2026-06-14",
+    });
+    expect(fa.acquiredDate).toBe("2026-06-14");
+  });
+
+  test("an update can set an acquired date that was previously unset", async () => {
+    const fa = await createFirearm(userA, {
+      name: "SetLater",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    expect(fa.acquiredDate).toBeNull();
+    const updated = await updateFirearm(userA, fa.id, {
+      name: "SetLater",
+      caliber: "9mm",
+      ...CLASS,
+      acquiredDate: "2026-03-01",
+    });
+    expect(updated.acquiredDate).toBe("2026-03-01");
+  });
+
+  test("an update can clear a previously-set acquired date back to null", async () => {
+    const fa = await createFirearm(userA, {
+      name: "Clearable",
+      caliber: "9mm",
+      ...CLASS,
+      acquiredDate: "2026-01-01",
+    });
+    expect(fa.acquiredDate).toBe("2026-01-01");
+    const cleared = await updateFirearm(userA, fa.id, {
+      name: "Clearable",
+      caliber: "9mm",
+      ...CLASS,
+      acquiredDate: null,
+    });
+    expect(cleared.acquiredDate).toBeNull();
+  });
+
+  test("a malformed acquired date is rejected and writes no row (create)", async () => {
+    const before = await listFirearms(userA);
+    await expect(
+      createFirearm(userA, {
+        name: "Bad Date",
+        caliber: "9mm",
+        ...CLASS,
+        acquiredDate: "not-a-date",
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    const after = await listFirearms(userA);
+    expect(after.length).toBe(before.length);
+  });
+
+  test("a malformed acquired date is rejected and leaves the existing row unchanged (update)", async () => {
+    const fa = await createFirearm(userA, {
+      name: "GuardedUpdate",
+      caliber: "9mm",
+      ...CLASS,
+      acquiredDate: "2026-01-01",
+    });
+    await expect(
+      updateFirearm(userA, fa.id, {
+        name: "GuardedUpdate",
+        caliber: "9mm",
+        ...CLASS,
+        acquiredDate: "2026-13-40",
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    const [row] = await db.select().from(firearm).where(eq(firearm.id, fa.id));
+    expect(row.acquiredDate).toBe("2026-01-01");
+  });
+});

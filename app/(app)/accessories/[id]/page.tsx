@@ -7,11 +7,73 @@ import { costCentsToInputValue } from "@/src/domain/accessories/display";
 import { getAccessory } from "@/src/domain/accessories/service";
 import { buildFirearmMountContext } from "@/src/domain/firearms/mount-options";
 import { listFirearms } from "@/src/domain/firearms/service";
+import { withActorNames } from "@/src/domain/service-intervals/actor-names";
+import {
+  getItemDueState,
+  type RuleDueState,
+} from "@/src/domain/service-intervals/due-service";
+import { listServiceHistory } from "@/src/domain/service-intervals/events-service";
+import {
+  listItemRules,
+  listOwnerAccessoryCategories,
+} from "@/src/domain/service-intervals/rules-service";
+import { asNotFound } from "@/src/lib/as-not-found";
 import { isUuid } from "@/src/lib/uuid";
+import type { ServiceHistoryEntry } from "../../firearms/service-history";
 import { AccessoryDetailView } from "../accessory-detail-view";
 
 interface PageProps {
   params: Promise<{ id: string }>;
+}
+
+export interface AccessoryServiceProps {
+  serviceRules: RuleDueState[] | null;
+  suppressedServiceRuleNames: string[] | null;
+  serviceHistory: ServiceHistoryEntry[] | null;
+}
+
+/**
+ * Loads service data (U8) for the OWNER only — accessories are owner-only
+ * throughout for service (KTD3), so a non-owner viewer gets `null` in every
+ * field rather than empty arrays, and the detail view doesn't render the
+ * section at all for them (matching `requireAccessoryOwner` throwing were we
+ * to call it for a non-owner anyway).
+ *
+ * Exported so `__tests__/service-props.test.ts` can exercise the 404-guard
+ * race (a loader throwing `NotFoundError` between the page's earlier
+ * `getAccessory` check and this call) directly, without standing up the rest
+ * of the page's dependency graph (`listFirearms`, `visibleFirearmPermissions`,
+ * `AccessoryDetailView`, ...) just to reach it.
+ */
+export async function loadAccessoryServiceProps(
+  userId: string,
+  accessoryId: string,
+  isOwner: boolean,
+): Promise<AccessoryServiceProps> {
+  if (!isOwner) {
+    return {
+      serviceRules: null,
+      suppressedServiceRuleNames: null,
+      serviceHistory: null,
+    };
+  }
+  // These loaders route through `requireAccessoryOwner`, which authorizes
+  // internally and throws `NotFoundError` if the row is deleted or ownership
+  // changes between the page's earlier `getAccessory` check and this call (a
+  // narrow race, mirrors the equivalent guard on the firearm detail page) —
+  // that must surface as the page's clean 404, not an unhandled 500.
+  const [dueRules, itemRules, history] = await Promise.all([
+    getItemDueState(userId, "accessory", accessoryId).catch(asNotFound),
+    listItemRules(userId, "accessory", accessoryId).catch(asNotFound),
+    listServiceHistory(userId, "accessory", accessoryId).catch(asNotFound),
+  ]);
+  return {
+    serviceRules: dueRules,
+    suppressedServiceRuleNames: itemRules
+      .filter((rule) => rule.suppressed)
+      .map((rule) => rule.name),
+    serviceHistory: await withActorNames(history),
+  };
 }
 
 export default async function AccessoryDetailPage({ params }: PageProps) {
@@ -33,15 +95,32 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
     },
   );
 
-  const [firearms, permissions] = await Promise.all([
-    listFirearms(user.id),
-    visibleFirearmPermissions(db, user.id),
-  ]);
+  const isOwner = permission === "owner";
+
+  const [firearms, permissions, serviceProps, ownerCategories] =
+    await Promise.all([
+      listFirearms(user.id),
+      visibleFirearmPermissions(db, user.id),
+      loadAccessoryServiceProps(user.id, id, isOwner),
+      // The ACCESSORY'S OWNER's categories (row.ownerId, not the actor) —
+      // suggestions should reflect the owner whose category defaults (KD10)
+      // this accessory actually inherits from, even when an edit-grantee is
+      // the one editing a shared mount. But `listOwnerAccessoryCategories`
+      // returns EVERY category across ALL of that owner's accessories, not
+      // just the ones visible to this viewer — for a non-owner grantee that
+      // would leak the owner's unrelated-accessory category vocabulary, so
+      // fall back to the actor's own categories instead (still useful
+      // autocomplete, no cross-tenant leak).
+      isOwner
+        ? listOwnerAccessoryCategories(row.ownerId)
+        : listOwnerAccessoryCategories(user.id),
+    ]);
 
   // The reassign-mount picker must offer only firearms owned by the
   // ACCESSORY's owner (`row.ownerId`, not the actor — an edit-grantee acting
   // on someone else's mounted accessory must still only relocate it among
-  // that owner's own guns, KTD5's cross-tenant guard) AND editable by the
+  // that owner's own guns, accessories-tracker plan KTD5's cross-tenant
+  // guard) AND editable by the
   // acting user.
   const { firearmNames, editableFirearms } = buildFirearmMountContext(
     firearms,
@@ -58,6 +137,7 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
         model: row.model,
         serialNumber: row.serialNumber,
         installedDate: row.installedDate ?? "",
+        acquiredDate: row.acquiredDate ?? "",
         cost: costCentsToInputValue(row.costCents),
         notes: row.notes,
         isNfa: row.isNfa,
@@ -66,6 +146,10 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
       permission={permission}
       editableFirearms={editableFirearms}
       firearmNames={firearmNames}
+      serviceRules={serviceProps.serviceRules}
+      suppressedServiceRuleNames={serviceProps.suppressedServiceRuleNames}
+      serviceHistory={serviceProps.serviceHistory}
+      ownerCategories={ownerCategories}
     />
   );
 }

@@ -15,6 +15,7 @@
  * `e2e/fixtures/`, which would drag Playwright into the plain Bun seed script.
  */
 
+import { format } from "date-fns";
 import type {
   FirearmAction,
   FirearmType,
@@ -27,6 +28,15 @@ export interface DemoFirearmSeed {
   type: FirearmType;
   action: FirearmAction;
   isNfa?: boolean;
+  /**
+   * Days before "now" this firearm was acquired (service-intervals plan,
+   * R22/U6). A day COUNT, not a stored date — `isoDateDaysAgo` resolves it
+   * relative to whenever the seed actually runs, so the demo keeps showing a
+   * mix of due and not-due service rules indefinitely rather than going
+   * stale the day after it was written. Omitted means no acquired date (the
+   * origin date falls back to record creation, KTD9).
+   */
+  acquiredDaysAgo?: number;
 }
 
 export interface DemoMagazineSeed {
@@ -57,6 +67,17 @@ export interface DemoAccessorySeed {
   isNfa?: boolean;
   /** Mount target, by firearm `name` — resolved to an id at seed time. */
   mount?: DemoFirearmName;
+  /**
+   * Days before "now" this accessory was acquired — added during
+   * implementation, mirroring `DemoFirearmSeed.acquiredDaysAgo` exactly (see
+   * the service-intervals plan's "Scope added during implementation" note).
+   * A day COUNT, not a stored date; resolved via `isoDateDaysAgo` at seed
+   * time. Omitted means no acquired date (the origin date falls back to
+   * record creation, KTD9) — at least one seed sets this so the demo proves
+   * the cold-start difference: a backdated accessory reads due on day one,
+   * one without an acquired date does not.
+   */
+  acquiredDaysAgo?: number;
 }
 
 export const DEMO_FIREARMS = [
@@ -66,6 +87,7 @@ export const DEMO_FIREARMS = [
     type: "rifle",
     action: "semi-auto",
     isNfa: true,
+    acquiredDaysAgo: 900,
   },
   {
     name: "SIG P320 XCarry",
@@ -73,6 +95,7 @@ export const DEMO_FIREARMS = [
     type: "pistol",
     action: "semi-auto",
     isNfa: false,
+    acquiredDaysAgo: 400,
   },
   {
     name: "Glock 19 Gen5",
@@ -80,8 +103,24 @@ export const DEMO_FIREARMS = [
     type: "pistol",
     action: "semi-auto",
     isNfa: false,
+    acquiredDaysAgo: 150,
   },
 ] as const satisfies readonly DemoFirearmSeed[];
+
+/**
+ * ISO calendar date (`YYYY-MM-DD`) `daysAgo` days before "now", built from
+ * local Y/M/D components rather than a UTC offset (service-intervals plan
+ * KTD5) — matches how the derivation core compares calendar days, so a seed
+ * fixture built here lands on the same local day a viewer's due computation
+ * measures against. `date-fns`'s `format` reads the same local Y/M/D getters
+ * `setDate`'s local calendar-day rollover already leaves in place, so this is
+ * behavior-equivalent to (and replaces) a manual padStart build.
+ */
+export function isoDateDaysAgo(daysAgo: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() - daysAgo);
+  return format(date, "yyyy-MM-dd");
+}
 
 /**
  * The firearm names this module declares. `DemoAccessorySeed.mount` is typed to
@@ -89,6 +128,90 @@ export const DEMO_FIREARMS = [
  * error rather than a throw partway through seeding.
  */
 export type DemoFirearmName = (typeof DEMO_FIREARMS)[number]["name"];
+
+/**
+ * Category default rule seeds (service-intervals plan, U10) — arms the whole
+ * collection from "settings" before any item is visited (F1), the same way an
+ * owner would. Days-only thresholds keep the demo's due state legible without
+ * also having to seed range-session rows to drive the sessions/rounds axes.
+ */
+export interface DemoServiceDefaultSeed {
+  scope: "firearm" | "accessory";
+  category: string;
+  name: string;
+  intervalDays?: number | null;
+  intervalSessions?: number | null;
+  intervalRounds?: number | null;
+}
+
+export const DEMO_SERVICE_DEFAULTS: readonly DemoServiceDefaultSeed[] = [
+  { scope: "firearm", category: "rifle", name: "Cleaning", intervalDays: 180 },
+  { scope: "firearm", category: "rifle", name: "Barrel", intervalDays: 730 },
+  {
+    scope: "firearm",
+    category: "pistol",
+    name: "Cleaning",
+    intervalDays: 120,
+  },
+  // Matches DEMO_ACCESSORIES' "Optic" category (the Aimpoint CompM5, seeded
+  // with acquiredDaysAgo: 900) — without a matching accessory default, that
+  // accessory resolves NO effective rule at all and can never read due,
+  // which would break the cold-start example the seed narrative describes
+  // (see DemoAccessorySeed.acquiredDaysAgo's doc). 365 days comfortably
+  // clears the 900-day-old origin date, so the accessory reads due on day
+  // one, same as the story requires.
+  {
+    scope: "accessory",
+    category: "Optic",
+    name: "Battery Check",
+    intervalDays: 365,
+  },
+];
+
+/**
+ * Per-item overrides and suppressions (F3, AE1, AE5) — a couple, not a whole
+ * second default set, so the demo shows divergence without obscuring the
+ * live-inheritance story the defaults above already tell.
+ */
+export interface DemoServiceOverrideSeed {
+  firearmName: DemoFirearmName;
+  name: string;
+  suppressed?: boolean;
+  intervalDays?: number | null;
+}
+
+export const DEMO_SERVICE_OVERRIDES: readonly DemoServiceOverrideSeed[] = [
+  // The SBR sees harder use than an average rifle, so its barrel interval is
+  // tightened well below the rifle default — the override stands even after
+  // the default later changes (F3/AE1).
+  { firearmName: 'BCM 11.5" SBR', name: "Barrel", intervalDays: 365 },
+  // A nightstand gun the owner doesn't want nagged about — a suppressed rule
+  // never surfaces as due, however overdue it would otherwise read (AE5).
+  { firearmName: "Glock 19 Gen5", name: "Cleaning", suppressed: true },
+];
+
+/**
+ * Service history (R14/R17) — `daysAgo` is relative to seed time (like
+ * `DemoFirearmSeed.acquiredDaysAgo`), resolved through `isoDateDaysAgo`.
+ * Logging the SBR's Cleaning rule recently means its panel shows one due rule
+ * (Barrel, overridden above) beside one not-due rule (Cleaning) at the same
+ * time — the mix a demo where everything is due would never prove.
+ */
+export interface DemoServiceHistorySeed {
+  firearmName: DemoFirearmName;
+  ruleName: string;
+  daysAgo: number;
+  notes?: string;
+}
+
+export const DEMO_SERVICE_HISTORY: readonly DemoServiceHistorySeed[] = [
+  {
+    firearmName: 'BCM 11.5" SBR',
+    ruleName: "Cleaning",
+    daysAgo: 30,
+    notes: "Wiped down and lubed after the range.",
+  },
+];
 
 /** The curated three used by the README captures. */
 export const DEMO_MAGAZINES: readonly DemoMagazineSeed[] = [
@@ -128,6 +251,10 @@ export const DEMO_ACCESSORIES: readonly DemoAccessorySeed[] = [
     serialNumber: "AP-CM5-88213",
     costCents: 85_000,
     mount: 'BCM 11.5" SBR',
+    // Bought alongside the SBR it's mounted on (R22-parity; demonstrates the
+    // cold-start fix — see DemoAccessorySeed.acquiredDaysAgo's doc). The
+    // ACOG below carries no acquired date, so the demo shows both states.
+    acquiredDaysAgo: 900,
   },
   {
     category: "Suppressor",

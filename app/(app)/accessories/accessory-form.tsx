@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, useTransition } from "react";
+import { useId, useMemo, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/feedback";
 import { Field } from "@/components/ui/field";
@@ -27,6 +27,10 @@ export interface AccessoryFormValues {
   serialNumber: string;
   /** ISO date, or `""` when unset. */
   installedDate: string;
+  /** ISO date, or `""` when unset — mirrors `firearm.acquiredDate` (R22),
+   * added during implementation. Unlike `installedDate`, clearing and
+   * re-mounting never touches this field. */
+  acquiredDate: string;
   /** Dollars input string (e.g. `"12.50"`), or `""` when unset — mapped to
    * integer `costCents` on submit (see `parseCostInputToCents`). */
   cost: string;
@@ -40,6 +44,7 @@ const DEFAULTS: AccessoryFormValues = {
   model: "",
   serialNumber: "",
   installedDate: "",
+  acquiredDate: "",
   cost: "",
   notes: "",
   isNfa: false,
@@ -73,6 +78,17 @@ interface AccessoryFormProps {
    * hidden and submits nothing until a mount exists.
    */
   currentFirearmId?: string | null;
+  /**
+   * The owner's own previously-typed categories, alphabetically (KTD8's
+   * `listOwnerAccessoryCategories`, reused here per the plan's deferred-
+   * to-follow-up item) — merged into the category datalist alongside the
+   * static `ACCESSORY_CATEGORY_SUGGESTIONS` so a category the owner already
+   * uses (and that a default set may already key on, KD10) is suggested
+   * before it's retyped with a diverging spelling. Free entry is still fully
+   * permitted — this is suggestion only, never validated membership (KD10
+   * stays exact-string, free text; nothing here rejects an unlisted value).
+   */
+  ownerCategories?: string[];
   /** `touchedId` flashes the just-created/edited row. */
   onDone: (touchedId?: string) => void;
   onCancel: () => void;
@@ -83,6 +99,7 @@ export function AccessoryForm({
   editableFirearms,
   initialFirearmId,
   currentFirearmId,
+  ownerCategories = [],
   onDone,
   onCancel,
 }: AccessoryFormProps) {
@@ -115,10 +132,27 @@ export function AccessoryForm({
   const modelId = useId();
   const serialId = useId();
   const dateId = useId();
+  const acquiredDateId = useId();
   const costId = useId();
   const notesId = useId();
   const nfaId = useId();
   const mountId = useId();
+
+  // Merge the owner's real categories with the static suggestions,
+  // deduplicated, alphabetical after the static list — case-sensitive (KD10
+  // is exact-string matching, so "Optic" and "optic" are deliberately kept
+  // as distinct suggestions rather than folded together).
+  const categorySuggestions = useMemo(() => {
+    const seen = new Set<string>(ACCESSORY_CATEGORY_SUGGESTIONS);
+    const merged: string[] = [...ACCESSORY_CATEGORY_SUGGESTIONS];
+    for (const category of ownerCategories) {
+      if (!seen.has(category)) {
+        seen.add(category);
+        merged.push(category);
+      }
+    }
+    return merged;
+  }, [ownerCategories]);
 
   function set<K extends keyof AccessoryFormValues>(
     key: K,
@@ -137,6 +171,10 @@ export function AccessoryForm({
       // Hidden/unmounted → submits nothing (R6); the service layer also
       // backstops this on both create and update.
       installedDate: isMounted ? values.installedDate || null : null,
+      // Unlike installedDate, acquiredDate is never gated by mount state —
+      // it records ownership, not mounting — and blanking it persists as
+      // null (clearable), matching firearm.acquiredDate (R22).
+      acquiredDate: values.acquiredDate || null,
     };
     const found = validateAccessory(fields);
     setCodes(found);
@@ -150,6 +188,11 @@ export function AccessoryForm({
         document.getElementById(costId)?.focus();
       } else if (found.includes("invalidInstalledDate")) {
         document.getElementById(dateId)?.focus();
+      } else if (
+        found.includes("invalidAcquiredDate") ||
+        found.includes("acquiredDateInFuture")
+      ) {
+        document.getElementById(acquiredDateId)?.focus();
       }
       return;
     }
@@ -189,7 +232,7 @@ export function AccessoryForm({
     <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
       {serverError ? <Callout tone="destructive">{serverError}</Callout> : null}
       <datalist id="accessory-categories">
-        {ACCESSORY_CATEGORY_SUGGESTIONS.map((c) => (
+        {categorySuggestions.map((c) => (
           <option key={c} value={c} />
         ))}
       </datalist>
@@ -236,6 +279,29 @@ export function AccessoryForm({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
+        {/* Acquired date (R22-parity, added during implementation) — unlike
+            installed date, never gated by mount state: it records ownership,
+            not mounting, so it's always available and always clearable. */}
+        <Field
+          label="Acquired date"
+          controlId={acquiredDateId}
+          hint="Optional"
+          error={firstMessage(codes, [
+            "invalidAcquiredDate",
+            "acquiredDateInFuture",
+          ])}
+        >
+          <Input
+            id={acquiredDateId}
+            type="date"
+            value={values.acquiredDate}
+            onChange={(e) => set("acquiredDate", e.target.value)}
+            aria-invalid={
+              codes.includes("invalidAcquiredDate") ||
+              codes.includes("acquiredDateInFuture")
+            }
+          />
+        </Field>
         {/* Installed date requires a mount (R6) — hidden and submits nothing
             until one exists: the mount select below on create, or the
             accessory's existing mount on edit. */}
@@ -255,6 +321,9 @@ export function AccessoryForm({
             />
           </Field>
         ) : null}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field
           label="Cost"
           controlId={costId}

@@ -12,6 +12,11 @@ import {
   calibersForInput,
   manufacturers,
 } from "@/src/domain/reference/reference";
+import { withActorNames } from "@/src/domain/service-intervals/actor-names";
+import { getItemDueState } from "@/src/domain/service-intervals/due-service";
+import { listServiceHistory } from "@/src/domain/service-intervals/events-service";
+import { listItemRules } from "@/src/domain/service-intervals/rules-service";
+import { asNotFound } from "@/src/lib/as-not-found";
 import { isUuid } from "@/src/lib/uuid";
 import { FirearmDetailView } from "../firearm-detail-view";
 
@@ -50,6 +55,9 @@ export default async function FirearmDetailPage({ params }: PageProps) {
     mountedAccessories,
     photos,
     documents,
+    serviceRules,
+    itemRules,
+    history,
   ] = await Promise.all([
     calibersForInput(db, user.id),
     magazineCountForFirearm(user.id, id),
@@ -68,6 +76,12 @@ export default async function FirearmDetailPage({ params }: PageProps) {
           throw error;
         })
       : Promise.resolve([]),
+    // U8: the resolved, due-annotated rule set (any visibility level, R6).
+    getItemDueState(user.id, "firearm", id).catch(asNotFound),
+    // Raw item-rule rows — only their suppressed names are used here, to
+    // list what's hidden from `serviceRules` above (KTD6).
+    listItemRules(user.id, "firearm", id).catch(asNotFound),
+    listServiceHistory(user.id, "firearm", id).catch(asNotFound),
   ]);
 
   // Derive the value total from the already-fetched accessories rather than
@@ -80,6 +94,15 @@ export default async function FirearmDetailPage({ params }: PageProps) {
   const subtypeSuggestions = [
     ...new Set(firearms.map((f) => f.subtype).filter((s) => s.trim() !== "")),
   ].sort((a, b) => a.localeCompare(b));
+
+  const suppressedServiceRuleNames = itemRules
+    .filter((rule) => rule.suppressed)
+    .map((rule) => rule.name);
+
+  // Attach each history entry's actor display name (mirrors
+  // `inventory-log/log-actions.ts`'s `listLogAction` — resolves `name`, not
+  // `email`, since a view-grantee on a shared firearm can read this too).
+  const serviceHistory = await withActorNames(history);
 
   return (
     <FirearmDetailView
@@ -95,6 +118,7 @@ export default async function FirearmDetailPage({ params }: PageProps) {
         serialNumber: row.serialNumber,
         notes: row.notes,
         isNfa: row.isNfa,
+        acquiredDate: row.acquiredDate ?? "",
       }}
       permission={permission}
       magazineCount={magazineCount}
@@ -110,6 +134,9 @@ export default async function FirearmDetailPage({ params }: PageProps) {
       // point: a bare `documents={documents}` would compile via structural
       // typing and leak the key.
       documents={documents.map(toFirearmDocumentRow)}
+      serviceRules={serviceRules}
+      suppressedServiceRuleNames={suppressedServiceRuleNames}
+      serviceHistory={serviceHistory}
     />
   );
 }

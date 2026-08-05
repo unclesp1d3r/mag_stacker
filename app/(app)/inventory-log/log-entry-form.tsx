@@ -22,7 +22,7 @@ import { logEventAction } from "./log-actions";
 const EVENT_TYPE_CODES = ["invalidEventType", "invalidParentType"];
 const OCCURRED_AT_CODES = ["occurredAtInFuture", "invalidOccurredAt"];
 
-/** Display label for a stored event type ("cleaned" -> "Cleaned"). */
+/** Display label for a stored event type ("inventoried" -> "Inventoried"). */
 export function eventTypeLabel(value: string): string {
   return value.length > 0 ? value[0].toUpperCase() + value.slice(1) : value;
 }
@@ -41,7 +41,7 @@ function nowLocal(): string {
 interface LogEntryFormProps {
   parentType: ParentType;
   parentId: string;
-  /** The parent-appropriate event-type set (R11) — firearm surfaces maintenance types. */
+  /** The parent-appropriate event-type set (R11) — since U5 retired `cleaned`/`lubed`, both parent families offer only "inventoried". */
   eventTypes: readonly EventType[];
   onDone: () => void;
   onCancel: () => void;
