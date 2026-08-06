@@ -25,7 +25,11 @@ export interface AccessoryNameFields {
 export function accessoryDisplayName(a: AccessoryNameFields): string {
   const parts = [a.brand.trim(), a.model.trim()].filter((v) => v !== "");
   if (parts.length > 0) return parts.join(" ");
-  return a.category.trim() !== "" ? a.category : accessoryTypeLabel(a.type);
+  // Return the TRIMMED category, not the raw one: migration 0022 preserves
+  // pre-existing categories verbatim, so padded values like "  light  " are
+  // real stored data and would otherwise reach the link's accessible name.
+  const category = a.category.trim();
+  return category !== "" ? category : accessoryTypeLabel(a.type);
 }
 
 /** Formats integer cents as a dollar string (e.g. `1250` -> `"$12.50"`), or null when unset. */

@@ -135,11 +135,12 @@ export async function updateAttachment(
   });
 }
 
+/** Returns the parent accessory id so callers can invalidate the right page. */
 export async function deleteAttachment(
   actorId: string,
   attachmentId: string,
-): Promise<void> {
-  await db.transaction(async (tx) => {
+): Promise<string> {
+  return db.transaction(async (tx) => {
     const accessoryId = await parentAccessoryId(tx, attachmentId);
     await requireAccessoryEdit(tx, actorId, accessoryId);
     const deleted = await tx
@@ -147,5 +148,6 @@ export async function deleteAttachment(
       .where(eq(accessoryAttachment.id, attachmentId))
       .returning({ id: accessoryAttachment.id });
     if (deleted.length === 0) throw new NotFoundError();
+    return accessoryId;
   });
 }

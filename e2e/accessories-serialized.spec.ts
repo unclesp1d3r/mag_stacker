@@ -247,7 +247,10 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
         vp.getByRole("button", { name: "Add attachment" }),
       ).toHaveCount(0);
       await expect(
-        vp.getByRole("button", { name: /Remove .* attachment/ }),
+        vp.getByRole("button", { name: /^Edit .* attachment$/ }),
+      ).toHaveCount(0);
+      await expect(
+        vp.getByRole("button", { name: /^Remove .* attachment$/ }),
       ).toHaveCount(0);
     } finally {
       await viewerContext.close();

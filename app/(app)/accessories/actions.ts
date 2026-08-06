@@ -83,24 +83,28 @@ export async function createAttachmentAction(
   });
 }
 
+/**
+ * The parent id comes from the UPDATED ROW, never the caller. These paths key
+ * only on `attachmentId`, so a mismatched `{attachmentId, accessoryId}` pair
+ * would still update the right attachment while revalidating some other
+ * accessory's page — leaving the page that actually changed stale.
+ */
 export async function updateAttachmentAction(
   attachmentId: string,
-  accessoryId: string,
   input: AttachmentFields,
 ): Promise<ActionResult<{ id: string }>> {
   return withActionContext("accessories", async (userId) => {
-    await updateAttachment(userId, attachmentId, input);
-    revalidatePath(`/accessories/${accessoryId}`);
+    const updated = await updateAttachment(userId, attachmentId, input);
+    revalidatePath(`/accessories/${updated.accessoryId}`);
     return { ok: true, data: { id: attachmentId } };
   });
 }
 
 export async function deleteAttachmentAction(
   attachmentId: string,
-  accessoryId: string,
 ): Promise<ActionResult> {
   return withActionContext("accessories", async (userId) => {
-    await deleteAttachment(userId, attachmentId);
+    const accessoryId = await deleteAttachment(userId, attachmentId);
     revalidatePath(`/accessories/${accessoryId}`);
     return { ok: true };
   });

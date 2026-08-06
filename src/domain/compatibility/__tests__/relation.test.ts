@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { NotFoundError } from "@/src/auth/errors";
+import { createGrant } from "@/src/auth/grants";
 import { db } from "@/src/db/client";
 import {
   loadAccessoryCompatibility,
@@ -130,6 +131,30 @@ describe("magazine and accessory compatibility behave identically", () => {
       ).rejects.toBeInstanceOf(NotFoundError);
     } finally {
       await deleteUsers(strangerId);
+    }
+  });
+
+  test("a firearm SHARED to the actor is linkable on BOTH (the gate is visibility, not ownership)", async () => {
+    // The suite otherwise only proves rejection. The rule is that the gate
+    // checks VISIBILITY, so a cross-owner firearm shared to the actor must be
+    // linkable — testing only the negative would still pass if the gate were
+    // wrongly narrowed to ownership.
+    const otherOwner = await createUser("RelationSharer");
+    try {
+      const shared = await makeFirearm(otherOwner, { name: "Shared Host" });
+      await createGrant(db, {
+        actorId: otherOwner,
+        granteeId: owner,
+        parentType: "firearm",
+        parentId: shared.id,
+        permission: "view",
+      });
+
+      const [mag, acc] = await bothSet([firearmA, shared.id]);
+      expect(mag).toEqual([firearmA, shared.id]);
+      expect(acc).toEqual(mag);
+    } finally {
+      await deleteUsers(otherOwner);
     }
   });
 

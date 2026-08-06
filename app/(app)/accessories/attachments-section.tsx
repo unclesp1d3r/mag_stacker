@@ -127,7 +127,7 @@ export function AttachmentsSection({
     const { editingId, values } = editor;
     startTransition(async () => {
       const result = editingId
-        ? await updateAttachmentAction(editingId, accessoryId, values)
+        ? await updateAttachmentAction(editingId, values)
         : await createAttachmentAction(accessoryId, values);
       if (result.ok) {
         toast({
@@ -148,8 +148,11 @@ export function AttachmentsSection({
   function confirmDelete() {
     if (!pendingDelete) return;
     const target = pendingDelete;
+    // Clear any prior failure first: without this a retry that SUCCEEDS still
+    // leaves the old error banner on screen next to the now-removed row.
+    setServerError(null);
     startTransition(async () => {
-      const result = await deleteAttachmentAction(target.id, accessoryId);
+      const result = await deleteAttachmentAction(target.id);
       setPendingDelete(null);
       if (result.ok) {
         toast({

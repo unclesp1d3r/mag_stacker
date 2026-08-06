@@ -4,9 +4,9 @@ Shared domain vocabulary for this project — entities, named processes, and sta
 
 ## Relationships
 
-- A **User** owns **Firearms**, **Magazines**, and **Ammo** — these are the three owned **parents**. Everything a user can see is either owned by them or shared to them through a **Grant**.
-- A **Firearm** owns its **child records**; a **Range Session** is the first child family. Children inherit their parent's owner and grants — they are never shared or owned independently.
-- A **Magazine** and a **Firearm** relate many-to-many through **Compatibility** (which magazines fit which firearms).
+- A **User** owns **Firearms**, **Magazines**, **Ammo**, and **Accessories** — these are the four owned **parents**. Everything a user can see is either owned by them or shared to them through a **Grant**.
+- A **Firearm** owns its **child records**; a **Range Session** is the first child family. An **Accessory** owns its **Attachments**. Children inherit their parent's owner and grants — they are never shared or owned independently.
+- A **Magazine** and a **Firearm** relate many-to-many through **Compatibility** (which magazines fit which firearms); an **Accessory** and a **Firearm** relate the same way through **Accessory Compatibility**.
 - A **Grant** connects an **Owner** to a **Grantee** for exactly one item, carrying a **Permission**.
 
 ## Inventory entities

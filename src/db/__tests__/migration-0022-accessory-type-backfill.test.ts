@@ -115,7 +115,7 @@ describe("migration 0022 — accessory type backfill (real pre-migration data)",
   let container: StartedPostgreSqlContainer;
   let pool: Pool;
   let userId: string;
-  let byCategory: Map<string, AccessoryRow>;
+  let bySerial: Map<string, AccessoryRow>;
 
   /**
    * Every fixture is keyed by its serial so assertions never depend on row
@@ -186,7 +186,7 @@ describe("migration 0022 — accessory type backfill (real pre-migration data)",
     const { rows } = await pool.query<AccessoryRow>(
       `SELECT id, type, category, serial_number FROM accessory`,
     );
-    byCategory = new Map(rows.map((r) => [r.serial_number, r]));
+    bySerial = new Map(rows.map((r) => [r.serial_number, r]));
   }, 90_000);
 
   afterAll(async () => {
@@ -195,8 +195,8 @@ describe("migration 0022 — accessory type backfill (real pre-migration data)",
   }, 30_000);
 
   test("every pre-existing accessory lands with a type in the controlled set", () => {
-    expect(byCategory.size).toBe(FIXTURES.length);
-    for (const row of byCategory.values()) {
+    expect(bySerial.size).toBe(FIXTURES.length);
+    for (const row of bySerial.values()) {
       expect(ACCESSORY_TYPES).toContain(
         row.type as (typeof ACCESSORY_TYPES)[number],
       );
@@ -206,21 +206,21 @@ describe("migration 0022 — accessory type backfill (real pre-migration data)",
   test.each(FIXTURES)(
     "category $category backfills to type $expectedType",
     ({ serial, expectedType }) => {
-      expect(byCategory.get(serial)?.type).toBe(expectedType);
+      expect(bySerial.get(serial)?.type).toBe(expectedType);
     },
   );
 
   test("AE6: an unmapped long-tail category is preserved verbatim, not rewritten", () => {
-    expect(byCategory.get("fx-longtail")?.category).toBe("bipod");
-    expect(byCategory.get("fx-longtail")?.type).toBe("other");
-    expect(byCategory.get("fx-freeform")?.category).toBe("red dot mount");
+    expect(bySerial.get("fx-longtail")?.category).toBe("bipod");
+    expect(bySerial.get("fx-longtail")?.type).toBe("other");
+    expect(bySerial.get("fx-freeform")?.category).toBe("red dot mount");
   });
 
   test("the backfill never rewrites category, even when it DID map to a type", () => {
     // Losslessness is the property that makes this one-shot migration safe to
     // revisit later with a better mapping.
-    expect(byCategory.get("fx-mixed-case")?.category).toBe("Optic");
-    expect(byCategory.get("fx-whitespace")?.category).toBe("  light  ");
+    expect(bySerial.get("fx-mixed-case")?.category).toBe("Optic");
+    expect(bySerial.get("fx-whitespace")?.category).toBe("  light  ");
   });
 
   test("the accessory_type_valid CHECK is live — an out-of-set type is rejected", async () => {

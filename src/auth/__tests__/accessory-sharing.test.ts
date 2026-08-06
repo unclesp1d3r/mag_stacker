@@ -331,7 +331,7 @@ describe("accessory sharing — an accessory-only editor cannot act on the host 
     }
   });
 
-  test("an UNMOUNTED accessory is freely mountable by a direct editor onto a firearm they can edit", async () => {
+  test("an UNMOUNTED accessory still needs edit on the TARGET firearm to mount", async () => {
     // The guard is about the firearm being detached FROM; with no current
     // mount there is no host to protect, so only the target check applies.
     const acc = await createAccessory(owner, { type: "suppressor" });

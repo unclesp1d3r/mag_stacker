@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ACCESSORY_TYPES } from "../constants";
 import {
   accessoryDisplayName,
   costCentsToInputValue,
@@ -55,7 +56,7 @@ describe("accessoryDisplayName", () => {
   });
 
   test("never returns an empty string for any valid accessory shape", () => {
-    for (const type of ["suppressor", "optic", "light", "laser", "other"]) {
+    for (const type of ACCESSORY_TYPES) {
       expect(accessoryDisplayName({ ...base, type }).trim()).not.toBe("");
     }
   });
