@@ -1,6 +1,6 @@
 # MagStacker
 
-MagStacker is a self-hosted web app for keeping track of firearms, magazines, ammo, and aftermarket accessories: what you own, which mags fit which guns, and what it's all worth. It's built for individual owners, clubs, and ranges that don't want their inventory living in a spreadsheet or somebody else's cloud.
+MagStacker is a self-hosted web app for keeping track of firearms, magazines, ammo, and aftermarket accessories: what you own, which mags fit which guns, which accessories fit which hosts, and what it's all worth. It's built for individual owners, clubs, and ranges that don't want their inventory living in a spreadsheet or somebody else's cloud.
 
 You run it on your own server, behind your own login, and the data stays with you.
 
@@ -12,7 +12,7 @@ There are two themes, a dark "Field Console" and a light "Machined Instrument", 
 | :-----------------------------------------------------------: | :-------------------------------------------------------------: |
 | ![Magazines list, dark theme](docs/images/magazines-dark.png) | ![Magazines list, light theme](docs/images/magazines-light.png) |
 
-Aftermarket parts (optics, suppressors, triggers, lights) get tracked per firearm with cost, serial, and NFA status, and each firearm's page shows the total value mounted on it:
+Aftermarket parts (optics, suppressors, triggers, lights) can be tracked independently with their own serial numbers, costs, NFA status, and mounting hardware. Track which firearms each accessory fits, share accessories independently, and each firearm's page shows the total value mounted on it:
 
 |                          Accessories                          |                            On a firearm                             |
 | :-----------------------------------------------------------: | :-----------------------------------------------------------------: |
@@ -21,10 +21,10 @@ Aftermarket parts (optics, suppressors, triggers, lights) get tracked per firear
 ## Who it's for
 
 - **Individuals** keeping a personal collection straight. Label your mags, see how many you've got per caliber and per firearm, and pull a copy for insurance or your own records.
-- **Clubs** that want to share certain club-owned items with members, read-only or editable, without opening up the whole inventory.
+- **Clubs** that want to share certain club-owned items (firearms, magazines, accessories) with members, read-only or editable, without opening up the whole inventory.
 - **Ranges** handing fleet hardware to staff. Share an item at edit and switch on "allow adding records owned by me", and an employee can add new range assets to the range's books. A view-only volunteer can look but not touch.
 
-Everyone sees only what they own or what's been shared with them, and only an item's owner can delete it. Revoke a share and it's gone on the other person's next request.
+Everyone sees only what they own or what's been shared with them. Firearms, magazines, and accessories can be shared independently. Only an item's owner can delete it. Revoke a share and it's gone on the other person's next request.
 
 ## What you can do
 
@@ -34,6 +34,7 @@ Everyone sees only what they own or what's been shared with them, and only an it
 - Filter magazines by brand or model, exact caliber, or which firearm they fit.
 - Track ammo lots by caliber, load, and grain, with a low-stock threshold that flags when you're running short.
 - Track the accessories on each firearm (optics, suppressors, triggers, grips) with cost, serial, installed date, and NFA status. Move a part between guns and it keeps its identity, and a firearm's page rolls up the total value mounted on it. Suppressors and other NFA items are flagged, and their serials stay sensitive.
+- Track accessories (suppressors, optics, lights, etc.) independently with their own serial numbers, costs, NFA status, and mounting hardware. Record which firearms each accessory fits and share accessories on their own, even while unmounted.
 - Check a summary: a running total, plus counts per caliber and per firearm, over everything you can see.
 - Export to CSV for a spreadsheet. Serial numbers stay out of the export, and a cell that starts with `=` won't turn into a live formula when someone opens the file.
 - Share one item with another account at view or edit, optionally let them add records on your behalf, and take the access back whenever you want.
@@ -95,7 +96,7 @@ Open `http://<your-server>:3000/login`, sign in, and add the rest of the account
 
 ### Backups
 
-A `pg_dump` covers the database — every firearm, magazine, compatibility link, and share exactly as they were:
+A `pg_dump` covers the database — every firearm, magazine, accessory, compatibility link, and share exactly as they were:
 
 ```bash
 docker compose exec db pg_dump -U "$POSTGRES_USER" -Fc -d "$POSTGRES_DB" > magstacker.dump
