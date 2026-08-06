@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { ShareControl } from "@/app/(app)/grants/share-control";
 import type { FirearmOption } from "@/components/inventory/compatible-firearms-field";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -185,8 +186,16 @@ export function AccessoryDetailView({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Accessories are not independently shareable (R7) — no
-              ShareControl here, unlike firearms/ammo. */}
+          {/* #23 R16 reversed #8's "not independently shareable" decision, so
+              accessories now get the same owner-only ShareControl as firearms
+              and ammo. */}
+          {isOwner ? (
+            <ShareControl
+              parentType="accessory"
+              parentId={accessory.id}
+              itemName={displayName}
+            />
+          ) : null}
           {canEdit && !editing ? (
             <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
               Edit

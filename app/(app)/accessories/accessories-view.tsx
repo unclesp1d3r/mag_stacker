@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { ShareControl } from "@/app/(app)/grants/share-control";
 import type { FirearmOption } from "@/components/inventory/compatible-firearms-field";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -236,12 +237,15 @@ export function AccessoriesView({
         enableHiding: false,
         cell: ({ row }) => {
           const item = row.original;
-          // Accessories are not independently shareable (R7) — no
-          // ShareControl. Quick delete stays owner-only, mirroring firearms/
-          // ammo: an edit-grantee manages a mounted accessory from the
-          // firearm's detail page (U6), not this row.
+          // #23 R16 made accessories independently shareable, so the row now
+          // carries the same owner-only ShareControl as magazines and ammo.
           return item.ownerId === currentUserId ? (
             <div className="flex justify-end gap-1">
+              <ShareControl
+                parentType="accessory"
+                parentId={item.id}
+                itemName={rowLabel(item)}
+              />
               <Button
                 variant="destructive"
                 size="sm"

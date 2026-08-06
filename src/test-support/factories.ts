@@ -21,9 +21,10 @@ import {
 /**
  * `service_rule` and `service_event` each attach to exactly one of a firearm
  * or an accessory (KTD2) — narrower than `ParentType`
- * (`@/src/auth/visibility`), which excludes accessory (it isn't a grantable
- * parent type). Callers pass one variant; the factory spreads it onto the
- * insert alongside the other fixed defaults.
+ * (`@/src/auth/visibility`) — which now DOES include accessory (#23 made it
+ * grantable), but still also includes firearm/magazine/ammo, none of which a
+ * service rule may attach to. Callers pass one variant; the factory spreads it
+ * onto the insert alongside the other fixed defaults.
  */
 type ServiceParent = { firearmId: string } | { accessoryId: string };
 

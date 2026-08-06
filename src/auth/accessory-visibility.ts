@@ -11,31 +11,59 @@ import {
 } from "./visibility";
 
 /**
- * Accessory visibility & mount authorization (U3). Accessories are owner-scoped
- * but are deliberately NOT a grant `ParentType` (see visibility.ts) — a mounted
- * accessory's visibility/permission INHERITS from its firearm; an unmounted
- * accessory is owner-only. This file is the seam where that inheritance is
- * computed, so it can't drift between callers.
+ * Accessory visibility & mount authorization.
+ *
+ * An accessory is reachable by THREE paths, and this file is the single seam
+ * where they are combined so they cannot drift between callers:
+ *
+ *   owned  ∪  directly granted  ∪  mounted on a firearm the requester can see
+ *
+ * The middle path is new in #23, which reversed #8's decision that accessories
+ * carry no grants of their own. The reversal is additive: the inherited path
+ * (#8's original behavior) is RETAINED, not replaced, so nobody who can see a
+ * mounted accessory today loses that access — see AE3 in
+ * `__tests__/accessory-sharing.test.ts`.
+ *
+ * Where paths disagree the requester holds the STRONGEST permission any of
+ * them grants, and ownership always wins (#23 R9).
+ *
+ * The direct-grant half lives in the generic `visibility.ts`
+ * (`getVisibleIds(..., "accessory")`); the mount-inheritance half lives here,
+ * because only the inventory layer should know what `current_firearm_id`
+ * means. Pushing that into the shared auth layer would make one parent type
+ * special (#23 KTD6).
  */
 
+/** Rank permissions so "strongest path wins" is a comparison, not a chain of ifs. */
+const PERMISSION_RANK: Record<Permission, number> = {
+  view: 1,
+  edit: 2,
+  owner: 3,
+};
+
+/** The stronger of two permissions; `null` means "no access via that path". */
+function strongest(
+  a: Permission | null,
+  b: Permission | null,
+): Permission | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return PERMISSION_RANK[a] >= PERMISSION_RANK[b] ? a : b;
+}
+
 /**
- * The set of accessory IDs visible to `userId`: accessories they own, UNION
- * accessories currently mounted on a firearm they can see (owned or granted).
+ * Every accessory id visible to `userId` — the union of all three paths
+ * (owned, directly granted, mounted on a visible firearm).
  */
 export async function listVisibleAccessoryIds(
   db: DbOrTx,
   userId: string,
 ): Promise<Set<string>> {
+  // Owned ∪ directly granted (#23 R7) — the generic grant machinery.
+  const ids = await getVisibleIds(db, userId, "accessory");
+
+  // ∪ mounted on a firearm the requester can see (#8's path, retained by R8).
   const visibleFirearmIds = await getVisibleIds(db, userId, "firearm");
-
-  const owned = await db
-    .select({ id: accessory.id })
-    .from(accessory)
-    .where(eq(accessory.ownerId, userId));
-
-  const ids = new Set<string>();
-  for (const row of owned) ids.add(row.id);
-
   if (visibleFirearmIds.size > 0) {
     const mountedOnVisible = await db
       .select({ id: accessory.id })
@@ -48,10 +76,13 @@ export async function listVisibleAccessoryIds(
 }
 
 /**
- * Resolve the requester's permission on a specific accessory, or null if it is
- * outside their visible set. Ownership wins; a mounted accessory otherwise
- * inherits the firearm's resolved permission (owner/edit/view/null). An
- * unmounted accessory the requester doesn't own is not visible (null).
+ * Resolve the requester's effective permission on one accessory, or null when
+ * it is outside their visible set entirely.
+ *
+ * Ownership short-circuits (nothing outranks it). Otherwise the direct grant
+ * and the mounted-firearm inheritance are BOTH evaluated and the stronger
+ * wins (#23 R9) — a view grant on the accessory plus edit on the firearm it
+ * is mounted to yields edit, and neither path can quietly downgrade the other.
  */
 export async function resolveAccessoryPermission(
   db: DbOrTx,
@@ -70,10 +101,13 @@ export async function resolveAccessoryPermission(
 
   const row = rows[0];
   if (row.ownerId === userId) return "owner";
-  if (row.currentFirearmId) {
-    return resolvePermission(db, userId, "firearm", row.currentFirearmId);
-  }
-  return null;
+
+  const direct = await resolvePermission(db, userId, "accessory", accessoryId);
+  const inherited = row.currentFirearmId
+    ? await resolvePermission(db, userId, "firearm", row.currentFirearmId)
+    : null;
+
+  return strongest(direct, inherited);
 }
 
 /**

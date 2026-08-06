@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { DbOrTx } from "@/src/db/client";
-import { ammo, firearm, grant, magazine } from "@/src/db/schema";
+import { accessory, ammo, firearm, grant, magazine } from "@/src/db/schema";
 
 /**
  * Visibility computation (U4, KTD-1). The single source of truth for "what can
@@ -11,7 +11,23 @@ import { ammo, firearm, grant, magazine } from "@/src/db/schema";
  * applied at the delivery edge (server components / actions), not here.
  */
 
-export type ParentType = "firearm" | "magazine" | "ammo";
+/**
+ * Item families that carry their own grants.
+ *
+ * `accessory` joined in #23, reversing #8's "accessories are not independently
+ * shareable" decision — an unmounted suppressor was invisible to everyone but
+ * its owner, which is backwards for the item most likely to be lent or shown
+ * to an armorer. Widening this union is deliberately the ONLY edit needed:
+ * every switch that must learn about the new arm is surfaced by `tsc`, so a
+ * clean `bun run typecheck` is the completeness signal (#23 KTD5).
+ *
+ * Note that `getVisibleIds(db, user, "accessory")` returns owned ∪
+ * directly-granted only. The additional "mounted on a visible firearm" path
+ * (#23 R8) lives in `accessory-visibility.ts`, not here — pushing
+ * firearm-mount knowledge into the generic auth layer would make one parent
+ * type special and leak inventory semantics into auth (KTD6).
+ */
+export type ParentType = "firearm" | "magazine" | "ammo" | "accessory";
 
 /** Item-level permission the requester holds. `owner` is full control. */
 export type Permission = "owner" | "edit" | "view";
@@ -21,7 +37,8 @@ export type Permission = "owner" | "edit" | "view";
 export function parentTable(parentType: ParentType) {
   if (parentType === "firearm") return firearm;
   if (parentType === "magazine") return magazine;
-  return ammo;
+  if (parentType === "ammo") return ammo;
+  return accessory;
 }
 
 /** Narrow a stored grant permission string to the item-level Permission. */

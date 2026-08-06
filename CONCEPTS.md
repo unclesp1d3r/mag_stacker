@@ -23,6 +23,14 @@ An owned magazine in a user's inventory. Another owned parent. Carries brand/mod
 
 An owned ammunition lot in a user's inventory. The third owned parent, shared through the same **Grant** model as Firearms (edit grants included). A lot carries an optional brand, a caliber, an optional load type (free text with suggestions — FMJ, JHP, Match, and so on), a grain weight, a quantity in rounds, a **Low Stock** threshold, and an optional acquired date and notes. Lots with identical brand/caliber/type/grain stay separate — never merged; per-caliber views aggregate across them instead. Ammo has no **child record** families yet and does not participate in the **Inventory Log**.
 
+### Accessory
+
+An owned item that attaches to a firearm — a suppressor, optic, light, laser, muzzle device, or anything else the owner tracks separately from the gun. An owned parent in its own right: it carries its own serial number, cost, acquired date, NFA flag, and an **Accessory Type**. An Accessory records two independent facts about firearms: which one it is *mounted on right now* (at most one, and it may be none), and which ones it *fits* (**Accessory Compatibility**, many). It has its own **Attachment** child records, and since #23 it is independently shareable through a **Grant**.
+
+### Attachment
+
+A child record of an **Accessory** describing one piece of mounting hardware — a mount, piston, end cap, or muzzle device — with an optional spec (thread pitch or bore), serial, and notes. An Attachment is what physically makes an accessory fit a given host, but recording one does *not* declare **Accessory Compatibility**; that remains an explicit statement by the owner.
+
 ### Range Session
 
 A single logged range trip for one Firearm — the date and the rounds fired that day. The first **child record** family. A Firearm's **Lifetime Total** is derived by summing its Range Sessions; there is no stored counter. A Range Session inherits its owner and grants from its parent Firearm and cannot be shared or owned on its own.
@@ -37,11 +45,15 @@ The controlled kind of a **Log Entry** — currently *inventoried*, the only mem
 
 ### Child record
 
-A record that hangs off an owned parent (currently a Firearm or Magazine; Ammo has no child families yet) and inherits that parent's owner and grants rather than carrying its own. Child records are never shared independently and are removed with their parent. **Range Session** and **Inventory Log** are the first child families; the pattern is the seam future child families follow.
+A record that hangs off an owned parent (currently a Firearm or an Accessory; Magazine and Ammo have no child families yet) and inherits that parent's owner and grants rather than carrying its own. Child records are never shared independently and are removed with their parent. **Range Session** and **Inventory Log** are the first child families; **Attachment** is the accessory's. The pattern is the seam future child families follow.
 
 ### Compatibility
 
 The many-to-many relationship recording which Firearms a given Magazine fits. Removing either side removes the pairing.
+
+### Accessory Compatibility
+
+The same relationship for an **Accessory**: which Firearms it fits. Deliberately distinct from the accessory's *current mount* — compatibility is a capability claim ("this can fits these five hosts"), true whether or not the accessory is attached to any of them today, while the mount is present physical state and is at most one firearm. Declaring compatibility never changes the mount, and mounting never changes compatibility. Both are read *viewer-relative*: a firearm the reader cannot see is omitted rather than disclosed.
 
 ## Sharing and visibility
 
@@ -51,7 +63,7 @@ The core visibility rule: every owned item belongs to exactly one owner, and a u
 
 ### Grant
 
-A share of one item (a Firearm or a Magazine) from its **Owner** to a **Grantee**, carrying a **Permission** and an opt-in that lets the grantee create records on the owner's behalf. A grant targets a single item; there is one grant per grantee per item, and re-granting updates the existing one. Removing the item removes its grants.
+A share of one item (a Firearm, Magazine, Ammo lot, or Accessory) from its **Owner** to a **Grantee**, carrying a **Permission** and an opt-in that lets the grantee create records on the owner's behalf. A grant targets a single item; there is one grant per grantee per item, and re-granting updates the existing one. Removing the item removes its grants.
 
 ### Owner
 
@@ -74,6 +86,10 @@ The controlled classification of a Firearm's kind (pistol, rifle, and so on), dr
 ### Firearm Action
 
 The controlled classification of a Firearm's operating mechanism, drawn from a fixed value set. See **Unspecified value**.
+
+### Accessory Type
+
+The controlled classification of an **Accessory** — suppressor, optic, light, laser, muzzle device, or other. Required, and the structural discriminator: it decides which subtype's rules apply and is what any future per-type detail table keys off. It coexists with a separate free-text *category*, which is optional and records what the owner calls the thing ("red dot mount", "bipod") — values the controlled set deliberately does not enumerate. Type answers *which kind of item is this*; category answers *what do you call it*.
 
 ### Unspecified value
 

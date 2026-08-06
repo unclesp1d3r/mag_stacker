@@ -20,12 +20,14 @@ import { type AccessoryFields, validateAccessory } from "./validate";
 
 /**
  * Accessory service (U4). Visibility-scoped CRUD plus mount/reassign/unmount,
- * mirroring `src/domain/ammo/service.ts`'s shape. Accessories are NOT a grant
- * `ParentType` (see `src/auth/accessory-visibility.ts`) — a mounted
- * accessory's permission inherits from its firearm, so this file routes
- * every read/write through `resolveAccessoryPermission`/`authorizeMount`
- * instead of the shared `authorize.ts` gates, and deletes are bespoke (no
- * `authorizeAndDeleteParent`, since accessories aren't a `ParentType`).
+ * mirroring `src/domain/ammo/service.ts`'s shape.
+ *
+ * Accessories became a grant `ParentType` in #23, but they still do NOT route
+ * through the shared `authorize.ts` gates: an accessory's permission is the
+ * strongest of its direct grant and the firearm it is mounted to, which only
+ * `resolveAccessoryPermission` knows how to combine. So every read/write here
+ * goes through `src/auth/accessory-visibility.ts` instead, and deletes stay
+ * bespoke rather than using `authorizeAndDeleteParent`.
  * Validation runs before any write (R8); raw values are persisted (R18)
  * except where noted.
  */
@@ -322,10 +324,12 @@ export async function listMountedForFirearm(
 }
 
 /**
- * Bespoke delete (accessories are not a grant `ParentType`, so
- * `authorizeAndDeleteParent` doesn't apply, and there are no grants to clean
- * up). Owner may always delete; an edit-grantee may delete a mounted
- * accessory too (R9 — delete follows the inherited firearm-edit permission).
+ * Bespoke delete: `authorizeAndDeleteParent` resolves permission the generic
+ * way and would miss the mounted-firearm inheritance, so it does not apply
+ * even now that accessories are a grant `ParentType`. Grant rows are cleaned
+ * up by the `accessory_grants_cleanup` trigger (#23 R10, migration 0022)
+ * rather than in this transaction. Owner may always delete; an edit-grantee
+ * may delete too (R9 — delete follows whichever path granted edit).
  * A view-grantee is forbidden; anything outside the visible set is
  * not-found — this also covers an unmounted, non-owned accessory, which is
  * simply invisible (`resolveAccessoryPermission` returns null for it).
