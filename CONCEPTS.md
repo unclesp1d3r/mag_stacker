@@ -13,7 +13,7 @@ Shared domain vocabulary for this project — entities, named processes, and sta
 
 ### Firearm
 
-An owned firearm in a user's inventory. One of the three owned parents. Carries a canonical product name plus an optional owner **Nickname**, manufacturer, caliber, and a controlled **Firearm Type** / **Firearm Action** classification. A Firearm is the root of the **child record** seam — its history and derived totals come from its children (currently **Range Sessions**).
+An owned firearm in a user's inventory. One of the four owned parents. Carries a canonical product name plus an optional owner **Nickname**, manufacturer, caliber, and a controlled **Firearm Type** / **Firearm Action** classification. A Firearm is the root of the **child record** seam — its history and derived totals come from its children (currently **Range Sessions**).
 
 ### Magazine
 
