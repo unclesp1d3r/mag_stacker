@@ -70,6 +70,39 @@ export async function getVisibleIds(
 }
 
 /**
+ * The permission a DIRECT GRANT gives `userId` on one item, ignoring ownership
+ * entirely — null when no grant exists.
+ *
+ * Split out of {@link resolvePermission} for callers that have ALREADY ruled
+ * ownership out (see `resolveAccessoryPermission`). For those, the ownership
+ * half of `resolvePermission` is a query guaranteed to return zero rows, paid
+ * on every non-owner read and write.
+ *
+ * Prefer `resolvePermission` unless you can point at the check that already
+ * excluded ownership — on its own this answers a narrower question and will
+ * report `null` for an item the user owns outright.
+ */
+export async function resolveGrantPermission(
+  db: DbOrTx,
+  userId: string,
+  parentType: ParentType,
+  parentId: string,
+): Promise<Permission | null> {
+  const granted = await db
+    .select({ permission: grant.permission })
+    .from(grant)
+    .where(
+      and(
+        eq(grant.granteeId, userId),
+        eq(grant.parentType, parentType),
+        eq(grant.parentId, parentId),
+      ),
+    )
+    .limit(1);
+  return granted.length > 0 ? toPermission(granted[0].permission) : null;
+}
+
+/**
  * Resolve the requester's permission on a specific item, or null if it is
  * outside their visible set. Ownership wins over any grant (own ⇒ full).
  */
@@ -87,21 +120,7 @@ export async function resolvePermission(
     .limit(1);
   if (owned.length > 0) return "owner";
 
-  const granted = await db
-    .select({ permission: grant.permission })
-    .from(grant)
-    .where(
-      and(
-        eq(grant.granteeId, userId),
-        eq(grant.parentType, parentType),
-        eq(grant.parentId, parentId),
-      ),
-    )
-    .limit(1);
-  if (granted.length > 0) {
-    return toPermission(granted[0].permission);
-  }
-  return null;
+  return resolveGrantPermission(db, userId, parentType, parentId);
 }
 
 /** True when the item is visible to the requester (owned or granted). */

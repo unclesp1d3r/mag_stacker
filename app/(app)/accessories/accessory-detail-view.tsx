@@ -50,6 +50,13 @@ interface AccessoryDetailViewProps {
    * owner/editor is offered the mutating controls (R17). */
   attachments: AttachmentItem[];
   /**
+   * Whether this viewer may DELETE (narrower than `canEdit` — see
+   * `requireAccessoryDelete`). Resolved server-side because the client cannot
+   * tell which path granted its `edit`: deletion follows #8's firearm
+   * inheritance, not a direct #23 accessory grant.
+   */
+  canDelete: boolean;
+  /**
    * Service data (U8) — owner-only throughout for accessories (KTD3), so
    * these are `null` for a non-owner viewer rather than empty: the page
    * never even loads them in that case (`requireAccessoryOwner` would throw
@@ -131,6 +138,7 @@ export function AccessoryDetailView({
   firearmNames,
   visibleFirearms,
   attachments,
+  canDelete,
   serviceRules,
   suppressedServiceRuleNames,
   serviceHistory,
@@ -201,7 +209,7 @@ export function AccessoryDetailView({
               Edit
             </Button>
           ) : null}
-          {canEdit ? (
+          {canDelete ? (
             <Button
               variant="destructive"
               size="sm"

@@ -2,13 +2,13 @@ import { asc, eq, inArray } from "drizzle-orm";
 import {
   authorizeMount,
   listVisibleAccessoryIds,
+  requireAccessoryDelete,
   requireAccessoryEdit,
   resolveAccessoryPermission,
 } from "@/src/auth/accessory-visibility";
 import { authorizeUpdate, resolveCreateOwner } from "@/src/auth/authorize";
 import { NotAuthorizedError, NotFoundError } from "@/src/auth/errors";
 import { getVisibleIds, type Permission } from "@/src/auth/visibility";
-import { assertWritesAllowed } from "@/src/backup/maintenance";
 import { type DbOrTx, db } from "@/src/db/client";
 import { accessory, firearm } from "@/src/db/schema";
 import { ValidationError } from "../errors";
@@ -142,9 +142,12 @@ async function attachCompatibility(
   database: DbOrTx,
   actorId: string,
   rows: Accessory[],
+  precomputedVisibleFirearmIds?: Set<string>,
 ): Promise<AccessoryWithCompatibility[]> {
   if (rows.length === 0) return [];
-  const visibleFirearms = await getVisibleIds(database, actorId, "firearm");
+  const visibleFirearms =
+    precomputedVisibleFirearmIds ??
+    (await getVisibleIds(database, actorId, "firearm"));
   const byAccessory = await loadAccessoryCompatibilityBatch(
     database,
     visibleFirearms,
@@ -192,7 +195,10 @@ export async function createAccessory(
     return created;
   });
   const [withCompat] = await attachCompatibility(db, actorId, [row]);
-  return withCompat;
+  // The compatibility read runs after the write transaction commits, so a
+  // concurrent delete can empty it. Fall back to the row we just wrote rather
+  // than returning undefined to the caller.
+  return withCompat ?? { ...row, compatibleFirearmIds: [] };
 }
 
 export async function updateAccessory(
@@ -235,7 +241,8 @@ export async function updateAccessory(
     return updated;
   });
   const [withCompat] = await attachCompatibility(db, actorId, [row]);
-  return withCompat;
+  // Same post-commit race as create — see above.
+  return withCompat ?? { ...row, compatibleFirearmIds: [] };
 }
 
 /**
@@ -269,6 +276,8 @@ export async function mountAccessory(
 export async function getAccessory(
   actorId: string,
   id: string,
+  /** See `listFirearms` — lets a caller that already holds the set skip a query. */
+  precomputedVisibleFirearmIds?: Set<string>,
 ): Promise<{ accessory: AccessoryWithCompatibility; permission: Permission }> {
   const permission = await resolveAccessoryPermission(db, actorId, id);
   if (permission === null) throw new NotFoundError();
@@ -278,7 +287,12 @@ export async function getAccessory(
     .where(eq(accessory.id, id))
     .limit(1);
   if (!row) throw new NotFoundError();
-  const [withCompat] = await attachCompatibility(db, actorId, [row]);
+  const [withCompat] = await attachCompatibility(
+    db,
+    actorId,
+    [row],
+    precomputedVisibleFirearmIds,
+  );
   // Return the viewer's permission alongside the row so the caller doesn't
   // re-resolve it (one query, and no read-vs-permission race between two calls).
   return { accessory: withCompat, permission };
@@ -290,15 +304,24 @@ export async function getAccessory(
  */
 export async function listAccessories(
   actorId: string,
+  /** See `listFirearms` — lets a caller that already holds the set skip a query. */
+  precomputedVisibleFirearmIds?: Set<string>,
 ): Promise<AccessoryWithCompatibility[]> {
-  const visible = await listVisibleAccessoryIds(db, actorId);
+  // Derive the visible firearm set ONCE and thread it through both consumers:
+  // the inherited-visibility path needs it, and so does the viewer-relative
+  // compatibility filter. Without this the list page pays for the same set
+  // twice on every load.
+  const visibleFirearms =
+    precomputedVisibleFirearmIds ??
+    (await getVisibleIds(db, actorId, "firearm"));
+  const visible = await listVisibleAccessoryIds(db, actorId, visibleFirearms);
   if (visible.size === 0) return [];
   const rows = await db
     .select()
     .from(accessory)
     .where(inArray(accessory.id, [...visible]))
     .orderBy(asc(accessory.category), asc(accessory.brand));
-  return attachCompatibility(db, actorId, rows);
+  return attachCompatibility(db, actorId, rows, visibleFirearms);
 }
 
 /**
@@ -328,8 +351,12 @@ export async function listMountedForFirearm(
  * way and would miss the mounted-firearm inheritance, so it does not apply
  * even now that accessories are a grant `ParentType`. Grant rows are cleaned
  * up by the `accessory_grants_cleanup` trigger (#23 R10, migration 0022)
- * rather than in this transaction. Owner may always delete; an edit-grantee
- * may delete too (R9 — delete follows whichever path granted edit).
+ * rather than in this transaction.
+ *
+ * Delete is gated more tightly than update — see `requireAccessoryDelete`: the
+ * owner and #8's firearm-edit-inheritance path may delete, but a direct #23
+ * accessory `edit` grant may not, matching how every other grantable parent
+ * type treats sharing at edit.
  * A view-grantee is forbidden; anything outside the visible set is
  * not-found — this also covers an unmounted, non-owned accessory, which is
  * simply invisible (`resolveAccessoryPermission` returns null for it).
@@ -339,7 +366,7 @@ export async function deleteAccessory(
   id: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    await requireAccessoryEdit(tx, actorId, id);
+    await requireAccessoryDelete(tx, actorId, id);
     const deleted = await tx
       .delete(accessory)
       .where(eq(accessory.id, id))

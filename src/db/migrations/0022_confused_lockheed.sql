@@ -34,8 +34,21 @@ ALTER TABLE "accessory" ADD COLUMN "type" text DEFAULT 'other' NOT NULL;--> stat
 ---
 --- The value list mirrors ACCESSORY_TYPES in
 --- src/domain/accessories/constants.ts. SQL cannot import the TS constant, so
---- this is a deliberate copy; the accessory_type_valid CHECK added below is
---- the backstop that fails loudly if the two ever disagree.
+--- this is a deliberate copy.
+---
+--- Know exactly what the accessory_type_valid CHECK below does and does not
+--- protect: it validates SET MEMBERSHIP, not MAPPING CORRECTNESS, and its
+--- value list is hand-copied from the same constant this WHERE clause is, so
+--- it is not an independent check.
+---   * A value that drifts OUT of the set  -> CHECK fails, whole migration
+---     aborts, nothing commits. Fail-safe.
+---   * A value mapped to the WRONG member of the set (e.g. classifying laser
+---     rows as 'light') -> CHECK passes and the migration commits silently
+---     wrong data.
+--- Nothing here self-verifies the mapping. Diff the pre- and post-migration
+--- `SELECT lower(trim(category)), count(*) FROM accessory GROUP BY 1` to
+--- confirm it landed as intended. Recovery is a forward fix, not a rollback:
+--- `category` is preserved verbatim (below), so the source data survives.
 UPDATE "accessory"
    SET "type" = lower(trim("category"))
  WHERE lower(trim("category")) IN ('suppressor', 'optic', 'light', 'laser', 'muzzle device');--> statement-breakpoint

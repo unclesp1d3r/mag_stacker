@@ -116,7 +116,14 @@ describe("accessory service (accessory plan U4)", () => {
     expect(moved.serialNumber).toBe("SN-123");
     expect(moved.costCents).toBe(25000);
     expect(moved.isNfa).toBe(true);
-    const today = new Date().toISOString().slice(0, 10);
+    // Local calendar components, not toISOString(): `installedDate` is a
+    // Postgres `date` written from the server's LOCAL day, so a UTC-derived
+    // string disagrees with it either side of midnight on any non-UTC runner
+    // (docs/solutions/test-failures/timezone-fragile-date-boundary-tests.md).
+    const now = new Date();
+    const today = `${String(now.getFullYear()).padStart(4, "0")}-${String(
+      now.getMonth() + 1,
+    ).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     expect(moved.installedDate).toBe(today);
   });
 

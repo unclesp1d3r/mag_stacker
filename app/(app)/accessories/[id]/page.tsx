@@ -89,19 +89,37 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
   // an accessory that is not owned nor mounted on a visible firearm — the
   // not-found path never reveals existence (R9). It returns the permission so
   // we don't re-resolve it.
-  const { accessory: row, permission } = await getAccessory(user.id, id).catch(
-    (error: unknown) => {
-      if (error instanceof NotFoundError) notFound();
-      throw error;
-    },
-  );
+  // Resolved before the batch below so its keys can serve as the visible
+  // firearm id set every other query on this page would otherwise re-derive.
+  const permissions = await visibleFirearmPermissions(db, user.id);
+  const visibleFirearmIds = new Set(permissions.keys());
+
+  const { accessory: row, permission } = await getAccessory(
+    user.id,
+    id,
+    visibleFirearmIds,
+  ).catch((error: unknown) => {
+    if (error instanceof NotFoundError) notFound();
+    throw error;
+  });
 
   const isOwner = permission === "owner";
 
-  const [firearms, permissions, serviceProps, ownerCategories] =
+  // Mirrors `requireAccessoryDelete`: the owner deletes, and so does someone
+  // who can edit the firearm it is mounted to (#8's inherited path). A direct
+  // #23 accessory `edit` grant deliberately does NOT confer deletion, so the
+  // control must not be offered to one — an action that is refused after the
+  // click is worse than an action that was never offered. Computed from data
+  // already in hand; no extra query.
+  const hostPermission = row.currentFirearmId
+    ? permissions.get(row.currentFirearmId)
+    : undefined;
+  const canDelete =
+    isOwner || hostPermission === "owner" || hostPermission === "edit";
+
+  const [firearms, serviceProps, ownerCategories, attachments] =
     await Promise.all([
-      listFirearms(user.id),
-      visibleFirearmPermissions(db, user.id),
+      listFirearms(user.id, visibleFirearmIds),
       loadAccessoryServiceProps(user.id, id, isOwner),
       // The ACCESSORY'S OWNER's categories (row.ownerId, not the actor) —
       // suggestions should reflect the owner whose category defaults (KD10)
@@ -115,19 +133,17 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
       isOwner
         ? listOwnerAccessoryCategories(row.ownerId)
         : listOwnerAccessoryCategories(user.id),
+      // Every viewer sees the attachments (R15); the domain layer authorizes
+      // the read through the parent accessory, which `getAccessory` above
+      // already proved is visible.
+      listAttachments(user.id, id),
     ]);
 
   // The reassign-mount picker must offer only firearms owned by the
   // ACCESSORY's owner (`row.ownerId`, not the actor — an edit-grantee acting
   // on someone else's mounted accessory must still only relocate it among
   // that owner's own guns, accessories-tracker plan KTD5's cross-tenant
-  // guard) AND editable by the
-  // acting user.
-  // Every viewer sees the attachments (R15); the domain layer authorizes the
-  // read through the parent accessory, which `getAccessory` above already
-  // proved is visible.
-  const attachments = await listAttachments(user.id, row.id);
-
+  // guard) AND editable by the acting user.
   const { firearmNames, editableFirearms, visibleFirearms } =
     buildFirearmMountContext(firearms, permissions, row.ownerId);
 
@@ -152,6 +168,7 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
       editableFirearms={editableFirearms}
       visibleFirearms={visibleFirearms}
       attachments={attachments}
+      canDelete={canDelete}
       firearmNames={firearmNames}
       serviceRules={serviceProps.serviceRules}
       suppressedServiceRuleNames={serviceProps.suppressedServiceRuleNames}

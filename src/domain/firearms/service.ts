@@ -223,8 +223,19 @@ export async function getFirearm(
  * whitespace-normalized, so a plain `coalesce(nullif(nickname, ''), name)`
  * matches what the list shows without any SQL-side trimming.
  */
-export async function listFirearms(actorId: string): Promise<Firearm[]> {
-  const visible = await getVisibleIds(db, actorId, "firearm");
+export async function listFirearms(
+  actorId: string,
+  /**
+   * The actor's visible-firearm id set, when the caller already holds it.
+   * Pages that also call `visibleFirearmPermissions` have this set for free
+   * (its keys ARE the visible ids), so passing it here avoids re-deriving the
+   * same owned-union-granted lookup a second time in one request.
+   */
+  precomputedVisibleFirearmIds?: Set<string>,
+): Promise<Firearm[]> {
+  const visible =
+    precomputedVisibleFirearmIds ??
+    (await getVisibleIds(db, actorId, "firearm"));
   if (visible.size === 0) return [];
   return db
     .select()

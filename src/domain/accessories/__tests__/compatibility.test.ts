@@ -356,6 +356,50 @@ describe("accessory compatibility through the service surface", () => {
     expect(narrowed.get(second.id)).toEqual([hostA]);
   });
 
+  test("update rolls the SCALAR change back when a compatibility id is rejected", async () => {
+    // create-rollback was already covered; update has the same transactional
+    // mechanics but a different code path, and a partial apply here would mean
+    // the accessory silently kept a change the caller was told had failed.
+    const acc = await createAccessory(owner, {
+      type: "suppressor",
+      notes: "before",
+      compatibleFirearmIds: [hostA],
+    });
+    const strangerId = await createUser("AccCompatUpdateStranger");
+    try {
+      const hidden = await makeFirearm(strangerId, { name: "Hidden Update" });
+      await expect(
+        updateAccessory(owner, acc.id, {
+          type: "suppressor",
+          notes: "after",
+          compatibleFirearmIds: [hidden.id],
+        }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+
+      const reread = await getAccessory(owner, acc.id);
+      expect(reread.accessory.notes).toBe("before");
+      // and the original compatibility survived untouched
+      expect(reread.accessory.compatibleFirearmIds).toEqual([hostA]);
+    } finally {
+      await deleteUsers(strangerId);
+    }
+  });
+
+  test("omitting compatibleFirearmIds on update CLEARS the set (documented footgun)", async () => {
+    // `input.compatibleFirearmIds ?? []` means an update that does not mention
+    // compatibility wipes it. That is intentional and matches magazines, but
+    // it is a real hazard for any future caller that builds a partial update —
+    // pinned here so a change in that behavior is a deliberate decision.
+    const acc = await createAccessory(owner, {
+      type: "suppressor",
+      compatibleFirearmIds: [hostA, hostB],
+    });
+    const updated = await updateAccessory(owner, acc.id, {
+      type: "suppressor",
+    });
+    expect(updated.compatibleFirearmIds).toEqual([]);
+  });
+
   test("an empty parent list short-circuits to an empty map", async () => {
     const batch = await loadAccessoryCompatibilityBatch(db, new Set(), []);
     expect(batch.size).toBe(0);

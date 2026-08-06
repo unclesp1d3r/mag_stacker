@@ -133,6 +133,47 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
     await expect(afterReload).toContainText("Piston");
   });
 
+  await test.step("edit an existing attachment through the UI", async () => {
+    await page.getByRole("button", { name: /Edit .* attachment/ }).click();
+    const editPanel = page.locator("form").last();
+    await editPanel.getByLabel("Spec").fill("5/8x24");
+    await page.getByRole("button", { name: "Save attachment" }).click();
+
+    const row = page.getByRole("listitem").filter({ hasText: "5/8x24" });
+    await expect(row).toBeVisible();
+    await expect(page.getByText("1/2x28")).toHaveCount(0);
+  });
+
+  await test.step("edit the accessory itself: change type and drop one compatible host", async () => {
+    await page.getByRole("button", { name: "Edit" }).first().click();
+    const form = page.locator("form").last();
+
+    await form.getByLabel("Type").selectOption("muzzle device");
+    // Deselecting must actually remove the pairing, not merely re-order it.
+    await form
+      .getByRole("group", { name: "Fits these firearms" })
+      .getByLabel("Can Host Charlie")
+      .uncheck();
+    await page.getByRole("button", { name: "Save changes" }).click();
+
+    await expect(
+      page.getByRole("link", { name: "Can Host Charlie" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "Can Host Alpha" }),
+    ).toBeVisible();
+
+    // Restore the type so the later delete-by-row-text step still matches.
+    await page.getByRole("button", { name: "Edit" }).first().click();
+    await page
+      .locator("form")
+      .last()
+      .getByLabel("Type")
+      .selectOption("suppressor");
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByText("ABC123")).toBeVisible();
+  });
+
   await test.step("AE2: share the suppressor view-only with a second user", async () => {
     await page.getByRole("button", { name: "Share" }).click();
     const dialog = page.getByRole("dialog");
@@ -177,8 +218,11 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
         .click();
 
       await expect(vp.getByText("ABC123")).toBeVisible();
+      // The edited spec (the attachment was updated from 1/2x28 earlier in
+      // this journey) — proves the grantee reads current state, not a stale
+      // snapshot from when the share was created.
       await expect(
-        vp.getByRole("listitem").filter({ hasText: "1/2x28" }),
+        vp.getByRole("listitem").filter({ hasText: "5/8x24" }),
       ).toBeVisible();
 
       // Compatibility reads are VIEWER-RELATIVE: the grantee sees the one host
@@ -207,6 +251,55 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
       ).toHaveCount(0);
     } finally {
       await viewerContext.close();
+    }
+  });
+
+  await test.step("re-sharing at EDIT gives the grantee mutating controls", async () => {
+    // #23 made accessories edit-shareable alongside firearms and ammo, so the
+    // Permission select is offered for them (magazines stay view-only).
+    await page.goto("/accessories");
+    await page
+      .getByRole("row")
+      .filter({ hasText: "Omega 36M" })
+      .getByRole("button", { name: "Share" })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("User").selectOption({ label: viewer.email });
+    await dialog.getByLabel("Permission").selectOption("edit");
+    await dialog.getByRole("button", { name: "Share" }).click();
+    await expect(
+      dialog.getByRole("listitem").filter({ hasText: viewer.email }),
+    ).toBeVisible();
+    // Navigate away rather than clicking Done: re-granting an EXISTING share
+    // re-renders the dialog, so a click racing that re-render can land on a
+    // detached node. The Done button's own behavior is already covered by the
+    // first share step above; this step is about the grantee's controls.
+    await page.goto("/accessories");
+
+    const editorContext = await browser.newContext({
+      storageState: storageStateFor("accessories-serialized-viewer"),
+    });
+    try {
+      const ep = await editorContext.newPage();
+      await ep.goto("/accessories");
+      await ep
+        .getByRole("row")
+        .filter({ hasText: "Omega 36M" })
+        .getByRole("link")
+        .click();
+
+      // Edit affordances appear for an edit-grantee...
+      await expect(
+        ep.getByRole("button", { name: "Edit" }).first(),
+      ).toBeVisible();
+      await expect(
+        ep.getByRole("button", { name: "Add attachment" }),
+      ).toBeVisible();
+      // ...but sharing onward and deleting remain owner-only.
+      await expect(ep.getByRole("button", { name: "Share" })).toHaveCount(0);
+      await expect(ep.getByRole("button", { name: "Delete" })).toHaveCount(0);
+    } finally {
+      await editorContext.close();
     }
   });
 
