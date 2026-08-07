@@ -1,5 +1,4 @@
 import { notFound, redirect } from "next/navigation";
-import { NotFoundError } from "@/src/auth/errors";
 import { getCurrentUser } from "@/src/auth/session";
 import { visibleFirearmPermissions } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
@@ -98,10 +97,7 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
     user.id,
     id,
     visibleFirearmIds,
-  ).catch((error: unknown) => {
-    if (error instanceof NotFoundError) notFound();
-    throw error;
-  });
+  ).catch(asNotFound);
 
   const isOwner = permission === "owner";
 
@@ -134,14 +130,10 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
         ? listOwnerAccessoryCategories(row.ownerId)
         : listOwnerAccessoryCategories(user.id),
       // Every viewer sees the attachments (R15). This re-authorizes through
-      // the parent rather than trusting the check above, so a grant revoked in
-      // the window between the two calls throws its own NotFoundError — route
-      // it to the same 404 as `getAccessory` instead of letting it escape as an
-      // unhandled error (there is no error boundary under app/).
-      listAttachments(user.id, id).catch((error: unknown) => {
-        if (error instanceof NotFoundError) notFound();
-        throw error;
-      }),
+      // the parent, so a grant revoked between that check and this call throws
+      // its own NotFoundError — `asNotFound` routes it to the page's 404, the
+      // same guard the service loaders above use.
+      listAttachments(user.id, id).catch(asNotFound),
     ]);
 
   // The reassign-mount picker must offer only firearms owned by the

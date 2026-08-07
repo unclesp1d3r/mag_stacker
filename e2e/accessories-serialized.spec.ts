@@ -166,15 +166,39 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
       page.getByRole("link", { name: "Can Host Alpha" }),
     ).toBeVisible();
 
-    // Restore the type so the later delete-by-row-text step still matches.
-    await page.getByRole("button", { name: "Edit" }).first().click();
+    // Reopen and assert the new type actually PERSISTED. Without this the step
+    // proves only the compatibility half: a write path that silently dropped
+    // `type` would still pass every assertion above.
+    await expect(
+      page.getByRole("button", { name: "Save changes" }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(page.locator("form").last().getByLabel("Type")).toHaveValue(
+      "muzzle device",
+    );
+
+    // Restore it, and assert THAT save landed too. The check here used to be
+    // the serial number, which was already on screen before the step ran and
+    // so only proved the form had closed.
     await page
       .locator("form")
       .last()
       .getByLabel("Type")
       .selectOption("suppressor");
     await page.getByRole("button", { name: "Save changes" }).click();
-    await expect(page.getByText("ABC123")).toBeVisible();
+
+    // Wait for the save to actually settle before reopening: the form closing
+    // is the signal the write landed and the detail view refreshed. Reopening
+    // immediately reads the PREVIOUS form's value and fails under load.
+    await expect(
+      page.getByRole("button", { name: "Save changes" }),
+    ).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(page.locator("form").last().getByLabel("Type")).toHaveValue(
+      "suppressor",
+    );
+    await page.getByRole("button", { name: "Cancel" }).click();
   });
 
   await test.step("AE2: share the suppressor view-only with a second user", async () => {
@@ -243,6 +267,8 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
       ).toHaveCount(0);
 
       // R17: read-only means no mutating affordance is rendered at all.
+      // Bare "Edit" matches by substring, so this covers the accessory-level
+      // control AND every "Edit <type> attachment" button in one assertion.
       await expect(vp.getByRole("button", { name: "Edit" })).toHaveCount(0);
       await expect(vp.getByRole("button", { name: "Delete" })).toHaveCount(0);
       await expect(vp.getByRole("button", { name: "Share" })).toHaveCount(0);
@@ -296,7 +322,7 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
 
       // Edit affordances appear for an edit-grantee...
       await expect(
-        ep.getByRole("button", { name: "Edit" }).first(),
+        ep.getByRole("button", { name: "Edit", exact: true }),
       ).toBeVisible();
       await expect(
         ep.getByRole("button", { name: "Add attachment" }),

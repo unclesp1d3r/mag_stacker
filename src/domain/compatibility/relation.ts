@@ -31,12 +31,36 @@ import type { DbOrTx } from "@/src/db/client";
  * column reference.
  *
  * The interface is generic over its table so `buildRow` is checked against
- * that table's real insert model. Without it `buildRow` returned
+ * that table's real insert model. The parameter has NO default: a default of
+ * `PgTable` would let a binding omit the argument and silently fall back to
+ * the unchecked shape, which is the hole this exists to close.
+ *
+ * Still open: the three column fields are bare `PgColumn` and are not tied to
+ * `TTable`, so pointing one at another table's column still compiles. That is
+ * also why the `as string` casts at the read sites below are load-bearing
+ * rather than vestigial. Without it `buildRow` returned
  * `Record<string, unknown>`, and a binding that named the wrong key (or wired
  * the wrong column) type-checked cleanly and only failed at runtime — which is
  * precisely the drift this shared core exists to prevent.
  */
-export interface CompatibilityRelation<TTable extends PgTable = PgTable> {
+/**
+ * The read-side shape: everything except `buildRow`. The read paths never
+ * build a row, and Drizzle's `.from()` will not accept a generic table
+ * parameter, so they take this narrower, non-generic view.
+ */
+export interface CompatibilityColumns {
+  /** The join table itself. */
+  table: PgTable;
+  /** The parent-id column (`magazine_id`, `accessory_id`, ...). */
+  parentIdColumn: PgColumn;
+  /** The `firearm_id` column. */
+  firearmIdColumn: PgColumn;
+  /** The `ordinal` column the stable read order is defined by. */
+  ordinalColumn: PgColumn;
+}
+
+export interface CompatibilityRelation<TTable extends PgTable>
+  extends CompatibilityColumns {
   /** The join table itself. */
   table: TTable;
   /** The parent-id column (`magazine_id`, `accessory_id`, ...). */
@@ -80,9 +104,9 @@ export function dedupeFirearmIds(ids: string[]): string[] {
  * back the surrounding transaction so a partially-applied scalar update cannot
  * survive a rejected compatibility list. Must run inside a transaction.
  */
-export async function replaceCompatibility(
+export async function replaceCompatibility<TTable extends PgTable>(
   tx: DbOrTx,
-  relation: CompatibilityRelation,
+  relation: CompatibilityRelation<TTable>,
   actorId: string,
   parentId: string,
   firearmIds: string[],
@@ -119,7 +143,7 @@ export async function replaceCompatibility(
  */
 export async function loadCompatibility(
   db: DbOrTx,
-  relation: CompatibilityRelation,
+  relation: CompatibilityColumns,
   actorId: string,
   parentId: string,
 ): Promise<string[]> {
@@ -139,7 +163,7 @@ export async function loadCompatibility(
  */
 export async function loadCompatibilityBatch(
   db: DbOrTx,
-  relation: CompatibilityRelation,
+  relation: CompatibilityColumns,
   visibleFirearmIds: Set<string>,
   parentIds: string[],
 ): Promise<Map<string, string[]>> {
