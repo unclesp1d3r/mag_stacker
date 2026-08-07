@@ -11,7 +11,10 @@ import {
   updateAttachment,
   validateAttachment,
 } from "@/src/domain/accessories/attachments";
-import { ATTACHMENT_TYPES } from "@/src/domain/accessories/constants";
+import {
+  ATTACHMENT_TYPES,
+  type AttachmentType,
+} from "@/src/domain/accessories/constants";
 import {
   createAccessory,
   deleteAccessory,
@@ -131,9 +134,12 @@ describe("accessory attachments — owner CRUD", () => {
 
   test("the DB CHECK rejects an out-of-set type even when the validator is bypassed", async () => {
     await expectRejects(() =>
-      db
-        .insert(accessoryAttachment)
-        .values({ accessoryId, type: "scope ring" }),
+      db.insert(accessoryAttachment).values({
+        accessoryId,
+        // Deliberately bypassing both the validator AND the column's type
+        // narrowing — the point is to prove the DB CHECK is the last line.
+        type: "scope ring" as AttachmentType,
+      }),
     );
   });
 

@@ -16,6 +16,7 @@ import {
   loadAccessoryCompatibilityBatch,
   replaceAccessoryCompatibility,
 } from "./compatibility";
+import type { AccessoryType } from "./constants";
 import { type AccessoryFields, validateAccessory } from "./validate";
 
 /**
@@ -87,8 +88,10 @@ function persistableFields(
 ) {
   return {
     // Raw values persisted verbatim (R18/R19); optional text is empty-not-null.
-    // `type` is already validated against the controlled set before any write.
-    type: input.type,
+    // `type` arrives as free `string` (it is user input) but every caller runs
+    // `validateAccessory` first and throws on a value outside the controlled
+    // set, so the narrowing the column demands is already established here.
+    type: input.type as AccessoryType,
     // `category` is trimmed so the list view's exact-match category grouping
     // can't be split by incidental leading/trailing whitespace. Optional since
     // #23 R3 — omitted means empty, not "unclassified", because `type` now
@@ -195,10 +198,7 @@ export async function createAccessory(
     return created;
   });
   const [withCompat] = await attachCompatibility(db, actorId, [row]);
-  // The compatibility read runs after the write transaction commits, so a
-  // concurrent delete can empty it. Fall back to the row we just wrote rather
-  // than returning undefined to the caller.
-  return withCompat ?? { ...row, compatibleFirearmIds: [] };
+  return withCompat;
 }
 
 export async function updateAccessory(
@@ -241,8 +241,7 @@ export async function updateAccessory(
     return updated;
   });
   const [withCompat] = await attachCompatibility(db, actorId, [row]);
-  // Same post-commit race as create — see above.
-  return withCompat ?? { ...row, compatibleFirearmIds: [] };
+  return withCompat;
 }
 
 /**

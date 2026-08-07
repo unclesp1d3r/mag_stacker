@@ -133,10 +133,15 @@ export default async function AccessoryDetailPage({ params }: PageProps) {
       isOwner
         ? listOwnerAccessoryCategories(row.ownerId)
         : listOwnerAccessoryCategories(user.id),
-      // Every viewer sees the attachments (R15); the domain layer authorizes
-      // the read through the parent accessory, which `getAccessory` above
-      // already proved is visible.
-      listAttachments(user.id, id),
+      // Every viewer sees the attachments (R15). This re-authorizes through
+      // the parent rather than trusting the check above, so a grant revoked in
+      // the window between the two calls throws its own NotFoundError — route
+      // it to the same 404 as `getAccessory` instead of letting it escape as an
+      // unhandled error (there is no error boundary under app/).
+      listAttachments(user.id, id).catch((error: unknown) => {
+        if (error instanceof NotFoundError) notFound();
+        throw error;
+      }),
     ]);
 
   // The reassign-mount picker must offer only firearms owned by the

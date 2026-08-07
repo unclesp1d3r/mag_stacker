@@ -17,9 +17,15 @@ import { accessory, ammo, firearm, grant, magazine } from "@/src/db/schema";
  * `accessory` joined in #23, reversing #8's "accessories are not independently
  * shareable" decision — an unmounted suppressor was invisible to everyone but
  * its owner, which is backwards for the item most likely to be lent or shown
- * to an armorer. Widening this union is deliberately the ONLY edit needed:
- * every switch that must learn about the new arm is surfaced by `tsc`, so a
- * clean `bun run typecheck` is the completeness signal (#23 KTD5).
+ * to an armorer.
+ *
+ * Widening this union is NOT self-enforcing, so do not treat a clean
+ * `bun run typecheck` as proof of completeness. `parentTable` below is
+ * exhaustive (its `never` check fails the build on a new arm), but plenty of
+ * consumers pattern-match on the string without any compiler help — see the
+ * deliberate allowlist in `app/(app)/grants/share-control.tsx`, which exists
+ * precisely because a new arm would otherwise become edit-shareable by
+ * default. Adding a member means auditing those by hand.
  *
  * Note that `getVisibleIds(db, user, "accessory")` returns owned ∪
  * directly-granted only. The additional "mounted on a visible firearm" path
@@ -35,10 +41,24 @@ export type Permission = "owner" | "edit" | "view";
 /** Resolve a parent type to its Drizzle table — the one dispatch point the
  * auth layer shares (also consumed by `authorize.ts`). */
 export function parentTable(parentType: ParentType) {
-  if (parentType === "firearm") return firearm;
-  if (parentType === "magazine") return magazine;
-  if (parentType === "ammo") return ammo;
-  return accessory;
+  switch (parentType) {
+    case "firearm":
+      return firearm;
+    case "magazine":
+      return magazine;
+    case "ammo":
+      return ammo;
+    case "accessory":
+      return accessory;
+    default: {
+      // Compile error the moment `ParentType` gains an arm this switch does
+      // not handle. Previously an if/else chain ended in `return accessory`,
+      // which would have silently routed a new parent type at the accessory
+      // table — a wrong-table read with no build failure.
+      const unhandled: never = parentType;
+      throw new Error(`unhandled parent type: ${String(unhandled)}`);
+    }
+  }
 }
 
 /** Narrow a stored grant permission string to the item-level Permission. */

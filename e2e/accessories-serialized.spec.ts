@@ -145,7 +145,10 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
   });
 
   await test.step("edit the accessory itself: change type and drop one compatible host", async () => {
-    await page.getByRole("button", { name: "Edit" }).first().click();
+    // `exact: true` matters: Playwright matches accessible names by SUBSTRING
+    // by default, so a bare "Edit" also matches "Edit Piston attachment" and
+    // `.first()` would be resolving by DOM order rather than by name.
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
     const form = page.locator("form").last();
 
     await form.getByLabel("Type").selectOption("muzzle device");

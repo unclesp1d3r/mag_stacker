@@ -16,7 +16,9 @@ import {
 } from "drizzle-orm/pg-core";
 import {
   ACCESSORY_TYPES,
+  type AccessoryType,
   ATTACHMENT_TYPES,
+  type AttachmentType,
 } from "../domain/accessories/constants";
 import {
   FIREARM_ACTIONS,
@@ -210,7 +212,7 @@ export const accessory = pgTable(
     // the free-text `category` below; see domain/accessories/constants.ts.
     // The `other` default exists for the backfill (R2) and keeps a direct
     // insert that predates the domain validator legal.
-    type: text("type").notNull().default("other"),
+    type: text("type").$type<AccessoryType>().notNull().default("other"),
     // Free-text descriptive kind (#8), relaxed from required to optional
     // (#23 R3) now that `type` carries the required classification. Stays
     // NOT NULL with an empty-string default — the empty-not-null rule (R18).
@@ -316,7 +318,7 @@ export const accessoryAttachment = pgTable(
     accessoryId: uuid("accessory_id")
       .notNull()
       .references(() => accessory.id, { onDelete: "cascade" }),
-    type: text("type").notNull(),
+    type: text("type").$type<AttachmentType>().notNull(),
     // Thread pitch / bore / whatever identifies the part — free text, and
     // empty-not-null like every other optional text field (R18).
     spec: text("spec").notNull().default(""),

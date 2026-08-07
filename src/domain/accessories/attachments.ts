@@ -7,7 +7,7 @@ import { NotFoundError } from "@/src/auth/errors";
 import { type DbOrTx, db } from "@/src/db/client";
 import { accessoryAttachment } from "@/src/db/schema";
 import { ValidationError } from "../errors";
-import { isAttachmentType } from "./constants";
+import { type AttachmentType, isAttachmentType } from "./constants";
 
 /**
  * Accessory attachments (#23 U3, R11/R12/R13) — the mounting hardware that
@@ -52,7 +52,9 @@ export function validateAttachment(
 /** Optional text is empty-not-null (R18); `type` is validated before any write. */
 function persistableFields(input: AttachmentFields) {
   return {
-    type: input.type,
+    // Narrowed rather than re-checked: every caller runs `validateAttachment`
+    // and throws before reaching here, so membership is already established.
+    type: input.type as AttachmentType,
     spec: (input.spec ?? "").trim(),
     serialNumber: (input.serialNumber ?? "").trim(),
     notes: input.notes ?? "",

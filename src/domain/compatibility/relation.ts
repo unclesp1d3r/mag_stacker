@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, eq, type InferInsertModel, inArray } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { NotFoundError } from "@/src/auth/errors";
 import { getVisibleIds } from "@/src/auth/visibility";
@@ -29,10 +29,16 @@ import type { DbOrTx } from "@/src/db/client";
  * which is what {@link CompatibilityRelation.buildRow} supplies — drizzle's
  * `.values()` is keyed by model property name, so it cannot be derived from a
  * column reference.
+ *
+ * The interface is generic over its table so `buildRow` is checked against
+ * that table's real insert model. Without it `buildRow` returned
+ * `Record<string, unknown>`, and a binding that named the wrong key (or wired
+ * the wrong column) type-checked cleanly and only failed at runtime — which is
+ * precisely the drift this shared core exists to prevent.
  */
-export interface CompatibilityRelation {
+export interface CompatibilityRelation<TTable extends PgTable = PgTable> {
   /** The join table itself. */
-  table: PgTable;
+  table: TTable;
   /** The parent-id column (`magazine_id`, `accessory_id`, ...). */
   parentIdColumn: PgColumn;
   /** The `firearm_id` column. */
@@ -44,7 +50,7 @@ export interface CompatibilityRelation {
     parentId: string,
     firearmId: string,
     ordinal: number,
-  ) => Record<string, unknown>;
+  ) => InferInsertModel<TTable>;
 }
 
 /**

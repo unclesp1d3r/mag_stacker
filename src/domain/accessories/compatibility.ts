@@ -22,7 +22,7 @@ import {
  * the two relations cannot drift.
  */
 
-const ACCESSORY_FIREARM: CompatibilityRelation = {
+const ACCESSORY_FIREARM: CompatibilityRelation<typeof accessoryFirearm> = {
   table: accessoryFirearm,
   parentIdColumn: accessoryFirearm.accessoryId,
   firearmIdColumn: accessoryFirearm.firearmId,

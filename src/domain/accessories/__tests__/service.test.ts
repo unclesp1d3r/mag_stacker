@@ -65,6 +65,20 @@ describe("accessory service (accessory plan U4)", () => {
     expect(after.length).toBe(before.length);
   });
 
+  test("updateAccessory can CHANGE the type, and the new value persists", async () => {
+    // Every other test in this file passes the same `type` on create and
+    // update, so none of them would notice if the update path stopped writing
+    // `type` at all — the single most load-bearing new field in #23.
+    const acc = await createAccessory(owner, { type: "optic" });
+    const updated = await updateAccessory(owner, acc.id, {
+      type: "suppressor",
+    });
+    expect(updated.type).toBe("suppressor");
+
+    const reread = await getAccessory(owner, acc.id);
+    expect(reread.accessory.type).toBe("suppressor");
+  });
+
   test("a blank category is now accepted and persists as empty (#23 R3)", async () => {
     const acc = await createAccessory(owner, { type: "suppressor" });
     expect(acc.category).toBe("");

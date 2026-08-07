@@ -17,7 +17,7 @@ import {
  * is the magazine binding plus the public API magazine callers already use.
  */
 
-const MAGAZINE_FIREARM: CompatibilityRelation = {
+const MAGAZINE_FIREARM: CompatibilityRelation<typeof magazineFirearm> = {
   table: magazineFirearm,
   parentIdColumn: magazineFirearm.magazineId,
   firearmIdColumn: magazineFirearm.firearmId,
