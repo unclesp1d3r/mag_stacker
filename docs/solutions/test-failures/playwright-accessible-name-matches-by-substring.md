@@ -64,7 +64,7 @@ The two live in the same spec and are both correct; what makes them correct is t
 
 ## Why This Works
 
-The accessible names in question are generated, not literal. `app/(app)/accessories/attachments-section.tsx:305` builds `aria-label={\`Edit ${attachmentTypeLabel(item.type)} attachment\`}`, while `app/(app)/accessories/accessory-detail-view.tsx:208` renders a button whose text is just `Edit`. A substring match over that name space returns a set, not an element.
+The accessible names in question are generated, not literal. `app/(app)/accessories/attachments-section.tsx:305` builds ``aria-label={`Edit ${attachmentTypeLabel(item.type)} attachment`}``, while `app/(app)/accessories/accessory-detail-view.tsx:208` renders a button whose text is just `Edit`. A substring match over that name space returns a set, not an element.
 
 `exact: true` narrows the set to the intended one. Leaving it off narrows nothing and hands disambiguation to `.first()`, which answers a different question — "which is earliest in the DOM" — that the test never meant to ask.
 
@@ -72,7 +72,7 @@ The asymmetry matters for absence assertions specifically. For `toHaveCount(0)`,
 
 ## Prevention
 
-**Ask what the locator selects, not what it reads like.** Before a name-based click or value assertion, check whether any other element's accessible name *contains* the string. Generated labels (`aria-label={\`... ${x} ...\`}`) are where this bites, because the containing name does not exist anywhere in the source as a literal.
+**Ask what the locator selects, not what it reads like.** Before a name-based click or value assertion, check whether any other element's accessible name *contains* the string. Generated labels (``aria-label={`... ${x} ...`}``) are where this bites, because the containing name does not exist anywhere in the source as a literal.
 
 **Treat `.first()` as a smell on a name-based locator.** It is appropriate for a genuinely repeated element (a row in a list). On a locator meant to identify one control, it is converting an ambiguity into a silent pass — prefer `exact: true`, or scope to a container.
 

@@ -74,7 +74,7 @@ export function parentTable(parentType: ParentType) {
 
 Verify the guard is real rather than decorative — add a member to the union and confirm the build fails:
 
-```
+```text
 error TS2322: Type '"holster"' is not assignable to type 'never'.
 ```
 
