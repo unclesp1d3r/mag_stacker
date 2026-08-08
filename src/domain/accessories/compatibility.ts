@@ -35,9 +35,12 @@ const ACCESSORY_FIREARM: CompatibilityRelation<typeof accessoryFirearm> = {
 };
 
 /**
- * Atomically replace an accessory's compatible-firearm set. Every firearm must
- * be visible to the acting user; an unknown or unseeable one throws, rolling
- * back the surrounding transaction. Must run inside a tx.
+ * Atomically replace the part of an accessory's compatible-firearm set that
+ * the actor can see; links to firearms outside their visible set survive
+ * untouched (the submitted list came from a viewer-relative read, so its gaps
+ * are not deletions). Every submitted firearm must be visible to the acting
+ * user; an unknown or unseeable one throws, rolling back the surrounding
+ * transaction. Must run inside a tx.
  */
 export async function replaceAccessoryCompatibility(
   tx: DbOrTx,

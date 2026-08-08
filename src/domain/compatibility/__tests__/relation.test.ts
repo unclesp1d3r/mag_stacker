@@ -168,3 +168,108 @@ describe("magazine and accessory compatibility behave identically", () => {
     );
   });
 });
+
+/**
+ * The read side is viewer-relative, so the list an editor submits is only ever
+ * an edit of the portion they were SHOWN. A wholesale delete-then-reinsert
+ * therefore destroys links the editor was never told existed — silently, with
+ * no error, and invisibly to the owner.
+ *
+ * These tests pin the pairing of the two rules rather than either one alone:
+ * "reads drop what you cannot see" is only safe if "writes preserve what you
+ * cannot see" holds too. Both bindings are driven, because the whole point of
+ * the shared core is that they cannot diverge on an authorization rule.
+ */
+describe("a write never destroys links outside the actor's visible set", () => {
+  let owner: string;
+  let editor: string;
+  let visibleHost: string;
+  let hiddenHost: string;
+  let magazineId: string;
+  let accessoryId: string;
+
+  beforeAll(async () => {
+    owner = await createUser("PreserveOwner");
+    editor = await createUser("PreserveEditor");
+    visibleHost = (await makeFirearm(owner, { name: "Preserve Shown" })).id;
+    hiddenHost = (await makeFirearm(owner, { name: "Preserve Unshown" })).id;
+    magazineId = (await makeMagazine(owner)).id;
+    accessoryId = (await createAccessory(owner, { type: "suppressor" })).id;
+
+    // The editor can see exactly ONE of the two hosts, so every compatibility
+    // read they get back is a strict subset of what is actually linked.
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: editor,
+      parentType: "firearm",
+      parentId: visibleHost,
+      permission: "view",
+    });
+  });
+
+  afterAll(async () => {
+    await deleteUsers(owner, editor);
+  });
+
+  /** Owner links both hosts — the state the editor is about to edit blind. */
+  async function ownerLinksBoth(): Promise<void> {
+    const ids = [hiddenHost, visibleHost];
+    await db.transaction((tx) =>
+      replaceMagazineCompatibility(tx, owner, magazineId, ids),
+    );
+    await db.transaction((tx) =>
+      replaceAccessoryCompatibility(tx, owner, accessoryId, ids),
+    );
+  }
+
+  test("round-tripping the filtered list keeps the hidden link on BOTH", async () => {
+    await ownerLinksBoth();
+
+    // Exactly what a form hands back after a viewer-relative read.
+    expect(await loadMagazineCompatibility(db, editor, magazineId)).toEqual([
+      visibleHost,
+    ]);
+    expect(await loadAccessoryCompatibility(db, editor, accessoryId)).toEqual([
+      visibleHost,
+    ]);
+
+    await db.transaction((tx) =>
+      replaceMagazineCompatibility(tx, editor, magazineId, [visibleHost]),
+    );
+    await db.transaction((tx) =>
+      replaceAccessoryCompatibility(tx, editor, accessoryId, [visibleHost]),
+    );
+
+    expect(await loadMagazineCompatibility(db, owner, magazineId)).toEqual([
+      hiddenHost,
+      visibleHost,
+    ]);
+    expect(await loadAccessoryCompatibility(db, owner, accessoryId)).toEqual([
+      hiddenHost,
+      visibleHost,
+    ]);
+  });
+
+  test("clearing what they CAN see leaves the rest intact on BOTH", async () => {
+    await ownerLinksBoth();
+
+    await db.transaction((tx) =>
+      replaceMagazineCompatibility(tx, editor, magazineId, []),
+    );
+    await db.transaction((tx) =>
+      replaceAccessoryCompatibility(tx, editor, accessoryId, []),
+    );
+
+    // "Omission clears" still holds — but only over what the actor was shown.
+    expect(await loadMagazineCompatibility(db, editor, magazineId)).toEqual([]);
+    expect(await loadAccessoryCompatibility(db, editor, accessoryId)).toEqual(
+      [],
+    );
+    expect(await loadMagazineCompatibility(db, owner, magazineId)).toEqual([
+      hiddenHost,
+    ]);
+    expect(await loadAccessoryCompatibility(db, owner, accessoryId)).toEqual([
+      hiddenHost,
+    ]);
+  });
+});

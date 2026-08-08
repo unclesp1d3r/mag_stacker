@@ -1,4 +1,11 @@
-import { asc, eq, type InferInsertModel, inArray } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  type InferInsertModel,
+  inArray,
+  notInArray,
+} from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { NotFoundError } from "@/src/auth/errors";
 import { getVisibleIds } from "@/src/auth/visibility";
@@ -16,10 +23,13 @@ import type { DbOrTx } from "@/src/db/client";
  * - every firearm must be VISIBLE to the acting user before it is linked, so
  *   a crafted payload cannot attach a firearm the actor cannot see (and
  *   cross-owner shared firearms remain legitimately linkable);
- * - replace atomically (delete-all then reinsert) inside the caller's
- *   transaction, so a rejected id rolls back the surrounding scalar write too;
+ * - replace atomically (delete then reinsert) inside the caller's transaction,
+ *   so a rejected id rolls back the surrounding scalar write too;
  * - reads are VIEWER-RELATIVE: a firearm outside the reader's visible set is
- *   dropped from the result rather than leaking its id.
+ *   dropped from the result rather than leaking its id;
+ * - writes are VIEWER-RELATIVE TOO: the replace is scoped to the actor's
+ *   visible set, so a list built from a filtered read cannot delete the links
+ *   it was never shown.
  *
  * That visibility gate is the reason this is shared rather than copied. A
  * second hand-maintained copy means a second place an authorization fix has to
@@ -97,8 +107,46 @@ export function dedupeFirearmIds(ids: string[]): string[] {
 }
 
 /**
- * Atomically replace a parent's compatibility set, returning the de-duplicated
- * ids in the order they were stored.
+ * A parent's stored rows, UNFILTERED — the only read here that is not
+ * viewer-relative, because the write path needs to know about the rows it must
+ * not touch. Takes the non-generic column view for the same reason the public
+ * read paths do: Drizzle's `.from()` rejects a generic table parameter.
+ */
+async function loadStoredRows(
+  db: DbOrTx,
+  relation: CompatibilityColumns,
+  parentId: string,
+): Promise<{ firearmId: string; ordinal: number }[]> {
+  const rows = await db
+    .select({
+      firearmId: relation.firearmIdColumn,
+      ordinal: relation.ordinalColumn,
+    })
+    .from(relation.table)
+    .where(eq(relation.parentIdColumn, parentId));
+  return rows.map((row) => ({
+    firearmId: row.firearmId as string,
+    ordinal: row.ordinal as number,
+  }));
+}
+
+/**
+ * Replace the portion of a parent's compatibility set that the actor can see,
+ * returning the de-duplicated ids in the order they were stored.
+ *
+ * The replace is scoped to the actor's visible firearms, and that scoping is
+ * load-bearing rather than a refinement. Reads are viewer-relative, so the list
+ * a caller submits was necessarily built from a FILTERED view — an editor with
+ * a grant on the accessory but not on one of its hosts is handed a short list
+ * and has no way to know it. A delete-all would read that unavoidable omission
+ * as a deletion and silently destroy links the actor was never shown, with no
+ * error and nothing to tell the owner. So links outside the visible set are
+ * left exactly as they are; "omission clears" still holds, but only over what
+ * the actor could actually see.
+ *
+ * Preserved rows keep their stored ordinals and the replaced ones are appended
+ * after the highest of them, so the surviving order is stable and the actor's
+ * requested order is honored within their own slice.
  *
  * Throws {@link NotFoundError} for a firearm the actor cannot see, which rolls
  * back the surrounding transaction so a partially-applied scalar update cannot
@@ -113,24 +161,48 @@ export async function replaceCompatibility<TTable extends PgTable>(
 ): Promise<string[]> {
   const deduped = dedupeFirearmIds(firearmIds);
 
-  if (deduped.length > 0) {
-    const visible = await getVisibleIds(tx, actorId, "firearm");
-    for (const id of deduped) {
-      if (!visible.has(id)) {
-        throw new NotFoundError(
-          `compatible firearm ${id} is not visible to the actor`,
-        );
-      }
+  // Always resolved, even for an empty list: the visible set is what bounds the
+  // delete, so clearing needs it just as much as linking does.
+  const visible = await getVisibleIds(tx, actorId, "firearm");
+  for (const id of deduped) {
+    if (!visible.has(id)) {
+      throw new NotFoundError(
+        `compatible firearm ${id} is not visible to the actor`,
+      );
     }
   }
 
-  await tx.delete(relation.table).where(eq(relation.parentIdColumn, parentId));
+  const existing = await loadStoredRows(tx, relation, parentId);
+  const preserved = existing.filter((row) => !visible.has(row.firearmId));
+
+  if (preserved.length === 0) {
+    await tx
+      .delete(relation.table)
+      .where(eq(relation.parentIdColumn, parentId));
+  } else {
+    await tx.delete(relation.table).where(
+      and(
+        eq(relation.parentIdColumn, parentId),
+        notInArray(
+          relation.firearmIdColumn,
+          preserved.map((row) => row.firearmId),
+        ),
+      ),
+    );
+  }
+
   if (deduped.length > 0) {
+    // Preserved rows are never among `deduped` (they are invisible to the
+    // actor, and every submitted id passed the visibility gate), so appending
+    // past their highest ordinal cannot collide on the composite PK either.
+    const firstOrdinal =
+      preserved.reduce((highest, row) => Math.max(highest, row.ordinal), -1) +
+      1;
     await tx
       .insert(relation.table)
       .values(
-        deduped.map((firearmId, ordinal) =>
-          relation.buildRow(parentId, firearmId, ordinal),
+        deduped.map((firearmId, offset) =>
+          relation.buildRow(parentId, firearmId, firstOrdinal + offset),
         ),
       );
   }

@@ -52,10 +52,12 @@ export interface AccessoryInput extends AccessoryFields {
   serialNumber?: string;
   notes?: string;
   /**
-   * The firearms this accessory FITS (#23 R4) — replaced wholesale on every
-   * write, mirroring magazines. Omitted is treated as an empty set on create
-   * and as "clear it" on update, exactly as `replaceCompatibility` behaves for
-   * magazines, so the two surfaces cannot diverge.
+   * The firearms this accessory FITS (#23 R4) — replaced on every write,
+   * mirroring magazines. Omitted is treated as an empty set on create and as
+   * "clear it" on update, exactly as `replaceCompatibility` behaves for
+   * magazines, so the two surfaces cannot diverge. The replace covers only
+   * the actor's visible firearms: links they were never shown are preserved
+   * rather than cleared (see `../compatibility/relation.ts`).
    */
   compatibleFirearmIds?: string[];
 }

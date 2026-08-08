@@ -110,6 +110,47 @@ describe("accessory sharing — direct grants (R7)", () => {
     expect(updated.notes).toBe("edited by grantee");
   });
 
+  test("an edit grantee saving another field does not drop compatibility they cannot see", async () => {
+    // The grantee's read of the accessory is viewer-relative, so the
+    // compatibility list the form round-trips is already missing the host they
+    // have no grant on. Saving must not treat that omission as a deletion.
+    const shown = await makeFirearm(owner, { name: "Grantee-visible host" });
+    const unshown = await makeFirearm(owner, { name: "Grantee-hidden host" });
+    const acc = await createAccessory(owner, {
+      type: "suppressor",
+      compatibleFirearmIds: [unshown.id, shown.id],
+    });
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: grantee,
+      parentType: "accessory",
+      parentId: acc.id,
+      permission: "edit",
+    });
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: grantee,
+      parentType: "firearm",
+      parentId: shown.id,
+      permission: "view",
+    });
+
+    const asGrantee = await getAccessory(grantee, acc.id);
+    expect(asGrantee.accessory.compatibleFirearmIds).toEqual([shown.id]);
+
+    await updateAccessory(grantee, acc.id, {
+      type: "suppressor",
+      notes: "unrelated edit",
+      compatibleFirearmIds: asGrantee.accessory.compatibleFirearmIds,
+    });
+
+    const asOwner = await getAccessory(owner, acc.id);
+    expect(asOwner.accessory.compatibleFirearmIds).toEqual([
+      unshown.id,
+      shown.id,
+    ]);
+  });
+
   test("a stranger sees nothing and gets not-found", async () => {
     const acc = await createAccessory(owner, { type: "suppressor" });
     expect(await resolveAccessoryPermission(db, stranger, acc.id)).toBeNull();

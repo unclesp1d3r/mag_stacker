@@ -166,12 +166,26 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
       page.getByRole("link", { name: "Can Host Alpha" }),
     ).toBeVisible();
 
-    // Reopen and assert the new type actually PERSISTED. Without this the step
-    // proves only the compatibility half: a write path that silently dropped
-    // `type` would still pass every assertion above.
-    await expect(
-      page.getByRole("button", { name: "Save changes" }),
-    ).toHaveCount(0);
+    // Reload before reopening, and assert the new type actually PERSISTED.
+    // Without this the step proves only the compatibility half: a write path
+    // that silently dropped `type` would still pass every assertion above.
+    //
+    // Both waits are load-bearing, and neither is sufficient alone.
+    //
+    // The wait must key on the "Edit" button coming BACK, not on "Save changes"
+    // going away: the submit button relabels itself to "Saving…" while the
+    // action is in flight, so a `Save changes` absence check goes true DURING
+    // the save and the reload below then aborts the mutation. `Edit` renders
+    // only when `editing` is false, which the form sets after the action
+    // resolves — the one signal that means "the write finished".
+    //
+    // The reload is then needed because a closed form does not mean the detail
+    // view re-rendered with the new row; reopening on the cached render reads
+    // back the pre-save value. It also makes this an assertion about what is in
+    // the database rather than what the client optimistically showed.
+    const editButton = page.getByRole("button", { name: "Edit", exact: true });
+    await expect(editButton).toBeVisible();
+    await page.reload();
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     await expect(page.locator("form").last().getByLabel("Type")).toHaveValue(
       "muzzle device",
@@ -187,12 +201,10 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
       .selectOption("suppressor");
     await page.getByRole("button", { name: "Save changes" }).click();
 
-    // Wait for the save to actually settle before reopening: the form closing
-    // is the signal the write landed and the detail view refreshed. Reopening
-    // immediately reads the PREVIOUS form's value and fails under load.
-    await expect(
-      page.getByRole("button", { name: "Save changes" }),
-    ).toHaveCount(0);
+    // Same pairing as above: let the action resolve (Edit returns), then reload
+    // so the reopened form is built from the persisted row.
+    await expect(editButton).toBeVisible();
+    await page.reload();
 
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     await expect(page.locator("form").last().getByLabel("Type")).toHaveValue(

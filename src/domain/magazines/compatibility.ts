@@ -32,10 +32,12 @@ const MAGAZINE_FIREARM: CompatibilityRelation<typeof magazineFirearm> = {
 export { dedupeFirearmIds } from "../compatibility/relation";
 
 /**
- * Atomically replace a magazine's compatibility set (R31/R33). Requires every
- * firearm to be visible to the acting user (R37 — cross-owner shared firearms
- * are allowed, KTD-4); an unknown or unseeable firearm throws, rolling back
- * the surrounding transaction (R32). Must run inside a tx.
+ * Atomically replace the part of a magazine's compatibility set that the actor
+ * can see (R31/R33); links to firearms outside their visible set survive
+ * untouched. Requires every submitted firearm to be visible to the acting user
+ * (R37 — cross-owner shared firearms are allowed, KTD-4); an unknown or
+ * unseeable firearm throws, rolling back the surrounding transaction (R32).
+ * Must run inside a tx.
  */
 export async function replaceCompatibility(
   tx: DbOrTx,
