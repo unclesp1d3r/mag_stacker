@@ -189,7 +189,16 @@ export function AttachmentsSection({
       ) : null}
 
       {editor.open ? (
-        <form onSubmit={submit} className="mb-4 flex flex-col gap-4" noValidate>
+        // Named for the same reason as the accessory form — see the comment on
+        // its <form> in accessory-form.tsx. This is the second form on the
+        // detail page, so it is the one that made `locator("form").last()`
+        // ambiguous in the first place.
+        <form
+          onSubmit={submit}
+          aria-label={editor.editingId ? "Edit attachment" : "Add attachment"}
+          className="mb-4 flex flex-col gap-4"
+          noValidate
+        >
           <div className="grid gap-4 sm:grid-cols-2">
             <Field
               label="Attachment type"

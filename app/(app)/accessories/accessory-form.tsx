@@ -271,7 +271,17 @@ export function AccessoryForm({
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+    // Named so the form exposes role="form" — a <form> only does when it has an
+    // accessible name. That gives assistive tech a landmark to jump to, and it
+    // gives the e2e suite `getByRole("form", { name })` instead of
+    // `locator("form").last()`, which resolves by DOM order and silently
+    // retargets when the page gains another form.
+    <form
+      onSubmit={submit}
+      aria-label={isEdit ? "Edit accessory" : "Add accessory"}
+      className="flex flex-col gap-4"
+      noValidate
+    >
       {serverError ? <Callout tone="destructive">{serverError}</Callout> : null}
       <datalist id="accessory-categories">
         {categorySuggestions.map((c) => (

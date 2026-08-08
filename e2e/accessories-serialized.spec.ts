@@ -49,7 +49,7 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
       ["Can Host Charlie", "300 BLK"],
     ]) {
       await page.getByRole("button", { name: "Add firearm" }).click();
-      const form = page.getByRole("form").or(page.locator("form")).last();
+      const form = page.getByRole("form", { name: "Add firearm" });
       await form.getByLabel(/^Name/).fill(name);
       await form.getByLabel("Caliber").fill(caliber);
       await form.getByLabel(/^Type/).selectOption("rifle");
@@ -64,7 +64,7 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
     await page
       .getByRole("button", { name: /Add (your first )?accessory/ })
       .click();
-    const form = page.locator("form").last();
+    const form = page.getByRole("form", { name: "Add accessory" });
 
     await form.getByLabel("Type").selectOption("suppressor");
     await form.getByLabel("Brand").fill("SilencerCo");
@@ -113,7 +113,7 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
 
   await test.step("AE4: add a piston attachment and confirm it survives a reload", async () => {
     await page.getByRole("button", { name: "Add attachment" }).click();
-    const panel = page.locator("form").last();
+    const panel = page.getByRole("form", { name: "Add attachment" });
     await panel.getByLabel("Attachment type").selectOption("piston");
     await panel.getByLabel("Spec").fill("1/2x28");
     await page.getByRole("button", { name: "Add attachment" }).click();
@@ -135,7 +135,7 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
 
   await test.step("edit an existing attachment through the UI", async () => {
     await page.getByRole("button", { name: /Edit .* attachment/ }).click();
-    const editPanel = page.locator("form").last();
+    const editPanel = page.getByRole("form", { name: "Edit attachment" });
     await editPanel.getByLabel("Spec").fill("5/8x24");
     await page.getByRole("button", { name: "Save attachment" }).click();
 
@@ -149,7 +149,7 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
     // by default, so a bare "Edit" also matches "Edit Piston attachment" and
     // `.first()` would be resolving by DOM order rather than by name.
     await page.getByRole("button", { name: "Edit", exact: true }).click();
-    const form = page.locator("form").last();
+    const form = page.getByRole("form", { name: "Edit accessory" });
 
     await form.getByLabel("Type").selectOption("muzzle device");
     // Deselecting must actually remove the pairing, not merely re-order it.
@@ -187,16 +187,15 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
     await expect(editButton).toBeVisible();
     await page.reload();
     await page.getByRole("button", { name: "Edit", exact: true }).click();
-    await expect(page.locator("form").last().getByLabel("Type")).toHaveValue(
-      "muzzle device",
-    );
+    await expect(
+      page.getByRole("form", { name: "Edit accessory" }).getByLabel("Type"),
+    ).toHaveValue("muzzle device");
 
     // Restore it, and assert THAT save landed too. The check here used to be
     // the serial number, which was already on screen before the step ran and
     // so only proved the form had closed.
     await page
-      .locator("form")
-      .last()
+      .getByRole("form", { name: "Edit accessory" })
       .getByLabel("Type")
       .selectOption("suppressor");
     await page.getByRole("button", { name: "Save changes" }).click();
@@ -207,9 +206,9 @@ test("serialized accessory: type, compatibility, attachments, sharing, and delet
     await page.reload();
 
     await page.getByRole("button", { name: "Edit", exact: true }).click();
-    await expect(page.locator("form").last().getByLabel("Type")).toHaveValue(
-      "suppressor",
-    );
+    await expect(
+      page.getByRole("form", { name: "Edit accessory" }).getByLabel("Type"),
+    ).toHaveValue("suppressor");
     await page.getByRole("button", { name: "Cancel" }).click();
   });
 

@@ -198,7 +198,12 @@ export function FirearmForm({
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+    <form
+      onSubmit={submit}
+      aria-label={isEdit ? "Edit firearm" : "Add firearm"}
+      className="flex flex-col gap-4"
+      noValidate
+    >
       {serverError ? <Callout tone="destructive">{serverError}</Callout> : null}
       <datalist id="firearm-calibers">
         {caliberSuggestions.map((c) => (

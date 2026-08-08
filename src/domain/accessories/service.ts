@@ -218,10 +218,20 @@ export async function updateAccessory(
     // `persistableFields` can force `installedDate` to null when the
     // accessory is unmounted (R6); an unmounted accessory can never acquire
     // an installed date through this path.
+    //
+    // Locked for the same reason `updateMagazine` locks its row: under READ
+    // COMMITTED an unlocked read makes this a lost update. A `mountAccessory`
+    // committing between the read and the write loses its `installedDate` —
+    // this update saw "unmounted", so it writes null over a date set moments
+    // ago, and the row ends up mounted with no install date. The reverse order
+    // is worse than silent: a concurrent unmount leaves this update writing a
+    // date onto a now-unmounted row, which violates
+    // `accessory_installed_date_requires_mount` and surfaces as a 500.
     const [existing] = await tx
       .select({ currentFirearmId: accessory.currentFirearmId })
       .from(accessory)
       .where(eq(accessory.id, id))
+      .for("update")
       .limit(1);
     if (!existing) throw new NotFoundError();
     const [updated] = await tx

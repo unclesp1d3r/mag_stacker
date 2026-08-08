@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import { NotAuthorizedError, NotFoundError } from "@/src/auth/errors";
 import { createGrant } from "@/src/auth/grants";
 import { db } from "@/src/db/client";
+import { accessory } from "@/src/db/schema";
 import { ValidationError } from "@/src/domain/errors";
 import {
   createUser,
@@ -398,5 +400,127 @@ describe("accessory service — acquired date", () => {
     const unmounted = await mountAccessory(userA, acc.id, null);
     expect(unmounted.installedDate).toBeNull();
     expect(unmounted.acquiredDate).toBe("2020-05-01");
+  });
+});
+
+/**
+ * `updateAccessory` reads `currentFirearmId` and then derives `installedDate`
+ * from it (R6: an unmounted accessory cannot hold an install date). Under READ
+ * COMMITTED an unlocked read makes that a lost update, so the read takes
+ * `FOR UPDATE` — the same guard, for the same reason, that `updateMagazine`
+ * already applies to its label read.
+ *
+ * The test drives the interleaving deterministically rather than hoping for it:
+ * a second connection holds the row under `FOR UPDATE`, the update is started
+ * and blocks, and only then does the holder commit. Without the lock the
+ * update's read returns the pre-commit snapshot and the outcomes below flip.
+ */
+describe("updateAccessory locks the row it derives installedDate from", () => {
+  let owner = "";
+
+  beforeAll(async () => {
+    owner = await createUser("AccLockOwner");
+  });
+
+  afterAll(async () => {
+    await deleteUsers(owner);
+  });
+
+  /**
+   * Holds `accessoryId` under `FOR UPDATE` on its own connection, applies
+   * `mutate`'s column changes once released, then commits.
+   */
+  function holdRowThen(
+    accessoryId: string,
+    mutate: { currentFirearmId: string | null; installedDate: string | null },
+  ): { locked: Promise<void>; release: () => void; done: Promise<unknown> } {
+    let signalLocked: () => void = () => {};
+    const locked = new Promise<void>((resolve) => {
+      signalLocked = resolve;
+    });
+    let release: () => void = () => {};
+    const mayFinish = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const done = db.transaction(async (tx) => {
+      await tx
+        .select({ id: accessory.id })
+        .from(accessory)
+        .where(eq(accessory.id, accessoryId))
+        .for("update")
+        .limit(1);
+      signalLocked();
+      await mayFinish;
+      await tx
+        .update(accessory)
+        .set(mutate)
+        .where(eq(accessory.id, accessoryId));
+    });
+
+    return { locked, release, done };
+  }
+
+  test("a concurrent unmount cannot make the update violate the mount constraint", async () => {
+    const fa = await makeFirearm(owner, { name: "LockRaceUnmountHost" });
+    const acc = await createAccessory(owner, {
+      type: "suppressor",
+      firearmId: fa.id,
+      installedDate: "2026-01-01",
+    });
+
+    const holder = holdRowThen(acc.id, {
+      currentFirearmId: null,
+      installedDate: null,
+    });
+    await holder.locked;
+
+    // Started, not awaited: it must be parked on the row lock before the
+    // unmount commits, which is the whole point of the interleaving.
+    const update = updateAccessory(owner, acc.id, {
+      type: "suppressor",
+      installedDate: "2026-02-02",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    holder.release();
+    await holder.done;
+
+    // Unlocked, the update would still believe the accessory is mounted and
+    // write "2026-02-02" onto a now-unmounted row — which the
+    // `accessory_installed_date_requires_mount` CHECK rejects, surfacing to the
+    // user as a 500 on an edit that had nothing to do with the mount.
+    await update;
+
+    const { accessory: row } = await getAccessory(owner, acc.id);
+    expect(row.currentFirearmId).toBeNull();
+    expect(row.installedDate).toBeNull();
+  });
+
+  test("a concurrent mount does not have its installedDate silently reverted", async () => {
+    const fa = await makeFirearm(owner, { name: "LockRaceMountHost" });
+    const acc = await createAccessory(owner, { type: "suppressor" });
+    expect(acc.currentFirearmId).toBeNull();
+
+    const holder = holdRowThen(acc.id, {
+      currentFirearmId: fa.id,
+      installedDate: "2026-03-03",
+    });
+    await holder.locked;
+
+    const update = updateAccessory(owner, acc.id, {
+      type: "suppressor",
+      installedDate: "2026-03-03",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    holder.release();
+    await holder.done;
+    await update;
+
+    // Unlocked, the update reads "unmounted" and force-nulls `installedDate`
+    // (R6), overwriting the date the mount set moments earlier and leaving the
+    // row mounted with no install date at all.
+    const { accessory: row } = await getAccessory(owner, acc.id);
+    expect(row.currentFirearmId).toBe(fa.id);
+    expect(row.installedDate).toBe("2026-03-03");
   });
 });
