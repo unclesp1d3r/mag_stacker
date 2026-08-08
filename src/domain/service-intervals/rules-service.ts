@@ -30,12 +30,13 @@ import { validateServiceRuleSet } from "./validate";
  *   visibility (`resolvePermission`) so a view-grantee can see a shared
  *   firearm's resolved rules, `NotFoundError` for an unseen firearm so
  *   existence is never revealed.
- * - Accessories have no `authorize.ts` gate at all (not a grant
- *   `ParentType`). Every accessory read and write here checks
- *   `accessory.ownerId === actorId` directly and NEVER calls
- *   `resolveAccessoryPermission` — that function inherits permission from the
- *   mounted firearm, which would hand a firearm grantee configuration KTD3
- *   reserves to the accessory's own owner. Not-owner and not-found are
+ * - Accessories deliberately use NO shared gate here. Every accessory read
+ *   and write checks `accessory.ownerId === actorId` directly and NEVER calls
+ *   `resolveAccessoryPermission` — that function resolves the strongest of the
+ *   accessory's direct grant (#23) and its mounted firearm's permission, either
+ *   of which would hand a grantee the service configuration KTD3 reserves to
+ *   the accessory's own owner. #23 made accessories shareable for INVENTORY
+ *   visibility; it did not open up service-rule configuration. Not-owner and not-found are
  *   deliberately indistinguishable here (`NotFoundError` either way).
  *
  * Renaming an item rule re-points that item's `service_event` rows carrying

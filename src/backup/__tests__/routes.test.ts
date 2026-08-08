@@ -17,7 +17,6 @@ import {
   describe,
   expect,
   mock,
-  test,
 } from "bun:test";
 import {
   PostgreSqlContainer,
@@ -34,6 +33,7 @@ import { createBackup } from "@/src/backup/export-service";
 import { MIN_BACKUP_PASSWORD_LENGTH } from "@/src/backup/password-policy";
 import { closePool, db } from "@/src/db/client";
 import { operatorAudit } from "@/src/db/operator-audit-schema";
+import { containerTest as test } from "../../test-support/container-test";
 import { POSTGRES_IMAGE } from "../../test-support/postgres-image";
 
 /**

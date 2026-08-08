@@ -15,6 +15,12 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import {
+  ACCESSORY_TYPES,
+  type AccessoryType,
+  ATTACHMENT_TYPES,
+  type AttachmentType,
+} from "../domain/accessories/constants";
+import {
   FIREARM_ACTIONS,
   FIREARM_TYPES,
   UNSPECIFIED,
@@ -49,7 +55,9 @@ function inList(values: readonly string[]): string {
  * - A single polymorphic `grant` table attaches to a parent by type+id and
  *   carries the permission and the create-on-behalf opt-in flag (KTD-5, R11,
  *   R61). `parent_type` has a CHECK enumerating valid parent families
- *   (`firearm`, `magazine`, `ammo`); because `parent_id` cannot carry an FK,
+ *   (`firearm`, `magazine`, `ammo`, `accessory` — the last added by #23,
+ *   which reversed #8's "accessories are not independently shareable"
+ *   decision); because `parent_id` cannot carry an FK,
  *   grant cleanup on item delete (R17b) runs in the same transaction as the
  *   delete in U4, with a per-parent ON DELETE trigger as a DB-layer backstop
  *   (added in the trigger migration; `ammo`'s cleanup trigger was added
@@ -199,7 +207,16 @@ export const accessory = pgTable(
     currentFirearmId: uuid("current_firearm_id").references(() => firearm.id, {
       onDelete: "set null",
     }),
-    category: text("category").notNull(),
+    // Structural discriminator (#23 R1) — controlled, required, CHECK-backed,
+    // and the seam future per-type detail tables key off (KTD2). Distinct from
+    // the free-text `category` below; see domain/accessories/constants.ts.
+    // The `other` default exists for the backfill (R2) and keeps a direct
+    // insert that predates the domain validator legal.
+    type: text("type").$type<AccessoryType>().notNull().default("other"),
+    // Free-text descriptive kind (#8), relaxed from required to optional
+    // (#23 R3) now that `type` carries the required classification. Stays
+    // NOT NULL with an empty-string default — the empty-not-null rule (R18).
+    category: text("category").notNull().default(""),
     brand: text("brand").notNull().default(""),
     model: text("model").notNull().default(""),
     serialNumber: text("serial_number").notNull().default(""),
@@ -224,6 +241,12 @@ export const accessory = pgTable(
   (t) => [
     index("accessory_owner_id_idx").on(t.ownerId),
     index("accessory_current_firearm_id_idx").on(t.currentFirearmId),
+    // R26-style backstop — domain validation is the primary surface. Value
+    // list comes from the single source in domain/accessories/constants.ts.
+    check(
+      "accessory_type_valid",
+      sql`${t.type} in (${sql.raw(inList(ACCESSORY_TYPES))})`,
+    ),
     // R26-style backstop — domain validation is the primary surface. Nullable
     // column: the CHECK only bounds non-null cost values.
     check("accessory_cost_cents_min", sql`${t.costCents} >= 0`),
@@ -235,6 +258,81 @@ export const accessory = pgTable(
     check(
       "accessory_installed_date_requires_mount",
       sql`${t.installedDate} IS NULL OR ${t.currentFirearmId} IS NOT NULL`,
+    ),
+  ],
+);
+
+/**
+ * Accessory ↔ firearm COMPATIBILITY (#23 R4/R5/R19) — "which hosts does this
+ * fit", many-to-many, ordered by `ordinal`. Copies `magazine_firearm`'s shape
+ * exactly (KTD3) so the two compatibility relations cannot drift.
+ *
+ * This is deliberately NOT the same edge as `accessory.current_firearm_id`,
+ * and the two are non-redundant (KD2):
+ * - `current_firearm_id` is PRESENT STATE — what this accessory is mounted on
+ *   right now. Single, nullable, ON DELETE SET NULL, and the thing
+ *   `installed_date` and `range_session_accessory` snapshots depend on.
+ * - `accessory_firearm` (this table) is CAPABILITY — a can fits five hosts
+ *   whether or not it is on any of them today. Many-to-many, ON DELETE
+ *   CASCADE.
+ *
+ * Declaring compatibility never sets or clears the mount, and mounting never
+ * touches compatibility (R6). If you are reaching for "what is this on", you
+ * want the column, not this table.
+ */
+export const accessoryFirearm = pgTable(
+  "accessory_firearm",
+  {
+    accessoryId: uuid("accessory_id")
+      .notNull()
+      .references(() => accessory.id, { onDelete: "cascade" }),
+    firearmId: uuid("firearm_id")
+      .notNull()
+      .references(() => firearm.id, { onDelete: "cascade" }),
+    ordinal: integer("ordinal").notNull(),
+  },
+  (t) => [
+    // Composite PK prevents duplicate (accessory, firearm) pairs (R19 backstop).
+    primaryKey({ columns: [t.accessoryId, t.firearmId] }),
+    index("accessory_firearm_firearm_id_idx").on(t.firearmId),
+  ],
+);
+
+/**
+ * Accessory attachment (#23 R11/R12/R13) — the mounting hardware that makes a
+ * serialized accessory fit a host: mounts, pistons, end caps, muzzle devices.
+ *
+ * A child record in the `firearm_photo` mold (KTD7): surrogate PK, parent FK
+ * ON DELETE CASCADE, and deliberately NO `owner_id` and NO grant family of its
+ * own — authorization resolves through the parent accessory, so an attachment
+ * can never be reachable by someone who cannot reach the accessory.
+ *
+ * Recording an attachment does not imply compatibility: DERIVING suggested
+ * compatibility from a piston's thread pitch is explicitly deferred (#23
+ * scope boundaries), so nothing here writes to `accessory_firearm`.
+ */
+export const accessoryAttachment = pgTable(
+  "accessory_attachment",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accessoryId: uuid("accessory_id")
+      .notNull()
+      .references(() => accessory.id, { onDelete: "cascade" }),
+    type: text("type").$type<AttachmentType>().notNull(),
+    // Thread pitch / bore / whatever identifies the part — free text, and
+    // empty-not-null like every other optional text field (R18).
+    spec: text("spec").notNull().default(""),
+    serialNumber: text("serial_number").notNull().default(""),
+    notes: text("notes").notNull().default(""),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("accessory_attachment_accessory_id_idx").on(t.accessoryId),
+    // R26-style backstop — domain validation is the primary surface.
+    check(
+      "accessory_attachment_type_valid",
+      sql`${t.type} in (${sql.raw(inList(ATTACHMENT_TYPES))})`,
     ),
   ],
 );
@@ -674,7 +772,7 @@ export const grant = pgTable(
     index("grant_grantee_parent_type_idx").on(t.granteeId, t.parentType),
     check(
       "grant_parent_type_valid",
-      sql`${t.parentType} in ('firearm', 'magazine', 'ammo')`,
+      sql`${t.parentType} in ('firearm', 'magazine', 'ammo', 'accessory')`,
     ),
     check("grant_permission_valid", sql`${t.permission} in ('view', 'edit')`),
   ],

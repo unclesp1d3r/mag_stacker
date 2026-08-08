@@ -122,10 +122,17 @@ export function ShareControl({
   const grants: ShareGrant[] = state?.grants ?? [];
   const candidates = state?.candidates ?? [];
   // Magazine actions are owner-only (R13): editing is not shareable, so an
-  // `edit` grant would be inert. Offer view-only for magazines. Firearms and
-  // ammo are both edit-capable-shareable (ammo plan KTD4) — an edit grant on
-  // either lets the grantee update the record.
-  const canGrantEdit = parentType === "firearm" || parentType === "ammo";
+  // `edit` grant would be inert. Offer view-only for magazines. Firearms, ammo
+  // and accessories are all edit-capable-shareable (ammo plan KTD4; #23 R7) —
+  // an edit grant on any of them lets the grantee update the record.
+  //
+  // Deliberately an allowlist, not `!== "magazine"`: a parent type added later
+  // must default to view-only until someone decides otherwise, rather than
+  // silently becoming edit-shareable the moment it joins `ParentType`.
+  const canGrantEdit =
+    parentType === "firearm" ||
+    parentType === "ammo" ||
+    parentType === "accessory";
 
   return (
     <>

@@ -5,6 +5,7 @@
  * picker, differing only in which owner the picker must match against.
  */
 
+import type { FirearmOption } from "@/components/inventory/compatible-firearms-field";
 import type { Permission } from "@/src/auth/visibility";
 import { firearmDisplayName } from "@/src/domain/firearms/display";
 import type { Firearm } from "@/src/domain/firearms/service";
@@ -30,6 +31,17 @@ export interface FirearmMountContext {
    * when it would fail `authorizeCreateMount`'s cross-tenant check anyway.
    */
   editableFirearms: EditableFirearmOption[];
+  /**
+   * Firearms the COMPATIBILITY picker may offer (#23 R4/U6): every firearm
+   * visible to the actor, deliberately wider than `editableFirearms`.
+   *
+   * Declaring "this can fits that rifle" is a statement about the accessory,
+   * not a write to the firearm, so it needs only visibility — the same rule
+   * magazine compatibility already follows (a shared firearm is legitimately
+   * linkable). The mount picker stays narrower because mounting DOES write to
+   * the firearm relationship and carries a cross-tenant guard.
+   */
+  visibleFirearms: FirearmOption[];
 }
 
 /**
@@ -58,5 +70,10 @@ export function buildFirearmMountContext(
     })
     .map((f) => ({ id: f.id, label: firearmDisplayName(f) }));
 
-  return { firearmNames, editableFirearms };
+  const visibleFirearms: FirearmOption[] = firearms.map((f) => ({
+    id: f.id,
+    name: firearmDisplayName(f),
+  }));
+
+  return { firearmNames, editableFirearms, visibleFirearms };
 }

@@ -5,7 +5,6 @@ import {
   beforeEach,
   describe,
   expect,
-  test,
 } from "bun:test";
 import { randomUUID } from "node:crypto";
 import {
@@ -32,6 +31,7 @@ import { NotAuthorizedError } from "../../auth/errors";
 import * as schema from "../../db/schema";
 import { firearm, firearmDocument, user } from "../../db/schema";
 import { PathTraversalError } from "../../storage";
+import { containerTest as test } from "../../test-support/container-test";
 import { POSTGRES_IMAGE } from "../../test-support/postgres-image";
 import { type BundleBlobEntry, writeBundle } from "../bundle";
 import { createEncryptStream, deriveKey, generateSalt } from "../crypto";

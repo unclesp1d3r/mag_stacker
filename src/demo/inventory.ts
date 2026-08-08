@@ -16,6 +16,7 @@
  */
 
 import { format } from "date-fns";
+import type { AccessoryType } from "@/src/domain/accessories/constants";
 import type {
   FirearmAction,
   FirearmType,
@@ -59,6 +60,14 @@ export interface DemoAmmoSeed {
 }
 
 export interface DemoAccessorySeed {
+  /**
+   * Controlled structural discriminator (#23 R1). Deliberately distinct from
+   * `category` below, and the seeds exercise that distinction: the Geissele
+   * trigger is `type: "other"` with `category: "Trigger"`, because "trigger"
+   * is a real thing an owner tracks but not a serialized subtype with its own
+   * rules — exactly the long tail KD4 kept `category` free text for.
+   */
+  type: AccessoryType;
   category: string;
   brand?: string;
   model?: string;
@@ -245,6 +254,7 @@ export const DEMO_AMMO: readonly DemoAmmoSeed[] = [
 
 export const DEMO_ACCESSORIES: readonly DemoAccessorySeed[] = [
   {
+    type: "optic",
     category: "Optic",
     brand: "Aimpoint",
     model: "CompM5",
@@ -257,6 +267,7 @@ export const DEMO_ACCESSORIES: readonly DemoAccessorySeed[] = [
     acquiredDaysAgo: 900,
   },
   {
+    type: "suppressor",
     category: "Suppressor",
     brand: "SureFire",
     model: "SOCOM556-RC2",
@@ -266,6 +277,9 @@ export const DEMO_ACCESSORIES: readonly DemoAccessorySeed[] = [
     mount: 'BCM 11.5" SBR',
   },
   {
+    // No controlled type fits a trigger — `other` plus the free-text category
+    // is the intended shape, not a gap in ACCESSORY_TYPES (KD4).
+    type: "other",
     category: "Trigger",
     brand: "Geissele",
     model: "SSA-E",
@@ -273,6 +287,7 @@ export const DEMO_ACCESSORIES: readonly DemoAccessorySeed[] = [
     mount: 'BCM 11.5" SBR',
   },
   {
+    type: "light",
     category: "Light",
     brand: "SureFire",
     model: "X300U-B",
@@ -281,6 +296,7 @@ export const DEMO_ACCESSORIES: readonly DemoAccessorySeed[] = [
     mount: "SIG P320 XCarry",
   },
   {
+    type: "optic",
     category: "Optic",
     brand: "Trijicon",
     model: "ACOG TA31",

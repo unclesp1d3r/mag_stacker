@@ -11,6 +11,22 @@ execution: code
 
 # Accessories Tracker - Plan
 
+---
+
+**SUPERSEDED**: This plan was implemented in PR #8 but subsequently revised by PR #106 (feat: serialized accessories with type, compatibility, attachments, and sharing). The following design decisions were reversed or extended:
+
+- **R7 (Independent Sharing)**: Originally stated accessories are NOT independently shareable and carry no grants of their own. PR #106 reversed this decision — accessories now support direct grants and independent sharing via ShareControl, making unmounted accessories visible to grantees.
+- **R3 (Required Category)**: Originally category was required. PR #106 made category optional in favor of a type discriminator (suppressor vs generic).
+- **KTD1 (Grant Parent Types)**: Originally the grant parent_type set did NOT include 'accessory'. PR #106 adds 'Accessory' as a valid parent_type.
+- **New Concepts Added in PR #106**:
+  - Accessory Type discriminator (suppressor vs generic)
+  - Accessory Compatibility relationship (tracks which firearms an accessory "fits")
+  - Attachments as child records (e.g., mounts, pistons for suppressors)
+
+See PR #106 and the updated CONCEPTS.md for the current implementation.
+
+---
+
 ## Goal Capsule
 
 - **Objective:** Let an owner track aftermarket parts (triggers, barrels, optics, suppressors, grips, stocks, etc.), which firearm each is mounted on, what it cost, and whether it is an NFA-regulated item — so the collection record supports valuation, insurance, and (later) service scheduling.
@@ -121,7 +137,7 @@ flowchart TB
 Deferred for later:
 
 - A general install/remove history timeline (which part was on which firearm, when). v1 keeps only the current mount plus the per-range-session accessory snapshot (R19).
-- Independent per-accessory sharing (a fourth grant target). Deferred until a concrete need to share a bare accessory apart from its firearm appears.
+- ~~Independent per-accessory sharing (a fourth grant target). Deferred until a concrete need to share a bare accessory apart from its firearm appears.~~ **NO LONGER OUT OF SCOPE**: Implemented in PR #106. Accessories are now independently shareable as a fourth grant target.
 - Range-performance logging itself — a separate planned feature. R19 only captures the accessory-to-session linkage it will build on.
 - Photos, documents, service intervals, and shot count on firearms or accessories — issue 8 gestures at these, but each is its own feature.
 - Accessories as a target of the (not-yet-built) Service Intervals feature.
@@ -153,7 +169,7 @@ Resolved during planning (see Planning Contract):
 
 ### Key Technical Decisions
 
-- KTD1. **Accessory is owner-scoped but not a grant `ParentType`.** The grant `parent_type` set stays `('firearm','magazine','ammo')`. An `accessory` row carries `owner_id` plus a nullable `current_firearm_id`. A mounted accessory's visibility is derived from its firearm (owned ∪ firearm-granted); an unmounted accessory is owner-only. This is the one seam that does not mirror Ammo — Ammo is a grant target, Accessory is not — because R7/R8 require visibility to follow the firearm and the fourth grant target was dropped.
+- KTD1. **Accessory is owner-scoped but not a grant `ParentType`.** The grant `parent_type` set stays `('firearm','magazine','ammo')`. An `accessory` row carries `owner_id` plus a nullable `current_firearm_id`. A mounted accessory's visibility is derived from its firearm (owned ∪ firearm-granted); an unmounted accessory is owner-only. This is the one seam that does not mirror Ammo — Ammo is a grant target, Accessory is not — because R7/R8 require visibility to follow the firearm and the fourth grant target was dropped. **NOTE: This constraint was later expanded in PR #106** — the `parent_type` set now includes `'accessory'`, and accessories support independent grants and sharing.
 - KTD2. **Cost is stored as integer minor units (`cost_cents`).** Mirrors the repo's integer-column convention (`grain`, `quantity_rounds`; int4-bounded in #53) and avoids floating-point money; formatting to currency happens at the edge.
 - KTD3. **Category is free text with a suggested list, no CHECK constraint.** Mirrors `src/domain/ammo/constants.ts` load-type suggestions, not the firearm Type/Action CHECK. Seed list = R2's values.
 - KTD4. **`current_firearm_id` uses `onDelete: set null`.** Deleting a firearm unmounts its accessories (they survive, owner-scoped) rather than cascading them away — an accessory outlives the guns it rides on. Contrast Range Session, which cascades.
@@ -324,4 +340,4 @@ Acceptance coverage: AE1 in U3/U8, AE2 in U6/U8, AE3 in U4, AE4 in U8, AE5 in U8
 - `just ci-check` green; unit, integration, and e2e suites green.
 - No `data-testid` added; UI targeted via ARIA roles / accessible names / visible text.
 - Abandoned or experimental code removed from the diff.
-- Out of scope and untouched: owner-wide valuation, a general mount-history timeline, photos/documents/service-intervals/shot-count, independent per-accessory sharing, and CSV export of accessories.
+- Out of scope and untouched: owner-wide valuation, a general mount-history timeline, photos/documents/service-intervals/shot-count, ~~independent per-accessory sharing~~ (implemented in PR #106), and CSV export of accessories.

@@ -34,6 +34,8 @@ export const SPEC_USER_KEYS = [
   "ammo-summary",
   "accessories",
   "accessories-viewer",
+  "accessories-serialized",
+  "accessories-serialized-viewer",
   "firearm-photos",
   "firearm-documents",
   "firearm-documents-viewer",

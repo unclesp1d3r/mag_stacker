@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { ShareControl } from "@/app/(app)/grants/share-control";
+import type { FirearmOption } from "@/components/inventory/compatible-firearms-field";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DetailRow, orDash } from "@/components/ui/detail-row";
@@ -26,6 +28,7 @@ import { ServiceRulesPanel } from "../firearms/service-rules-panel";
 import type { EditableFirearmOption } from "./accessory-form";
 import { AccessoryForm, type AccessoryFormValues } from "./accessory-form";
 import { deleteAccessoryAction, mountAccessoryAction } from "./actions";
+import { type AttachmentItem, AttachmentsSection } from "./attachments-section";
 
 export interface AccessoryDetail extends AccessoryFormValues {
   id: string;
@@ -40,6 +43,19 @@ interface AccessoryDetailViewProps {
   /** Display names for every firearm visible to the actor, for the read-only
    * "current firearm" link even when it falls outside `editableFirearms`. */
   firearmNames: Record<string, string>;
+  /** Firearms the compatibility picker may offer (#23 R4) — everything the
+   * actor can see, wider than `editableFirearms`. */
+  visibleFirearms: FirearmOption[];
+  /** This accessory's attachments (#23 R15) — shown to every viewer; only an
+   * owner/editor is offered the mutating controls (R17). */
+  attachments: AttachmentItem[];
+  /**
+   * Whether this viewer may DELETE (narrower than `canEdit` — see
+   * `requireAccessoryDelete`). Resolved server-side because the client cannot
+   * tell which path granted its `edit`: deletion follows #8's firearm
+   * inheritance, not a direct #23 accessory grant.
+   */
+  canDelete: boolean;
   /**
    * Service data (U8) — owner-only throughout for accessories (KTD3), so
    * these are `null` for a non-owner viewer rather than empty: the page
@@ -120,6 +136,9 @@ export function AccessoryDetailView({
   permission,
   editableFirearms,
   firearmNames,
+  visibleFirearms,
+  attachments,
+  canDelete,
   serviceRules,
   suppressedServiceRuleNames,
   serviceHistory,
@@ -175,14 +194,22 @@ export function AccessoryDetailView({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Accessories are not independently shareable (R7) — no
-              ShareControl here, unlike firearms/ammo. */}
+          {/* #23 R16 reversed #8's "not independently shareable" decision, so
+              accessories now get the same owner-only ShareControl as firearms
+              and ammo. */}
+          {isOwner ? (
+            <ShareControl
+              parentType="accessory"
+              parentId={accessory.id}
+              itemName={displayName}
+            />
+          ) : null}
           {canEdit && !editing ? (
             <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
               Edit
             </Button>
           ) : null}
-          {canEdit ? (
+          {canDelete ? (
             <Button
               variant="destructive"
               size="sm"
@@ -202,6 +229,7 @@ export function AccessoryDetailView({
           <AccessoryForm
             initial={accessory}
             editableFirearms={editableFirearms}
+            visibleFirearms={visibleFirearms}
             currentFirearmId={accessory.currentFirearmId}
             ownerCategories={ownerCategories}
             onDone={() => {
@@ -249,6 +277,31 @@ export function AccessoryDetailView({
                 )
               }
             />
+            {/* #23 R15/R17: "fits these" is shown to every viewer, including
+                a view-only grantee. It is only EDITABLE through the edit form
+                above, which a viewer is never offered — so no separate
+                read-only variant of the picker is needed. */}
+            <DetailRow
+              label="Fits firearms"
+              value={
+                accessory.compatibleFirearmIds.length === 0 ? (
+                  orDash("")
+                ) : (
+                  <ul className="flex flex-col gap-1">
+                    {accessory.compatibleFirearmIds.map((id) => (
+                      <li key={id}>
+                        <Link
+                          href={`/firearms/${id}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {firearmNames[id] ?? "Unknown firearm"}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              }
+            />
             <DetailRow
               label="Installed date"
               value={orDash(accessory.installedDate)}
@@ -282,6 +335,13 @@ export function AccessoryDetailView({
           </dl>
         </Card>
       )}
+
+      <AttachmentsSection
+        accessoryId={accessory.id}
+        attachments={attachments}
+        permission={permission}
+        onChanged={() => router.refresh()}
+      />
 
       {isOwner &&
       serviceRules !== null &&

@@ -75,6 +75,7 @@ export async function shareItemAction(
     revalidatePath("/firearms");
     revalidatePath("/magazines");
     revalidatePath("/ammo");
+    revalidatePath("/accessories");
     return { ok: true };
   });
 }
@@ -89,6 +90,7 @@ export async function revokeGrantAction(
     revalidatePath("/firearms");
     revalidatePath("/magazines");
     revalidatePath("/ammo");
+    revalidatePath("/accessories");
     return { ok: true };
   });
 }

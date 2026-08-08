@@ -2,30 +2,48 @@ import { asc, eq, inArray } from "drizzle-orm";
 import {
   authorizeMount,
   listVisibleAccessoryIds,
+  requireAccessoryDelete,
+  requireAccessoryEdit,
   resolveAccessoryPermission,
 } from "@/src/auth/accessory-visibility";
 import { authorizeUpdate, resolveCreateOwner } from "@/src/auth/authorize";
 import { NotAuthorizedError, NotFoundError } from "@/src/auth/errors";
-import type { Permission } from "@/src/auth/visibility";
-import { assertWritesAllowed } from "@/src/backup/maintenance";
+import { getVisibleIds, type Permission } from "@/src/auth/visibility";
 import { type DbOrTx, db } from "@/src/db/client";
 import { accessory, firearm } from "@/src/db/schema";
 import { ValidationError } from "../errors";
+import {
+  loadAccessoryCompatibilityBatch,
+  replaceAccessoryCompatibility,
+} from "./compatibility";
+import type { AccessoryType } from "./constants";
 import { type AccessoryFields, validateAccessory } from "./validate";
 
 /**
  * Accessory service (U4). Visibility-scoped CRUD plus mount/reassign/unmount,
- * mirroring `src/domain/ammo/service.ts`'s shape. Accessories are NOT a grant
- * `ParentType` (see `src/auth/accessory-visibility.ts`) — a mounted
- * accessory's permission inherits from its firearm, so this file routes
- * every read/write through `resolveAccessoryPermission`/`authorizeMount`
- * instead of the shared `authorize.ts` gates, and deletes are bespoke (no
- * `authorizeAndDeleteParent`, since accessories aren't a `ParentType`).
+ * mirroring `src/domain/ammo/service.ts`'s shape.
+ *
+ * Accessories became a grant `ParentType` in #23, but they still do NOT route
+ * through the shared `authorize.ts` gates: an accessory's permission is the
+ * strongest of its direct grant and the firearm it is mounted to, which only
+ * `resolveAccessoryPermission` knows how to combine. So every read/write here
+ * goes through `src/auth/accessory-visibility.ts` instead, and deletes stay
+ * bespoke rather than using `authorizeAndDeleteParent`.
  * Validation runs before any write (R8); raw values are persisted (R18)
  * except where noted.
  */
 
 export type Accessory = typeof accessory.$inferSelect;
+
+/**
+ * An accessory plus the firearms it is declared COMPATIBLE with (#23 R4) —
+ * "which hosts does this fit". Not to be confused with `currentFirearmId` on
+ * the row itself, which is the single firearm it is mounted to right now. The
+ * two are independent by design (R6).
+ */
+export type AccessoryWithCompatibility = Accessory & {
+  compatibleFirearmIds: string[];
+};
 
 export interface AccessoryInput extends AccessoryFields {
   /** Optional brand/model/serial/notes; empty-not-null when omitted (R18). */
@@ -33,6 +51,15 @@ export interface AccessoryInput extends AccessoryFields {
   model?: string;
   serialNumber?: string;
   notes?: string;
+  /**
+   * The firearms this accessory FITS (#23 R4) — replaced on every write,
+   * mirroring magazines. Omitted is treated as an empty set on create and as
+   * "clear it" on update, exactly as `replaceCompatibility` behaves for
+   * magazines, so the two surfaces cannot diverge. The replace covers only
+   * the actor's visible firearms: links they were never shown are preserved
+   * rather than cleared (see `../compatibility/relation.ts`).
+   */
+  compatibleFirearmIds?: string[];
 }
 
 export interface AccessoryCreateInput extends AccessoryInput {
@@ -63,9 +90,15 @@ function persistableFields(
 ) {
   return {
     // Raw values persisted verbatim (R18/R19); optional text is empty-not-null.
+    // `type` arrives as free `string` (it is user input) but every caller runs
+    // `validateAccessory` first and throws on a value outside the controlled
+    // set, so the narrowing the column demands is already established here.
+    type: input.type as AccessoryType,
     // `category` is trimmed so the list view's exact-match category grouping
-    // can't be split by incidental leading/trailing whitespace.
-    category: input.category.trim(),
+    // can't be split by incidental leading/trailing whitespace. Optional since
+    // #23 R3 — omitted means empty, not "unclassified", because `type` now
+    // carries the classification.
+    category: (input.category ?? "").trim(),
     brand: input.brand ?? "",
     model: input.model ?? "",
     serialNumber: input.serialNumber ?? "",
@@ -109,39 +142,36 @@ async function authorizeCreateMount(
   }
 }
 
-/**
- * Require owner/edit on an accessory (edit only ever arises via a mounted
- * accessory's firearm inheritance). A view-grantee is visible-but-forbidden
- * (R70-style); an item outside the visible set is not-found.
- */
-async function requireEditPermission(
-  tx: DbOrTx,
+/** Attach viewer-relative compatibility (ordinal order, unseen firearms dropped). */
+async function attachCompatibility(
+  database: DbOrTx,
   actorId: string,
-  id: string,
-): Promise<Permission> {
-  // Bespoke write gate (accessories aren't a grant `ParentType`, so this
-  // doesn't route through `authorize.ts`'s helpers) — guard it directly so
-  // `updateAccessory`/`deleteAccessory` are blocked during maintenance too.
-  await assertWritesAllowed(tx);
-
-  const permission = await resolveAccessoryPermission(tx, actorId, id);
-  if (permission === "owner" || permission === "edit") return permission;
-  if (permission === "view") {
-    throw new NotAuthorizedError(
-      "read-only access; cannot modify this accessory",
-    );
-  }
-  throw new NotFoundError();
+  rows: Accessory[],
+  precomputedVisibleFirearmIds?: Set<string>,
+): Promise<AccessoryWithCompatibility[]> {
+  if (rows.length === 0) return [];
+  const visibleFirearms =
+    precomputedVisibleFirearmIds ??
+    (await getVisibleIds(database, actorId, "firearm"));
+  const byAccessory = await loadAccessoryCompatibilityBatch(
+    database,
+    visibleFirearms,
+    rows.map((r) => r.id),
+  );
+  return rows.map((r) => ({
+    ...r,
+    compatibleFirearmIds: byAccessory.get(r.id) ?? [],
+  }));
 }
 
 export async function createAccessory(
   actorId: string,
   input: AccessoryCreateInput,
-): Promise<Accessory> {
+): Promise<AccessoryWithCompatibility> {
   const codes = validateAccessory(input);
   if (codes.length > 0) throw new ValidationError(codes);
 
-  return db.transaction(async (tx) => {
+  const row = await db.transaction(async (tx) => {
     const ownerId = await resolveCreateOwner(tx, actorId, input.ownerId);
 
     // Normalize the mount target once so the authorization guard and the
@@ -152,7 +182,7 @@ export async function createAccessory(
       await authorizeCreateMount(tx, actorId, ownerId, mountedFirearmId);
     }
 
-    const [row] = await tx
+    const [created] = await tx
       .insert(accessory)
       .values({
         ownerId,
@@ -160,32 +190,51 @@ export async function createAccessory(
         ...persistableFields(input, mountedFirearmId),
       })
       .returning();
-    return row;
+    // A firearm the actor cannot see throws here, rolling back the insert too.
+    await replaceAccessoryCompatibility(
+      tx,
+      actorId,
+      created.id,
+      input.compatibleFirearmIds ?? [],
+    );
+    return created;
   });
+  const [withCompat] = await attachCompatibility(db, actorId, [row]);
+  return withCompat;
 }
 
 export async function updateAccessory(
   actorId: string,
   id: string,
   input: AccessoryUpdateInput,
-): Promise<Accessory> {
+): Promise<AccessoryWithCompatibility> {
   const codes = validateAccessory(input);
   if (codes.length > 0) throw new ValidationError(codes);
 
-  return db.transaction(async (tx) => {
-    await requireEditPermission(tx, actorId, id);
+  const row = await db.transaction(async (tx) => {
+    await requireAccessoryEdit(tx, actorId, id);
     // A plain update never changes the mount (mount is a separate op via
     // `mountAccessory`) — load the CURRENT `currentFirearmId` so
     // `persistableFields` can force `installedDate` to null when the
     // accessory is unmounted (R6); an unmounted accessory can never acquire
     // an installed date through this path.
+    //
+    // Locked for the same reason `updateMagazine` locks its row: under READ
+    // COMMITTED an unlocked read makes this a lost update. A `mountAccessory`
+    // committing between the read and the write loses its `installedDate` —
+    // this update saw "unmounted", so it writes null over a date set moments
+    // ago, and the row ends up mounted with no install date. The reverse order
+    // is worse than silent: a concurrent unmount leaves this update writing a
+    // date onto a now-unmounted row, which violates
+    // `accessory_installed_date_requires_mount` and surfaces as a 500.
     const [existing] = await tx
       .select({ currentFirearmId: accessory.currentFirearmId })
       .from(accessory)
       .where(eq(accessory.id, id))
+      .for("update")
       .limit(1);
     if (!existing) throw new NotFoundError();
-    const [row] = await tx
+    const [updated] = await tx
       .update(accessory)
       .set({
         ...persistableFields(input, existing.currentFirearmId),
@@ -193,9 +242,18 @@ export async function updateAccessory(
       })
       .where(eq(accessory.id, id))
       .returning();
-    if (!row) throw new NotFoundError();
-    return row;
+    if (!updated) throw new NotFoundError();
+    // A bad/unseeable link throws here, rolling back the scalar update too.
+    await replaceAccessoryCompatibility(
+      tx,
+      actorId,
+      id,
+      input.compatibleFirearmIds ?? [],
+    );
+    return updated;
   });
+  const [withCompat] = await attachCompatibility(db, actorId, [row]);
+  return withCompat;
 }
 
 /**
@@ -229,7 +287,9 @@ export async function mountAccessory(
 export async function getAccessory(
   actorId: string,
   id: string,
-): Promise<{ accessory: Accessory; permission: Permission }> {
+  /** See `listFirearms` — lets a caller that already holds the set skip a query. */
+  precomputedVisibleFirearmIds?: Set<string>,
+): Promise<{ accessory: AccessoryWithCompatibility; permission: Permission }> {
   const permission = await resolveAccessoryPermission(db, actorId, id);
   if (permission === null) throw new NotFoundError();
   const [row] = await db
@@ -238,23 +298,41 @@ export async function getAccessory(
     .where(eq(accessory.id, id))
     .limit(1);
   if (!row) throw new NotFoundError();
+  const [withCompat] = await attachCompatibility(
+    db,
+    actorId,
+    [row],
+    precomputedVisibleFirearmIds,
+  );
   // Return the viewer's permission alongside the row so the caller doesn't
   // re-resolve it (one query, and no read-vs-permission race between two calls).
-  return { accessory: row, permission };
+  return { accessory: withCompat, permission };
 }
 
 /**
  * Owned + mounted-on-visible-firearm accessories ordered by category, then
  * brand (ascending); always an array (R68-style).
  */
-export async function listAccessories(actorId: string): Promise<Accessory[]> {
-  const visible = await listVisibleAccessoryIds(db, actorId);
+export async function listAccessories(
+  actorId: string,
+  /** See `listFirearms` — lets a caller that already holds the set skip a query. */
+  precomputedVisibleFirearmIds?: Set<string>,
+): Promise<AccessoryWithCompatibility[]> {
+  // Derive the visible firearm set ONCE and thread it through both consumers:
+  // the inherited-visibility path needs it, and so does the viewer-relative
+  // compatibility filter. Without this the list page pays for the same set
+  // twice on every load.
+  const visibleFirearms =
+    precomputedVisibleFirearmIds ??
+    (await getVisibleIds(db, actorId, "firearm"));
+  const visible = await listVisibleAccessoryIds(db, actorId, visibleFirearms);
   if (visible.size === 0) return [];
-  return db
+  const rows = await db
     .select()
     .from(accessory)
     .where(inArray(accessory.id, [...visible]))
     .orderBy(asc(accessory.category), asc(accessory.brand));
+  return attachCompatibility(db, actorId, rows, visibleFirearms);
 }
 
 /**
@@ -280,10 +358,16 @@ export async function listMountedForFirearm(
 }
 
 /**
- * Bespoke delete (accessories are not a grant `ParentType`, so
- * `authorizeAndDeleteParent` doesn't apply, and there are no grants to clean
- * up). Owner may always delete; an edit-grantee may delete a mounted
- * accessory too (R9 — delete follows the inherited firearm-edit permission).
+ * Bespoke delete: `authorizeAndDeleteParent` resolves permission the generic
+ * way and would miss the mounted-firearm inheritance, so it does not apply
+ * even now that accessories are a grant `ParentType`. Grant rows are cleaned
+ * up by the `accessory_grants_cleanup` trigger (#23 R10, migration 0022)
+ * rather than in this transaction.
+ *
+ * Delete is gated more tightly than update — see `requireAccessoryDelete`: the
+ * owner and #8's firearm-edit-inheritance path may delete, but a direct #23
+ * accessory `edit` grant may not, matching how every other grantable parent
+ * type treats sharing at edit.
  * A view-grantee is forbidden; anything outside the visible set is
  * not-found — this also covers an unmounted, non-owned accessory, which is
  * simply invisible (`resolveAccessoryPermission` returns null for it).
@@ -293,7 +377,7 @@ export async function deleteAccessory(
   id: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    await requireEditPermission(tx, actorId, id);
+    await requireAccessoryDelete(tx, actorId, id);
     const deleted = await tx
       .delete(accessory)
       .where(eq(accessory.id, id))

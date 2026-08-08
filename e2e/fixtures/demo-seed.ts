@@ -168,6 +168,7 @@ export async function seedDemoData(page: Page): Promise<void> {
       })
       .click();
     const form = page.locator("form");
+    await form.getByLabel("Type").selectOption(s.type);
     await form.getByLabel("Category").fill(s.category);
     if (s.brand) await form.getByLabel("Brand").fill(s.brand);
     if (s.model) await form.getByLabel("Model").fill(s.model);

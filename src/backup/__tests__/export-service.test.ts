@@ -28,7 +28,6 @@ import {
   describe,
   expect,
   mock,
-  test,
 } from "bun:test";
 import {
   PostgreSqlContainer,
@@ -43,6 +42,7 @@ import { activeStorageRoot } from "@/src/storage/index";
 import { expectRejects } from "@/src/test-support/assertions";
 import * as schema from "../../db/schema";
 import { firearm, user } from "../../db/schema";
+import { containerTest as test } from "../../test-support/container-test";
 import { POSTGRES_IMAGE } from "../../test-support/postgres-image";
 import type { BundleEvent } from "../bundle";
 import { readBundle } from "../bundle";

@@ -2,6 +2,8 @@ import type { PgTable } from "drizzle-orm/pg-core";
 import { account, user, verification } from "../db/auth-schema";
 import {
   accessory,
+  accessoryAttachment,
+  accessoryFirearm,
   ammo,
   firearm,
   firearmDocument,
@@ -49,6 +51,9 @@ import { operatorAudit } from "../db/operator-audit-schema";
  *   before `service_event` mirrors no dependency between the two (rows in
  *   either could theoretically restore in any order), but keeping rules
  *   before events matches the order they are created in during normal use.
+ * - `accessory_firearm` (accessory + firearm) and `accessory_attachment`
+ *   (accessory) are accessory children, so they follow `accessory` for the
+ *   same reason `magazine_firearm` follows `magazine` (#23).
  * - `operator_audit` has no FK to anything and is appended last.
  */
 export const EXPORT_TABLE_ORDER: readonly PgTable[] = [
@@ -64,6 +69,8 @@ export const EXPORT_TABLE_ORDER: readonly PgTable[] = [
   serviceEvent,
   magazineLabelPrefix,
   magazineFirearm,
+  accessoryFirearm,
+  accessoryAttachment,
   rangeSession,
   rangeSessionAccessory,
   firearmPhoto,

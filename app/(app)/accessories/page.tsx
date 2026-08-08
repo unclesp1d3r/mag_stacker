@@ -22,17 +22,23 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
 
   const { mountFirearm } = await searchParams;
 
-  const [accessories, firearms, permissions, ownerCategories] =
-    await Promise.all([
-      listAccessories(user.id),
-      listFirearms(user.id),
-      visibleFirearmPermissions(db, user.id),
-      // Suggestions only (KD10 stays exact-string free text) — reuses the
-      // defaults surface's KTD8 query rather than duplicating it. On create,
-      // the actor IS the new accessory's owner (this UI never collects an
-      // on-behalf `ownerId`), so the actor's own categories are the right set.
-      listOwnerAccessoryCategories(user.id),
-    ]);
+  // "Owned union granted firearms" is needed three ways on this page — by the
+  // firearm list, by the mount-permission map, and by the accessory queries
+  // (inherited visibility + viewer-relative compatibility). Resolve the
+  // permission map first and reuse its keys as that set: they are the same
+  // ids, so everything downstream is threaded rather than re-queried.
+  const permissions = await visibleFirearmPermissions(db, user.id);
+  const visibleFirearmIds = new Set(permissions.keys());
+
+  const [accessories, firearms, ownerCategories] = await Promise.all([
+    listAccessories(user.id, visibleFirearmIds),
+    listFirearms(user.id, visibleFirearmIds),
+    // Suggestions only (KD10 stays exact-string free text) — reuses the
+    // defaults surface's KTD8 query rather than duplicating it. On create,
+    // the actor IS the new accessory's owner (this UI never collects an
+    // on-behalf `ownerId`), so the actor's own categories are the right set.
+    listOwnerAccessoryCategories(user.id),
+  ]);
   // U9/R20: bounded (never per-item, KTD4) — marks rows with at least one due
   // service rule of their own (never merely because a mounting firearm is
   // due). Passes the already-fetched `firearms` through — `listFirearms`'s
@@ -52,11 +58,8 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
   // on — but doesn't own — would pass permission but fail
   // `authorizeCreateMount`'s cross-tenant check at submit; excluding it here
   // keeps the picker's options a strict subset of what will actually save.
-  const { firearmNames, editableFirearms } = buildFirearmMountContext(
-    firearms,
-    permissions,
-    user.id,
-  );
+  const { firearmNames, editableFirearms, visibleFirearms } =
+    buildFirearmMountContext(firearms, permissions, user.id);
 
   // Honor a pre-fill target from a firearm's "Add accessory" link (F1) only
   // when the actor can actually mount to it.
@@ -69,6 +72,7 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
   const items: AccessoryListItem[] = accessories.map((a) => ({
     id: a.id,
     ownerId: a.ownerId,
+    type: a.type,
     category: a.category,
     brand: a.brand,
     model: a.model,
@@ -86,6 +90,7 @@ export default async function AccessoriesPage({ searchParams }: PageProps) {
         accessories={items}
         currentUserId={user.id}
         editableFirearms={editableFirearms}
+        visibleFirearms={visibleFirearms}
         firearmNames={firearmNames}
         initialMountFirearmId={initialMountFirearmId}
         ownerCategories={ownerCategories}

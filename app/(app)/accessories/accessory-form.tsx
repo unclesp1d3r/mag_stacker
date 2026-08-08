@@ -1,13 +1,22 @@
 "use client";
 
 import { useId, useMemo, useState, useTransition } from "react";
+import {
+  CompatibleFirearmsField,
+  type FirearmOption,
+  toggleCompatibleFirearm,
+} from "@/components/inventory/compatible-firearms-field";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/feedback";
 import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import { ACCESSORY_CATEGORY_SUGGESTIONS } from "@/src/domain/accessories/constants";
+import {
+  ACCESSORY_CATEGORY_SUGGESTIONS,
+  ACCESSORY_TYPES,
+  accessoryTypeLabel,
+} from "@/src/domain/accessories/constants";
 import {
   accessoryDisplayName,
   parseCostInputToCents,
@@ -21,6 +30,10 @@ import { createAccessoryAction, updateAccessoryAction } from "./actions";
 
 export interface AccessoryFormValues {
   id?: string;
+  /** Controlled structural discriminator (#23 R1/R14). Required. */
+  type: string;
+  /** Free-text descriptive kind (#23 R3). Optional since the type select
+   * took over the required classification. */
   category: string;
   brand: string;
   model: string;
@@ -36,9 +49,20 @@ export interface AccessoryFormValues {
   cost: string;
   notes: string;
   isNfa: boolean;
+  /**
+   * Firearms this accessory FITS (#23 R4/R14) — a capability claim, and
+   * deliberately not the mount select below. An accessory can be compatible
+   * with five hosts while mounted on none of them.
+   */
+  compatibleFirearmIds: string[];
 }
 
 const DEFAULTS: AccessoryFormValues = {
+  // Deliberately blank rather than pre-selecting "other": a silent default
+  // would let an owner save every accessory as unclassified without ever
+  // seeing the question, which is exactly what the discriminator exists to
+  // prevent. The empty option below is not submittable.
+  type: "",
   category: "",
   brand: "",
   model: "",
@@ -48,6 +72,7 @@ const DEFAULTS: AccessoryFormValues = {
   cost: "",
   notes: "",
   isNfa: false,
+  compatibleFirearmIds: [],
 };
 
 const MAX_COST_DOLLARS = MAX_COST_CENTS / 100;
@@ -66,6 +91,12 @@ interface AccessoryFormProps {
    * `updateAccessory` intentionally omits `firearmId`.
    */
   editableFirearms: EditableFirearmOption[];
+  /**
+   * Firearms offered by the compatibility picker — every firearm the actor can
+   * SEE, which is wider than `editableFirearms` on purpose (see
+   * `buildFirearmMountContext`).
+   */
+  visibleFirearms: FirearmOption[];
   /**
    * Pre-selected mount target on create — set when the form is opened from a
    * firearm's detail page ("Add accessory", F1). Ignored on edit.
@@ -97,6 +128,7 @@ interface AccessoryFormProps {
 export function AccessoryForm({
   initial,
   editableFirearms,
+  visibleFirearms,
   initialFirearmId,
   currentFirearmId,
   ownerCategories = [],
@@ -127,6 +159,7 @@ export function AccessoryForm({
   // via the detail view's mount control, not this form).
   const isMounted = isEdit ? Boolean(currentFirearmId) : firearmId !== "";
 
+  const typeId = useId();
   const categoryId = useId();
   const brandId = useId();
   const modelId = useId();
@@ -154,6 +187,13 @@ export function AccessoryForm({
     return merged;
   }, [ownerCategories]);
 
+  function toggleFirearm(id: string) {
+    setValues((v) => ({
+      ...v,
+      compatibleFirearmIds: toggleCompatibleFirearm(v.compatibleFirearmIds, id),
+    }));
+  }
+
   function set<K extends keyof AccessoryFormValues>(
     key: K,
     value: AccessoryFormValues[K],
@@ -166,6 +206,7 @@ export function AccessoryForm({
     setServerError(null);
     const costCents = parseCostInputToCents(values.cost);
     const fields = {
+      type: values.type,
       category: values.category,
       costCents,
       // Hidden/unmounted → submits nothing (R6); the service layer also
@@ -179,8 +220,8 @@ export function AccessoryForm({
     const found = validateAccessory(fields);
     setCodes(found);
     if (found.length > 0) {
-      if (found.includes("emptyCategory")) {
-        document.getElementById(categoryId)?.focus();
+      if (found.includes("invalidAccessoryType")) {
+        document.getElementById(typeId)?.focus();
       } else if (
         found.includes("negativeCostCents") ||
         found.includes("invalidCostCents")
@@ -199,6 +240,7 @@ export function AccessoryForm({
 
     const input = {
       ...fields,
+      compatibleFirearmIds: values.compatibleFirearmIds,
       brand: values.brand,
       model: values.model,
       serialNumber: values.serialNumber,
@@ -229,7 +271,17 @@ export function AccessoryForm({
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+    // Named so the form exposes role="form" — a <form> only does when it has an
+    // accessible name. That gives assistive tech a landmark to jump to, and it
+    // gives the e2e suite `getByRole("form", { name })` instead of
+    // `locator("form").last()`, which resolves by DOM order and silently
+    // retargets when the page gains another form.
+    <form
+      onSubmit={submit}
+      aria-label={isEdit ? "Edit accessory" : "Add accessory"}
+      className="flex flex-col gap-4"
+      noValidate
+    >
       {serverError ? <Callout tone="destructive">{serverError}</Callout> : null}
       <datalist id="accessory-categories">
         {categorySuggestions.map((c) => (
@@ -238,20 +290,43 @@ export function AccessoryForm({
       </datalist>
 
       <div className="grid gap-4 sm:grid-cols-2">
+        {/* Type is the required, controlled classification (#23 R1/R14) —
+            it decides which subtype's rules apply and is what future
+            per-type detail tables key off. Category below stays free text. */}
         <Field
-          label="Category"
-          controlId={categoryId}
+          label="Type"
+          controlId={typeId}
           required
-          error={firstMessage(codes, ["emptyCategory"])}
+          error={firstMessage(codes, ["invalidAccessoryType"])}
         >
+          <Select
+            id={typeId}
+            value={values.type}
+            onChange={(e) => set("type", e.target.value)}
+            aria-invalid={codes.includes("invalidAccessoryType")}
+          >
+            <option value="">Select a type…</option>
+            {ACCESSORY_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {accessoryTypeLabel(t)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {/* Category is free text and OPTIONAL (#23 R3/KD4) — it captures what
+            the owner calls the thing ("red dot mount", "bipod"), which the
+            controlled type set deliberately does not enumerate. */}
+        <Field label="Category" controlId={categoryId} hint="Optional">
           <Input
             id={categoryId}
             list="accessory-categories"
             value={values.category}
             onChange={(e) => set("category", e.target.value)}
-            aria-invalid={codes.includes("emptyCategory")}
           />
         </Field>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Brand" controlId={brandId} hint="Optional">
           <Input
             id={brandId}
@@ -367,6 +442,17 @@ export function AccessoryForm({
         />
         NFA-regulated item
       </label>
+
+      {/* Compatibility ("what does it fit") is separate from the mount below
+          ("what is it on right now") — #23 KD2 keeps both, since a suppressor
+          fits many hosts but is mounted on at most one. Shared verbatim with
+          the magazine form (#23's DRY ask). */}
+      <CompatibleFirearmsField
+        options={visibleFirearms}
+        selectedIds={values.compatibleFirearmIds}
+        onToggle={toggleFirearm}
+        legend="Fits these firearms"
+      />
 
       {/* Mount target is create-only (R4/R17) — omitted on edit; reassigning
           an existing accessory uses the detail view's mount control instead. */}

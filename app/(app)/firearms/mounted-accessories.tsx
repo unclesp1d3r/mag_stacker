@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Badge, EmptyState } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/surface";
 import { Data } from "@/components/ui/typography";
+import { accessoryDisplayName } from "@/src/domain/accessories/display";
 
 /**
  * The subset of an accessory row this section needs to render. Kept narrow
@@ -12,6 +13,9 @@ import { Data } from "@/components/ui/typography";
  */
 export interface MountedAccessoryRow {
   id: string;
+  /** Controlled discriminator — the label's last-resort fallback (#23 R3
+   * relaxed `category` to optional, so it can no longer carry the label). */
+  type: string;
   category: string;
   brand: string;
   model: string;
@@ -34,14 +38,6 @@ function formatCostCents(cents: number): string {
     style: "currency",
     currency: "USD",
   });
-}
-
-/** Brand + model when either is set, else the category (mirrors firearm's name-fallback shape). */
-function accessoryLabel(a: MountedAccessoryRow): string {
-  const brandModel = [a.brand, a.model]
-    .filter((s) => s.trim() !== "")
-    .join(" ");
-  return brandModel !== "" ? brandModel : a.category;
 }
 
 const addAccessoryButtonClass =
@@ -100,7 +96,7 @@ export function MountedAccessories({
                 className="min-w-0 flex-1 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <span className="block truncate text-sm font-medium text-foreground hover:underline">
-                  {accessoryLabel(a)}
+                  {accessoryDisplayName(a)}
                 </span>
                 <span className="block text-xs text-muted-foreground">
                   {a.category}
