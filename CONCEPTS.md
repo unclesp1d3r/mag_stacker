@@ -53,7 +53,7 @@ The many-to-many relationship recording which Firearms a given Magazine fits. Re
 
 ### Accessory Compatibility
 
-The same relationship for an **Accessory**: which Firearms it fits. Deliberately distinct from the accessory's *current mount* — compatibility is a capability claim ("this can fits these five hosts"), true whether or not the accessory is attached to any of them today, while the mount is present physical state and is at most one firearm. Declaring compatibility never changes the mount, and mounting never changes compatibility. Both are read *viewer-relative*: a firearm the reader cannot see is omitted rather than disclosed.
+The same relationship for an **Accessory**: which Firearms it fits. Deliberately distinct from the accessory's *current mount* — compatibility is a capability claim ("this suppressor fits these five hosts"), true whether or not the accessory is attached to any of them today, while the mount is present physical state and is at most one firearm. Declaring compatibility never changes the mount, and mounting never changes compatibility. Both are read *viewer-relative*: a firearm the reader cannot see is omitted rather than disclosed.
 
 ## Sharing and visibility
 
