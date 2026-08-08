@@ -49,11 +49,13 @@ A record that hangs off an owned parent (currently a Firearm or an Accessory; Ma
 
 ### Compatibility
 
-The many-to-many relationship recording which Firearms a given Magazine fits. Removing either side removes the pairing.
+The many-to-many relationship recording which Firearms a given Magazine fits. Removing either side removes the pairing. Viewer-relative in both directions, on the same terms as **Accessory Compatibility** — the two share one rule, so they cannot drift apart.
 
 ### Accessory Compatibility
 
-The same relationship for an **Accessory**: which Firearms it fits. Deliberately distinct from the accessory's *current mount* — compatibility is a capability claim ("this suppressor fits these five hosts"), true whether or not the accessory is attached to any of them today, while the mount is present physical state and is at most one firearm. Declaring compatibility never changes the mount, and mounting never changes compatibility. Both are read *viewer-relative*: a firearm the reader cannot see is omitted rather than disclosed.
+The same relationship for an **Accessory**: which Firearms it fits. Deliberately distinct from the accessory's *current mount* — compatibility is a capability claim ("this suppressor fits these five hosts"), true whether or not the accessory is attached to any of them today, while the mount is present physical state and is at most one firearm. Declaring compatibility never changes the mount, and mounting never changes compatibility.
+
+Compatibility is *viewer-relative in both directions*. A firearm the reader cannot see is omitted from a read rather than disclosed; and because the list an editor submits was therefore built from a filtered view, a write replaces only the pairings within that editor's visible set and leaves the rest untouched. Saving a shorter list clears what the editor was shown and omitted — never the pairings they were never told about.
 
 ## Sharing and visibility
 
