@@ -34,6 +34,8 @@ export interface FirearmFormValues {
   serialNumber: string;
   notes: string;
   isNfa: boolean;
+  /** Whether this firearm takes detachable magazines (#37); default on. */
+  isMagazineFed: boolean;
   /** ISO date, or `""` when unset — mirrors magazine/ammo's acquired date. */
   acquiredDate: string;
 }
@@ -59,6 +61,9 @@ const EMPTY: FirearmFormValues = {
   serialNumber: "",
   notes: "",
   isNfa: false,
+  // Checked by default — the overwhelming majority of firearms are magazine-fed,
+  // and this default is what preserves today's behavior for new entries (#37 R2).
+  isMagazineFed: true,
   acquiredDate: "",
 };
 
@@ -352,6 +357,29 @@ export function FirearmForm({
           NFA-regulated item (SBR, SBS, AOW, etc.)
         </span>
       </label>
+      <div className="space-y-1">
+        <label className="flex cursor-pointer items-center gap-3">
+          <input
+            type="checkbox"
+            checked={values.isMagazineFed}
+            onChange={(e) =>
+              setValues((v) => ({ ...v, isMagazineFed: e.target.checked }))
+            }
+            className="size-4 accent-primary"
+            aria-invalid={codes.includes("magazineFedHasCompatibleMagazines")}
+          />
+          <span className="text-sm text-foreground">
+            This firearm uses detachable magazines
+          </span>
+        </label>
+        {/* The guard's rejection belongs next to the control that caused it,
+            not in the generic server-error banner (#37 U3). */}
+        {firstMessage(codes, ["magazineFedHasCompatibleMagazines"]) ? (
+          <p className="text-sm text-destructive">
+            {firstMessage(codes, ["magazineFedHasCompatibleMagazines"])}
+          </p>
+        ) : null}
+      </div>
       <div className="flex items-center gap-2">
         <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : isEdit ? "Save changes" : "Add firearm"}

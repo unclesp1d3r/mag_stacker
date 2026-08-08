@@ -81,6 +81,13 @@ interface MagazinesViewProps {
   magazines: MagazineListItem[];
   currentUserId: string;
   firearmOptions: FirearmOption[];
+  /**
+   * Whether the owner has ANY firearm, magazine-fed or not. The cold-start
+   * empty state keys off this rather than off `firearmOptions` (#37 R10): an
+   * owner whose only firearms are revolvers has firearms, and must not be told
+   * to go add one.
+   */
+  hasFirearms: boolean;
   caliberSuggestions: string[];
   /** The owner's used label prefixes, offered as single-add suggestions (#22). */
   prefixOptions: string[];
@@ -122,6 +129,7 @@ export function MagazinesView({
   magazines,
   currentUserId,
   firearmOptions,
+  hasFirearms,
   caliberSuggestions,
   prefixOptions,
   prefixNextStart,
@@ -708,7 +716,7 @@ export function MagazinesView({
       ) : null}
 
       {magazines.length === 0 && !form.open ? (
-        firearmOptions.length === 0 ? (
+        !hasFirearms ? (
           // Cold start: no firearms and no magazines. Point at the path to the
           // payoff — compatibility mapping needs a firearm first.
           <EmptyState

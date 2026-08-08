@@ -7,8 +7,8 @@ import { getPrefixData } from "@/src/domain/magazines/prefixes";
 import { getMagazine } from "@/src/domain/magazines/service";
 import { calibersForInput } from "@/src/domain/reference/reference";
 import { isUuid } from "@/src/lib/uuid";
+import { magazineFedOptions } from "../firearm-options";
 import { MagazineDetailView } from "../magazine-detail-view";
-import type { FirearmOption } from "../magazine-form";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -40,16 +40,11 @@ export default async function MagazineDetailPage({ params }: PageProps) {
     getPrefixData(user.id),
   ]);
 
+  // UNFILTERED on purpose (#37 KTD6) — see `magazineFedOptions`. An existing
+  // compatibility link must still render its firearm's name even when that
+  // firearm is no longer magazine-fed.
   const nameById = new Map(firearms.map((f) => [f.id, f.name]));
-  const nameCounts = new Map<string, number>();
-  for (const f of firearms)
-    nameCounts.set(f.name, (nameCounts.get(f.name) ?? 0) + 1);
-  const firearmOptions: FirearmOption[] = firearms.map((f) => ({
-    id: f.id,
-    name: f.name,
-    // Disambiguate same-named firearms with a non-sensitive id fragment (R52).
-    hint: (nameCounts.get(f.name) ?? 0) > 1 ? f.id.slice(0, 6) : undefined,
-  }));
+  const firearmOptions = magazineFedOptions(firearms);
   // Pair id+name structurally so display can't drift; a firearm the viewer can't
   // see is omitted (its name is never leaked), not rendered as a blank badge.
   const compatibleFirearms = row.compatibleFirearmIds

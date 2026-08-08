@@ -44,6 +44,7 @@ import { firearmDisplayName, hasNickname } from "@/src/domain/firearms/display";
 import { firearmByTypeKey } from "@/src/domain/tables/firearm-groups";
 import { deleteFirearmAction } from "./actions";
 import { FirearmForm, type FirearmFormValues } from "./firearm-form";
+import { magazineCountValue } from "./magazine-count";
 
 /** Filter sentinel: show every type. */
 const ALL_TYPES = "all";
@@ -208,6 +209,15 @@ export function FirearmsView({
         id: "magazineCount",
         header: "# Mags",
         meta: { numeric: true, label: "# Mags" },
+        // `accessorKey`/`meta.numeric` stay put so sorting and numeric
+        // alignment are unchanged; only the rendered value branches. Reads
+        // `row.original` rather than closing over page state — see
+        // docs/solutions/runtime-errors/tanstack-autoreset-render-loop-unstable-data.md.
+        cell: ({ row }) =>
+          magazineCountValue(
+            row.original.isMagazineFed,
+            row.original.magazineCount,
+          ),
       },
       {
         accessorKey: "roundTotal",
