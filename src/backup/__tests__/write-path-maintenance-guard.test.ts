@@ -5,7 +5,6 @@ import {
   beforeEach,
   describe,
   expect,
-  test,
 } from "bun:test";
 import { randomUUID } from "node:crypto";
 import {
@@ -29,6 +28,7 @@ import { NotFoundError } from "../../auth/errors";
 import { createGrant, revokeGrant } from "../../auth/grants";
 import * as schema from "../../db/schema";
 import { accessory, firearm, grant, magazine, user } from "../../db/schema";
+import { containerTest as test } from "../../test-support/container-test";
 import { POSTGRES_IMAGE } from "../../test-support/postgres-image";
 import { wipeDatabase } from "../db-import";
 import {

@@ -1,11 +1,4 @@
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  test,
-} from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import {
@@ -37,6 +30,7 @@ import {
   user,
   verification,
 } from "../../db/schema";
+import { containerTest as test } from "../../test-support/container-test";
 import { POSTGRES_IMAGE } from "../../test-support/postgres-image";
 import { type ExportedRow, exportDatabase } from "../db-export";
 import {
