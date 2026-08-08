@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { Data } from "@/components/ui/typography";
 
 /**
  * How a firearm's magazine count renders (#37 R6/R7/R8).
@@ -15,13 +14,19 @@ import { Data } from "@/components/ui/typography";
  *
  * Shared by the firearms table, the firearm detail view, and the summary
  * per-firearm table so all three can never disagree about the same firearm.
+ *
+ * The caller supplies the already-rendered count rather than a bare number, so
+ * each surface keeps the numeric treatment it already had — the two tables
+ * render a plain number like their sibling numeric columns, while the detail
+ * view keeps its `<Data>` mono/tabular span. Rendering the number here would
+ * silently restyle every magazine-fed row.
  */
 export function magazineCountValue(
   isMagazineFed: boolean,
-  count: number,
+  count: ReactNode,
 ): ReactNode {
   if (!isMagazineFed) {
     return <span className="text-muted-foreground">—</span>;
   }
-  return <Data>{count}</Data>;
+  return count;
 }

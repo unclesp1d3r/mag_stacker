@@ -195,7 +195,10 @@ export function FirearmDetailView({
             />
             <DetailRow
               label="Compatible magazines"
-              value={magazineCountValue(firearm.isMagazineFed, magazineCount)}
+              value={magazineCountValue(
+                firearm.isMagazineFed,
+                <Data>{magazineCount}</Data>,
+              )}
             />
             <DetailRow
               label="NFA item"

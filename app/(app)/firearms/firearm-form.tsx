@@ -152,6 +152,12 @@ export function FirearmForm({
   const notesId = useId();
   const serialId = useId();
   const dateId = useId();
+  const magFedId = useId();
+  // The #37 guard's server-side rejection, surfaced on the control that caused
+  // it. Resolved once — it drives both `aria-invalid` and the message.
+  const magFedError = firstMessage(codes, [
+    "magazineFedHasCompatibleMagazines",
+  ]);
 
   function set<K extends keyof FirearmFormValues>(key: K, value: string) {
     setValues((v) => ({ ...v, [key]: value }));
@@ -357,7 +363,11 @@ export function FirearmForm({
           NFA-regulated item (SBR, SBS, AOW, etc.)
         </span>
       </label>
-      <div className="space-y-1">
+      {/* Not wrapped in `Field`: that renders its label ABOVE the control, and a
+          checkbox needs its label beside it. The error markup and the
+          aria-invalid/aria-describedby wiring below mirror `Field` exactly so
+          this reads identically to every other invalid field (#37 U3). */}
+      <div className="flex flex-col gap-1.5">
         <label className="flex cursor-pointer items-center gap-3">
           <input
             type="checkbox"
@@ -366,17 +376,22 @@ export function FirearmForm({
               setValues((v) => ({ ...v, isMagazineFed: e.target.checked }))
             }
             className="size-4 accent-primary"
-            aria-invalid={codes.includes("magazineFedHasCompatibleMagazines")}
+            aria-invalid={!!magFedError}
+            aria-describedby={magFedError ? `${magFedId}-error` : undefined}
           />
           <span className="text-sm text-foreground">
             This firearm uses detachable magazines
           </span>
         </label>
         {/* The guard's rejection belongs next to the control that caused it,
-            not in the generic server-error banner (#37 U3). */}
-        {firstMessage(codes, ["magazineFedHasCompatibleMagazines"]) ? (
-          <p className="text-sm text-destructive">
-            {firstMessage(codes, ["magazineFedHasCompatibleMagazines"])}
+            not in the generic server-error banner. */}
+        {magFedError ? (
+          <p
+            id={`${magFedId}-error`}
+            role="alert"
+            className="text-xs font-medium text-destructive"
+          >
+            {magFedError}
           </p>
         ) : null}
       </div>
