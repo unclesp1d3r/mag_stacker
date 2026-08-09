@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { asc, eq } from "drizzle-orm";
 import { NotFoundError } from "@/src/auth/errors";
+import { createGrant } from "@/src/auth/grants";
 import { db } from "@/src/db/client";
 import { magazineFirearm } from "@/src/db/schema";
+import { ValidationError } from "@/src/domain/errors";
 import {
   createUser,
   deleteUsers,
@@ -92,4 +94,118 @@ describe("replaceCompatibility (U6)", () => {
     expect(await orderedLinks(mag.id)).toEqual([]);
     await deleteUsers(userB);
   });
+});
+
+describe("replaceCompatibility — non-magazine-fed firearms (#37 R5)", () => {
+  let userA = "";
+  let userB = "";
+
+  beforeAll(async () => {
+    userA = await createUser("MagFedCompatA");
+    userB = await createUser("MagFedCompatB");
+  });
+  afterAll(async () => {
+    await deleteUsers(userA, userB);
+  });
+
+  test("rejects linking a magazine to a firearm that takes no detachable magazines", async () => {
+    const revolver = await makeFirearm(userA, {
+      name: "Revolver",
+      isMagazineFed: false,
+    });
+    const mag = await makeMagazine(userA);
+
+    let caught: unknown;
+    try {
+      await db.transaction(async (tx) => {
+        await replaceCompatibility(tx, userA, mag.id, [revolver.id]);
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ValidationError);
+    expect((caught as ValidationError).codes).toContain(
+      "compatibleFirearmNotMagazineFed",
+    );
+
+    // Nothing was written — the throw rolled the transaction back.
+    const rows = await db
+      .select()
+      .from(magazineFirearm)
+      .where(eq(magazineFirearm.magazineId, mag.id));
+    expect(rows).toHaveLength(0);
+  });
+
+  test("rejects a mixed list, so one bad id blocks the whole replace", async () => {
+    const ok = await makeFirearm(userA, { name: "Pistol" });
+    const revolver = await makeFirearm(userA, {
+      name: "Revolver 2",
+      isMagazineFed: false,
+    });
+    const mag = await makeMagazine(userA);
+
+    let caught: unknown;
+    try {
+      await db.transaction(async (tx) => {
+        await replaceCompatibility(tx, userA, mag.id, [ok.id, revolver.id]);
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ValidationError);
+    const rows = await db
+      .select()
+      .from(magazineFirearm)
+      .where(eq(magazineFirearm.magazineId, mag.id));
+    expect(rows).toHaveLength(0);
+  });
+
+  test("the check is not visibility-scoped away: a shared non-magazine-fed firearm is still rejected", async () => {
+    const revolver = await makeFirearm(userB, {
+      name: "Shared Revolver",
+      isMagazineFed: false,
+    });
+    await createGrant(db, {
+      actorId: userB,
+      granteeId: userA,
+      parentType: "firearm",
+      parentId: revolver.id,
+      permission: "edit",
+    });
+    const mag = await makeMagazine(userA);
+
+    let caught: unknown;
+    try {
+      await db.transaction(async (tx) => {
+        await replaceCompatibility(tx, userA, mag.id, [revolver.id]);
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ValidationError);
+  });
+
+  test("magazine-fed firearms still link normally, and clearing still works", async () => {
+    const fa = await makeFirearm(userA, { name: "Normal Pistol" });
+    const mag = await makeMagazine(userA);
+
+    await db.transaction(async (tx) => {
+      await replaceCompatibility(tx, userA, mag.id, [fa.id]);
+    });
+    expect(await orderedLinksFor(mag.id)).toEqual([fa.id]);
+
+    await db.transaction(async (tx) => {
+      await replaceCompatibility(tx, userA, mag.id, []);
+    });
+    expect(await orderedLinksFor(mag.id)).toEqual([]);
+  });
+
+  async function orderedLinksFor(magazineId: string): Promise<string[]> {
+    const rows = await db
+      .select({ firearmId: magazineFirearm.firearmId })
+      .from(magazineFirearm)
+      .where(eq(magazineFirearm.magazineId, magazineId))
+      .orderBy(asc(magazineFirearm.ordinal));
+    return rows.map((r) => r.firearmId);
+  }
 });

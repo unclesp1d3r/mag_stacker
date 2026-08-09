@@ -10,8 +10,12 @@ interface OptionSource {
  * The firearms a magazine may be declared compatible with (#37 R5).
  *
  * Non-magazine-fed firearms are dropped: offering a revolver as a magazine's
- * compatible host invites a nonsensical association, and `updateFirearm`'s
- * guard means such a link can never legitimately exist anyway.
+ * compatible host invites a nonsensical association.
+ *
+ * This filter is presentation only — it shapes what the picker OFFERS, not what
+ * the server accepts. The write is refused independently by
+ * `assertAllMagazineFed` in `src/domain/magazines/compatibility.ts`; do not
+ * treat this function as the enforcement point.
  *
  * The same-name disambiguation `hint` is computed over the FILTERED list on
  * purpose — the fragment exists to tell two *selectable* firearms apart, so a

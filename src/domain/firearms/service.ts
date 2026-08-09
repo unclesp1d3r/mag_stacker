@@ -128,8 +128,9 @@ export async function createFirearm(
  * The message stays generic for the same reason: it must not disclose a
  * magazine the actor cannot see.
  *
- * Runs inside the caller's transaction, so throwing rolls back any scalar
- * update submitted in the same call.
+ * Runs BEFORE the scalar update, inside the caller's transaction: a rejection
+ * means the update is never attempted, and the transaction still rolls back
+ * cleanly if this were ever reordered after the write.
  */
 async function assertNoCompatibleMagazines(
   tx: DbOrTx,

@@ -68,6 +68,10 @@ export const VALIDATION_MESSAGES: Record<string, string> = {
   // another owner and must not be named or counted here.
   magazineFedHasCompatibleMagazines:
     "Remove this firearm's compatible magazines before marking it non-magazine-fed",
+  // The write-side half of the same invariant (#37 R5): a magazine cannot be
+  // declared compatible with a firearm that takes no detachable magazines.
+  compatibleFirearmNotMagazineFed:
+    "One or more selected firearms do not use detachable magazines",
 };
 
 export function messageForCode(code: string): string {

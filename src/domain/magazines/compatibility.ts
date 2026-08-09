@@ -1,11 +1,13 @@
+import { and, eq, inArray } from "drizzle-orm";
 import type { DbOrTx } from "@/src/db/client";
-import { magazineFirearm } from "@/src/db/schema";
+import { firearm, magazineFirearm } from "@/src/db/schema";
 import {
   type CompatibilityRelation,
   loadCompatibility as loadRelation,
   loadCompatibilityBatch as loadRelationBatch,
   replaceCompatibility as replaceRelation,
 } from "../compatibility/relation";
+import { ValidationError } from "../errors";
 
 /**
  * Magazine compatibility-set management (U6, KTD-8).
@@ -45,7 +47,48 @@ export async function replaceCompatibility(
   magazineId: string,
   firearmIds: string[],
 ): Promise<string[]> {
+  await assertAllMagazineFed(tx, firearmIds);
   return replaceRelation(tx, MAGAZINE_FIREARM, actorId, magazineId, firearmIds);
+}
+
+/**
+ * Reject any submitted firearm that takes no detachable magazines (#37 R5).
+ *
+ * This is the write-side half of the invariant whose read-side half lives in
+ * `updateFirearm`'s `assertNoCompatibleMagazines`. That guard blocks the
+ * firearm→non-magazine-fed transition while links exist; this one blocks
+ * creating a link to a firearm that is *already* non-magazine-fed. Without
+ * both, the invariant holds only in one direction: filtering the picker in
+ * `app/(app)/magazines/firearm-options.ts` is presentation only, so a stale
+ * form tab (options rendered before the firearm was flagged) or any non-UI
+ * caller could still write the row the whole feature assumes cannot exist.
+ *
+ * It lives HERE, in the magazine binding, and deliberately not in the shared
+ * `../compatibility/relation.ts`: accessory compatibility uses that same core,
+ * and an optic or light mounting on a revolver is entirely legitimate. Pushing
+ * this rule down into the shared relation would silently forbid that.
+ *
+ * Like `assertNoCompatibleMagazines`, the lookup is NOT visibility-scoped —
+ * whether a firearm is magazine-fed is a property of the firearm, not of who
+ * is looking at it. The caller has already been visibility-gated by
+ * `replaceRelation`, so this adds no disclosure: it can only reject an id the
+ * actor was able to name anyway.
+ */
+async function assertAllMagazineFed(
+  tx: DbOrTx,
+  firearmIds: string[],
+): Promise<void> {
+  if (firearmIds.length === 0) return;
+  const offenders = await tx
+    .select({ id: firearm.id })
+    .from(firearm)
+    .where(
+      and(inArray(firearm.id, firearmIds), eq(firearm.isMagazineFed, false)),
+    )
+    .limit(1);
+  if (offenders.length > 0) {
+    throw new ValidationError(["compatibleFirearmNotMagazineFed"]);
+  }
 }
 
 /**
