@@ -239,7 +239,7 @@ describe("replaceCompatibility — concurrent flag flip vs link write (#37)", ()
       const mag = await makeMagazine(owner);
 
       // Both start from a state where each would individually be allowed.
-      await Promise.allSettled([
+      const results = await Promise.allSettled([
         updateFirearm(owner, fa.id, {
           name: `Race ${attempt}`,
           caliber: "9mm",
@@ -251,6 +251,12 @@ describe("replaceCompatibility — concurrent flag flip vs link write (#37)", ()
           await replaceCompatibility(tx, owner, mag.id, [fa.id]);
         }),
       ]);
+
+      // Exactly one must win. Asserting only the forbidden end state would pass
+      // vacuously if BOTH transactions failed (a deadlock, or a lock bug that
+      // errors both out) — which is not the contract: the loser rejects, the
+      // winner commits.
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
 
       const [row] = await db
         .select({ isMagazineFed: firearm.isMagazineFed })
