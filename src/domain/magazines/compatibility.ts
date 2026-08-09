@@ -79,14 +79,25 @@ async function assertAllMagazineFed(
   firearmIds: string[],
 ): Promise<void> {
   if (firearmIds.length === 0) return;
-  const offenders = await tx
-    .select({ id: firearm.id })
+  // `FOR UPDATE` is what makes this safe against a concurrent flag flip, not
+  // just a nicety. Without the lock, this read and the one in
+  // `assertNoCompatibleMagazines` are a classic time-of-check/time-of-use pair:
+  // under READ COMMITTED, a transaction marking the firearm non-magazine-fed
+  // and a transaction linking a magazine to it can each pass their own check
+  // against a snapshot the other is about to invalidate, and both commit —
+  // producing exactly the state neither guard permits on its own.
+  //
+  // Both guards take this same firearm-row lock BEFORE their dependent read, so
+  // they serialize: the loser blocks, then re-reads the winner's committed row
+  // and rejects. Ordering by id keeps multi-firearm submissions from deadlocking
+  // against each other by acquiring locks in a consistent order.
+  const submitted = await tx
+    .select({ id: firearm.id, isMagazineFed: firearm.isMagazineFed })
     .from(firearm)
-    .where(
-      and(inArray(firearm.id, firearmIds), eq(firearm.isMagazineFed, false)),
-    )
-    .limit(1);
-  if (offenders.length > 0) {
+    .where(inArray(firearm.id, firearmIds))
+    .orderBy(firearm.id)
+    .for("update");
+  if (submitted.some((row) => !row.isMagazineFed)) {
     throw new ValidationError(["compatibleFirearmNotMagazineFed"]);
   }
 }

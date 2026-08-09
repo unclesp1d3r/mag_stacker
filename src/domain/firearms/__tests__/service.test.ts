@@ -935,13 +935,19 @@ describe("firearms service — magazine-fed flag (#37)", () => {
     expect(updated.isMagazineFed).toBe(true);
   });
 
-  test("turning the flag back on always succeeds", async () => {
+  test("turning the flag back on succeeds even with a compatibility link present", async () => {
     const fa = await createFirearm(userA, {
       name: "BackOn",
       caliber: "9mm",
       ...CLASS,
       isMagazineFed: false,
     });
+    // A link can pre-exist here via a restored backup or a direct DB write, so
+    // prove the guard is one-directional: it blocks the transition INTO
+    // non-magazine-fed, never the recovery back out of it.
+    const mag = await makeMagazine(userA);
+    await linkMagazineFirearm(mag.id, fa.id);
+
     const updated = await updateFirearm(userA, fa.id, {
       name: "BackOn",
       caliber: "9mm",

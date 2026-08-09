@@ -136,6 +136,19 @@ async function assertNoCompatibleMagazines(
   tx: DbOrTx,
   firearmId: string,
 ): Promise<void> {
+  // Lock the firearm row FIRST, before reading its links. `assertAllMagazineFed`
+  // (src/domain/magazines/compatibility.ts) takes this same lock before its own
+  // read, which is what serializes the two writes. Without it, this check and a
+  // concurrent magazine-compatibility write can each pass against a snapshot the
+  // other is about to invalidate, and both commit — leaving a non-magazine-fed
+  // firearm with a compatibility row. The lock makes the loser block, re-read
+  // the winner's committed state, and reject.
+  await tx
+    .select({ id: firearm.id })
+    .from(firearm)
+    .where(eq(firearm.id, firearmId))
+    .for("update");
+
   const [linked] = await tx
     .select({ magazineId: magazineFirearm.magazineId })
     .from(magazineFirearm)

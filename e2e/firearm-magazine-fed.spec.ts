@@ -150,5 +150,13 @@ test("magazine-fed toggle drives options, the # Mags cell, and the guard", async
     await page.getByRole("button", { name: "Save changes" }).click();
 
     await expect(page.getByText("Changes saved")).toBeVisible();
+
+    // The toast only proves the request succeeded; the checkbox would look
+    // unchecked from local form state either way. Reload and read the list to
+    // confirm the flag actually persisted.
+    await page.goto("/firearms");
+    await expect(
+      page.getByRole("row").filter({ hasText: "Glock 19" }),
+    ).toContainText("—");
   });
 });

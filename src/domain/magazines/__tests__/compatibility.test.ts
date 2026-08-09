@@ -3,8 +3,9 @@ import { asc, eq } from "drizzle-orm";
 import { NotFoundError } from "@/src/auth/errors";
 import { createGrant } from "@/src/auth/grants";
 import { db } from "@/src/db/client";
-import { magazineFirearm } from "@/src/db/schema";
+import { firearm, magazineFirearm } from "@/src/db/schema";
 import { ValidationError } from "@/src/domain/errors";
+import { updateFirearm } from "@/src/domain/firearms/service";
 import {
   createUser,
   deleteUsers,
@@ -208,4 +209,60 @@ describe("replaceCompatibility — non-magazine-fed firearms (#37 R5)", () => {
       .orderBy(asc(magazineFirearm.ordinal));
     return rows.map((r) => r.firearmId);
   }
+});
+
+/**
+ * The two guards that hold the #37 invariant read different tables, so without
+ * a shared lock they are a time-of-check/time-of-use pair: flipping the flag and
+ * linking a magazine can each pass their own check against a snapshot the other
+ * is about to invalidate. Both take a `FOR UPDATE` lock on the firearm row
+ * before their dependent read, which serializes them.
+ *
+ * This races the two writes against each other repeatedly and asserts the
+ * forbidden end state never lands. It is a probabilistic reproduction rather
+ * than a scheduled one — the point is that it fails readily when the lock is
+ * removed, not that it proves the interleaving on every run.
+ */
+describe("replaceCompatibility — concurrent flag flip vs link write (#37)", () => {
+  let owner = "";
+
+  beforeAll(async () => {
+    owner = await createUser("MagFedRace");
+  });
+  afterAll(async () => {
+    await deleteUsers(owner);
+  });
+
+  test("a firearm never ends up non-magazine-fed while holding a compatibility row", async () => {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const fa = await makeFirearm(owner, { name: `Race ${attempt}` });
+      const mag = await makeMagazine(owner);
+
+      // Both start from a state where each would individually be allowed.
+      await Promise.allSettled([
+        updateFirearm(owner, fa.id, {
+          name: `Race ${attempt}`,
+          caliber: "9mm",
+          type: "pistol",
+          action: "semi-auto",
+          isMagazineFed: false,
+        }),
+        db.transaction(async (tx) => {
+          await replaceCompatibility(tx, owner, mag.id, [fa.id]);
+        }),
+      ]);
+
+      const [row] = await db
+        .select({ isMagazineFed: firearm.isMagazineFed })
+        .from(firearm)
+        .where(eq(firearm.id, fa.id));
+      const links = await db
+        .select()
+        .from(magazineFirearm)
+        .where(eq(magazineFirearm.firearmId, fa.id));
+
+      // The forbidden combination: flagged non-magazine-fed AND still linked.
+      expect(row.isMagazineFed === false && links.length > 0).toBe(false);
+    }
+  });
 });
