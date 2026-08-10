@@ -53,9 +53,9 @@ The many-to-many relationship recording which Firearms a given Magazine fits. Re
 
 ### Magazine-fed
 
-Whether a Firearm accepts detachable magazines. Revolvers, break-actions, tube-fed lever guns, and muzzleloaders are not; everything else is, which is the default. The distinction is recorded on the Firearm rather than inferred from its **Firearm Type** or **Firearm Action**, so it stays authoritative when a taxonomy value is imprecise.
+Whether a Firearm accepts detachable magazines — recorded on the Firearm itself, never inferred from its **Firearm Type** or **Firearm Action**, so it stays authoritative when a taxonomy value is imprecise or an unusual configuration defies its category. Revolvers, break-actions, tube-fed lever guns, and muzzleloaders are common examples of firearms that are not; magazine-fed is the default.
 
-It is a claim about the gun, not about a shortage: a non-magazine-fed Firearm shows no magazine count at all, while a magazine-fed one with none yet legitimately shows zero. The two read very differently to an owner, which is the whole reason the flag exists. **Accessory Compatibility** is unaffected — optics and lights mount to any Firearm regardless.
+It is a claim about the gun, not about a shortage: a non-magazine-fed Firearm renders an em dash in place of its magazine count, while a magazine-fed one with none yet legitimately shows `0`. The two read very differently to an owner, which is the whole reason the flag exists. **Accessory Compatibility** is unaffected — optics and lights mount to any Firearm regardless.
 
 ### Accessory Compatibility
 
