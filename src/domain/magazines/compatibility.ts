@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import type { DbOrTx } from "@/src/db/client";
 import { firearm, magazineFirearm } from "@/src/db/schema";
 import {
