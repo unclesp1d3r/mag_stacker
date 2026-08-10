@@ -268,6 +268,29 @@ describe("core inventory schema (U3)", () => {
     expect(f.isNfa).toBe(false);
   });
 
+  // DEFAULT true is the #37 backfill: every row that predates the column was
+  // implicitly magazine-fed, so an unspecified insert must still read as one.
+  test("firearm.is_magazine_fed defaults to true (R1 backfill)", async () => {
+    const [f] = await db
+      .insert(firearm)
+      .values({ ownerId, name: "Default Mag-Fed FA", caliber: "9mm" })
+      .returning();
+    expect(f.isMagazineFed).toBe(true);
+  });
+
+  test("firearm.is_magazine_fed round-trips false", async () => {
+    const [f] = await db
+      .insert(firearm)
+      .values({
+        ownerId,
+        name: "Revolver",
+        caliber: ".357 Magnum",
+        isMagazineFed: false,
+      })
+      .returning();
+    expect(f.isMagazineFed).toBe(false);
+  });
+
   test("accessory inherits owner-scoped empty-not-null defaults and is unmounted by default", async () => {
     const [acc] = await db
       .insert(accessory)

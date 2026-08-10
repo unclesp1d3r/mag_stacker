@@ -51,6 +51,7 @@ export const SPEC_USER_KEYS = [
   "service-intervals-bulk",
   "service-intervals-bulk-share",
   "service-intervals-rule-actions",
+  "firearm-magazine-fed",
 ] as const;
 
 export type SpecUserKey = (typeof SPEC_USER_KEYS)[number];

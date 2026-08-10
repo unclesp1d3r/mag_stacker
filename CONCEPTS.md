@@ -49,7 +49,13 @@ A record that hangs off an owned parent (currently a Firearm or an Accessory; Ma
 
 ### Compatibility
 
-The many-to-many relationship recording which Firearms a given Magazine fits. Removing either side removes the pairing. Viewer-relative in both directions, on the same terms as **Accessory Compatibility** — the two share one rule, so they cannot drift apart.
+The many-to-many relationship recording which Firearms a given Magazine fits. Removing either side removes the pairing. Viewer-relative in both directions, on the same terms as **Accessory Compatibility** — the two share one rule, so they cannot drift apart. Only a **Magazine-fed** Firearm may take part: a Firearm that feeds no detachable magazine can neither be linked nor be marked non-magazine-fed while a link survives.
+
+### Magazine-fed
+
+Whether a Firearm accepts detachable magazines. Revolvers, break-actions, tube-fed lever guns, and muzzleloaders are not; everything else is, which is the default. The distinction is recorded on the Firearm rather than inferred from its **Firearm Type** or **Firearm Action**, so it stays authoritative when a taxonomy value is imprecise.
+
+It is a claim about the gun, not about a shortage: a non-magazine-fed Firearm shows no magazine count at all, while a magazine-fed one with none yet legitimately shows zero. The two read very differently to an owner, which is the whole reason the flag exists. **Accessory Compatibility** is unaffected — optics and lights mount to any Firearm regardless.
 
 ### Accessory Compatibility
 

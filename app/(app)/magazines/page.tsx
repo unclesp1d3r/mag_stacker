@@ -8,7 +8,7 @@ import {
   calibersForFilter,
   calibersForInput,
 } from "@/src/domain/reference/reference";
-import type { FirearmOption } from "./magazine-form";
+import { magazineFedOptions } from "./firearm-options";
 import { type MagazineListItem, MagazinesView } from "./magazines-view";
 
 export default async function MagazinesPage() {
@@ -24,16 +24,11 @@ export default async function MagazinesPage() {
       getPrefixData(user.id),
     ]);
 
+  // UNFILTERED on purpose (#37 KTD6) — see `magazineFedOptions`. An existing
+  // compatibility link must still render its firearm's name even when that
+  // firearm is no longer magazine-fed.
   const nameById = new Map(firearms.map((f) => [f.id, f.name]));
-  const nameCounts = new Map<string, number>();
-  for (const f of firearms)
-    nameCounts.set(f.name, (nameCounts.get(f.name) ?? 0) + 1);
-  const firearmOptions: FirearmOption[] = firearms.map((f) => ({
-    id: f.id,
-    name: f.name,
-    // Disambiguate same-named firearms with a non-sensitive id fragment (R52).
-    hint: (nameCounts.get(f.name) ?? 0) > 1 ? f.id.slice(0, 6) : undefined,
-  }));
+  const firearmOptions = magazineFedOptions(firearms);
 
   const items: MagazineListItem[] = magazines.map((m) => ({
     id: m.id,
@@ -60,6 +55,7 @@ export default async function MagazinesPage() {
         magazines={items}
         currentUserId={user.id}
         firearmOptions={firearmOptions}
+        hasFirearms={firearms.length > 0}
         caliberSuggestions={caliberSuggestions}
         prefixOptions={prefixData.prefixes}
         prefixNextStart={prefixData.nextStart}

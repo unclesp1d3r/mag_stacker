@@ -26,6 +26,12 @@ export interface FirearmIdentity {
    * caliber contributes no `caliberCoverage` row (nothing to cross-reference).
    */
   caliber?: string;
+  /**
+   * Optional for the same reason `caliber` is: pre-#37 call sites and test
+   * literals that pass `{id, name}` keep compiling. Absent means magazine-fed,
+   * matching both the column default and every row that predates the flag.
+   */
+  isMagazineFed?: boolean;
 }
 
 export interface MagazineSnapshot {
@@ -53,6 +59,12 @@ export interface FirearmCount {
   id: string;
   name: string;
   count: number;
+  /**
+   * False for firearms that take no detachable magazines (#37). The summary
+   * table renders their count blank rather than `0`, matching the firearms
+   * table and detail view.
+   */
+  isMagazineFed: boolean;
 }
 
 /**
@@ -145,6 +157,7 @@ export function computeSummary(
       id: f.id,
       name: f.name,
       count: countByFirearmId.get(f.id) ?? 0,
+      isMagazineFed: f.isMagazineFed ?? true,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 

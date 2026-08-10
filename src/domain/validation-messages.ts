@@ -64,6 +64,14 @@ export const VALIDATION_MESSAGES: Record<string, string> = {
   bulkTooLarge: `Cannot mark more than ${MAX_BULK_SERVICE_ITEMS} items serviced at once`,
   suppressedWithThresholds:
     "A suppressed rule cannot also set thresholds — clear them or turn off suppression",
+  // Deliberately generic (#37 KTD2): the blocking magazine may belong to
+  // another owner and must not be named or counted here.
+  magazineFedHasCompatibleMagazines:
+    "Remove this firearm's compatible magazines before marking it non-magazine-fed",
+  // The write-side half of the same invariant (#37 R5): a magazine cannot be
+  // declared compatible with a firearm that takes no detachable magazines.
+  compatibleFirearmNotMagazineFed:
+    "One or more selected firearms do not use detachable magazines",
 };
 
 export function messageForCode(code: string): string {

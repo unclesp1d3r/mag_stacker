@@ -94,6 +94,13 @@ export const firearm = pgTable(
     // NFA-regulated item flag (#8). Backfills existing rows to
     // false on ADD COLUMN (R12-style).
     isNfa: boolean("is_nfa").notNull().default(false),
+    // Whether this firearm takes detachable magazines (#37). Revolvers,
+    // break-actions, tube-fed lever guns, and muzzleloaders are false: they are
+    // excluded from magazine compatibility pickers and their magazine count
+    // renders blank rather than 0. DEFAULT true IS the backfill — every existing
+    // row was implicitly magazine-fed, so ADD COLUMN preserves today's behavior
+    // (R1).
+    isMagazineFed: boolean("is_magazine_fed").notNull().default(true),
     // NULL = unset, not zero; calendar date, no time component. Mirrors
     // `magazine.acquiredDate` / `ammo.acquiredDate` (service-intervals plan
     // R22) — it is also the origin date the service-interval day axis

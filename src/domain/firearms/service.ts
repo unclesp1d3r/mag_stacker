@@ -10,8 +10,14 @@ import {
   type Permission,
   resolvePermission,
 } from "@/src/auth/visibility";
+import type { DbOrTx } from "@/src/db/client";
 import { db } from "@/src/db/client";
-import { firearm, firearmDocument, firearmPhoto } from "@/src/db/schema";
+import {
+  firearm,
+  firearmDocument,
+  firearmPhoto,
+  magazineFirearm,
+} from "@/src/db/schema";
 import { logAction } from "@/src/lib/logging";
 import { deleteDocumentBlob, deletePhotoBlobs } from "@/src/storage";
 import { ValidationError } from "../errors";
@@ -36,6 +42,12 @@ export interface FirearmCreateInput extends FirearmInput {
   notes?: string;
   /** NFA-regulated item flag (#8); no validation constraint. */
   isNfa?: boolean;
+  /**
+   * Whether this firearm takes detachable magazines (#37). Defaults to `true`
+   * when omitted — note the polarity is the opposite of `isNfa`'s. Turning it
+   * OFF is guarded in {@link updateFirearm}; nothing constrains it on create.
+   */
+  isMagazineFed?: boolean;
   /** Create-on-behalf target owner; defaults to the acting user (KTD-5). */
   ownerId?: string;
 }
@@ -65,6 +77,9 @@ function persistableFields(input: FirearmCreateInput | FirearmUpdateInput) {
     serialNumber: input.serialNumber ?? "",
     notes: input.notes ?? "",
     isNfa: input.isNfa ?? false,
+    // `?? true` — opposite polarity to `isNfa` above: an omitted flag means
+    // "ordinary magazine-fed firearm", matching the column default (#37 R3).
+    isMagazineFed: input.isMagazineFed ?? true,
     acquiredDate: input.acquiredDate ?? null,
   };
 }
@@ -94,6 +109,56 @@ export async function createFirearm(
   return row;
 }
 
+/**
+ * Refuse to mark a firearm non-magazine-fed while ANY magazine still lists it
+ * as compatible (#37 R4, KTD2).
+ *
+ * The read is deliberately NOT viewer-relative, and that is the whole point.
+ * `magazine_firearm` rows for a shared firearm can belong to magazines owned by
+ * other users, and those rows are invisible to this actor. The alternative
+ * design — detach-on-toggle — would build its delete list from a filtered read
+ * and silently destroy links the actor was never shown. That is precisely the
+ * failure this repo has already documented in
+ * `docs/solutions/logic-errors/a-viewer-relative-read-feeding-a-replace-all-write-destroys-hidden-rows.md`,
+ * and it is why `src/domain/compatibility/relation.ts` scopes its writes.
+ * Blocking has no such failure mode. Do not "fix" this by adding a visibility
+ * filter — being magazine-fed is an integrity property of the whole table, not
+ * of one viewer's slice.
+ *
+ * The message stays generic for the same reason: it must not disclose a
+ * magazine the actor cannot see.
+ *
+ * Runs BEFORE the scalar update, inside the caller's transaction: a rejection
+ * means the update is never attempted, and the transaction still rolls back
+ * cleanly if this were ever reordered after the write.
+ */
+async function assertNoCompatibleMagazines(
+  tx: DbOrTx,
+  firearmId: string,
+): Promise<void> {
+  // Lock the firearm row FIRST, before reading its links. `assertAllMagazineFed`
+  // (src/domain/magazines/compatibility.ts) takes this same lock before its own
+  // read, which is what serializes the two writes. Without it, this check and a
+  // concurrent magazine-compatibility write can each pass against a snapshot the
+  // other is about to invalidate, and both commit — leaving a non-magazine-fed
+  // firearm with a compatibility row. The lock makes the loser block, re-read
+  // the winner's committed state, and reject.
+  await tx
+    .select({ id: firearm.id })
+    .from(firearm)
+    .where(eq(firearm.id, firearmId))
+    .for("update");
+
+  const [linked] = await tx
+    .select({ magazineId: magazineFirearm.magazineId })
+    .from(magazineFirearm)
+    .where(eq(magazineFirearm.firearmId, firearmId))
+    .limit(1);
+  if (linked) {
+    throw new ValidationError(["magazineFedHasCompatibleMagazines"]);
+  }
+}
+
 export async function updateFirearm(
   actorId: string,
   id: string,
@@ -104,6 +169,9 @@ export async function updateFirearm(
 
   return db.transaction(async (tx) => {
     await authorizeUpdate(tx, actorId, "firearm", id);
+    if (input.isMagazineFed === false) {
+      await assertNoCompatibleMagazines(tx, id);
+    }
     const [row] = await tx
       .update(firearm)
       .set({ ...persistableFields(input), updatedAt: new Date() })

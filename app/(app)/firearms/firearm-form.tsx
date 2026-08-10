@@ -34,6 +34,8 @@ export interface FirearmFormValues {
   serialNumber: string;
   notes: string;
   isNfa: boolean;
+  /** Whether this firearm takes detachable magazines (#37); default on. */
+  isMagazineFed: boolean;
   /** ISO date, or `""` when unset — mirrors magazine/ammo's acquired date. */
   acquiredDate: string;
 }
@@ -59,6 +61,9 @@ const EMPTY: FirearmFormValues = {
   serialNumber: "",
   notes: "",
   isNfa: false,
+  // Checked by default — the overwhelming majority of firearms are magazine-fed,
+  // and this default is what preserves today's behavior for new entries (#37 R2).
+  isMagazineFed: true,
   acquiredDate: "",
 };
 
@@ -147,6 +152,12 @@ export function FirearmForm({
   const notesId = useId();
   const serialId = useId();
   const dateId = useId();
+  const magFedId = useId();
+  // The #37 guard's server-side rejection, surfaced on the control that caused
+  // it. Resolved once — it drives both `aria-invalid` and the message.
+  const magFedError = firstMessage(codes, [
+    "magazineFedHasCompatibleMagazines",
+  ]);
 
   function set<K extends keyof FirearmFormValues>(key: K, value: string) {
     setValues((v) => ({ ...v, [key]: value }));
@@ -352,6 +363,38 @@ export function FirearmForm({
           NFA-regulated item (SBR, SBS, AOW, etc.)
         </span>
       </label>
+      {/* Not wrapped in `Field`: that renders its label ABOVE the control, and a
+          checkbox needs its label beside it. The error markup and the
+          aria-invalid/aria-describedby wiring below mirror `Field` exactly so
+          this reads identically to every other invalid field (#37 U3). */}
+      <div className="flex flex-col gap-1.5">
+        <label className="flex cursor-pointer items-center gap-3">
+          <input
+            type="checkbox"
+            checked={values.isMagazineFed}
+            onChange={(e) =>
+              setValues((v) => ({ ...v, isMagazineFed: e.target.checked }))
+            }
+            className="size-4 accent-primary"
+            aria-invalid={!!magFedError}
+            aria-describedby={magFedError ? `${magFedId}-error` : undefined}
+          />
+          <span className="text-sm text-foreground">
+            This firearm uses detachable magazines
+          </span>
+        </label>
+        {/* The guard's rejection belongs next to the control that caused it,
+            not in the generic server-error banner. */}
+        {magFedError ? (
+          <p
+            id={`${magFedId}-error`}
+            role="alert"
+            className="text-xs font-medium text-destructive"
+          >
+            {magFedError}
+          </p>
+        ) : null}
+      </div>
       <div className="flex items-center gap-2">
         <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : isEdit ? "Save changes" : "Add firearm"}

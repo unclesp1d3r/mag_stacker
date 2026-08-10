@@ -159,6 +159,24 @@ describe("computeSummary (parity §7)", () => {
     expect(firearmRow(s, "g")?.count).toBe(0);
   });
 
+  test("carries isMagazineFed through to the per-firearm count (#37 R8)", () => {
+    const s = computeSummary(
+      [
+        { id: "rev", name: "Revolver", isMagazineFed: false },
+        { id: "pistol", name: "Pistol", isMagazineFed: true },
+        { id: "legacy", name: "Legacy" },
+      ],
+      [],
+    );
+    expect(firearmRow(s, "rev")?.isMagazineFed).toBe(false);
+    expect(firearmRow(s, "pistol")?.isMagazineFed).toBe(true);
+    // Absent means magazine-fed — the pre-#37 default every existing row has.
+    expect(firearmRow(s, "legacy")?.isMagazineFed).toBe(true);
+    // R9: the flag, not the count, is what blanks the cell. A magazine-fed
+    // firearm with zero magazines still reports a real 0.
+    expect(firearmRow(s, "pistol")?.count).toBe(0);
+  });
+
   test("covers AE7: two same-named firearms with distinct ids produce two entries", () => {
     const s = computeSummary(
       [

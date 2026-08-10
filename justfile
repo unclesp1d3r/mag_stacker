@@ -166,7 +166,7 @@ test-e2e-install:
 
 # Run the Playwright E2E suite (Docker required — Testcontainers Postgres)
 [group('test')]
-test-e2e:
+test-e2e: test-e2e-install
     {{ mise_exec }} bun run test:e2e
 
 # Open the Playwright UI runner

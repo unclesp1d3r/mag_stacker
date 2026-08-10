@@ -7,6 +7,7 @@
 // rows are already aggregated) over each of the two roll-up tables.
 
 import { useMemo } from "react";
+import { magazineCountValue } from "@/app/(app)/firearms/magazine-count";
 import { DataTable } from "@/components/ui/data-table/data-table";
 import {
   type ColumnDef,
@@ -91,6 +92,10 @@ export function SummaryTables({
         id: "count",
         header: "Compatible mags",
         meta: { numeric: true, label: "Compatible mags" },
+        // Same treatment as the firearms table's "# Mags" column (#37 R8/R9),
+        // via the shared helper so the two can never drift apart.
+        cell: ({ row }) =>
+          magazineCountValue(row.original.isMagazineFed, row.original.count),
       },
     ],
     [],

@@ -803,3 +803,157 @@ describe("firearms service — acquired date (U6)", () => {
     expect(row.acquiredDate).toBe("2026-01-01");
   });
 });
+
+describe("firearms service — magazine-fed flag (#37)", () => {
+  let userA = "";
+  let userB = "";
+
+  beforeAll(async () => {
+    userA = await createUser("MagFedA");
+    userB = await createUser("MagFedB");
+  });
+  afterAll(async () => {
+    await deleteUsers(userA, userB);
+  });
+
+  test("creating without the flag persists magazine-fed (R3)", async () => {
+    const fa = await createFirearm(userA, {
+      name: "Default MagFed",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    expect(fa.isMagazineFed).toBe(true);
+  });
+
+  test("creating with isMagazineFed false persists false (R3)", async () => {
+    const fa = await createFirearm(userA, {
+      name: "Revolver",
+      caliber: ".357 Magnum",
+      ...CLASS,
+      isMagazineFed: false,
+    });
+    expect(fa.isMagazineFed).toBe(false);
+  });
+
+  test("marking a firearm non-magazine-fed succeeds when nothing links to it", async () => {
+    const fa = await createFirearm(userA, {
+      name: "Unlinked",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    const updated = await updateFirearm(userA, fa.id, {
+      name: "Unlinked",
+      caliber: "9mm",
+      ...CLASS,
+      isMagazineFed: false,
+    });
+    expect(updated.isMagazineFed).toBe(false);
+  });
+
+  test("the guard rejects the transition while the actor's own magazine lists it, and rolls back the whole update (R4)", async () => {
+    const fa = await createFirearm(userA, {
+      name: "Linked",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    const mag = await makeMagazine(userA);
+    await linkMagazineFirearm(mag.id, fa.id);
+
+    let caught: unknown;
+    try {
+      await updateFirearm(userA, fa.id, {
+        name: "Renamed In The Same Call",
+        caliber: "9mm",
+        ...CLASS,
+        isMagazineFed: false,
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ValidationError);
+    expect((caught as ValidationError).codes).toContain(
+      "magazineFedHasCompatibleMagazines",
+    );
+
+    // Rollback proof: the scalar submitted in the same call must not have taken.
+    const [row] = await db.select().from(firearm).where(eq(firearm.id, fa.id));
+    expect(row.name).toBe("Linked");
+    expect(row.isMagazineFed).toBe(true);
+  });
+
+  test("the guard is NOT visibility-scoped: another owner's magazine also blocks it (KTD2)", async () => {
+    const fa = await createFirearm(userA, {
+      name: "SharedHost",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    // userB can see the firearm and links their OWN magazine to it. That row is
+    // invisible to userA, but destroying it silently is exactly the cross-owner
+    // data loss KTD2 exists to prevent — so the guard must still fire.
+    await createGrant(db, {
+      actorId: userA,
+      granteeId: userB,
+      parentType: "firearm",
+      parentId: fa.id,
+      permission: "view",
+    });
+    const magB = await makeMagazine(userB);
+    await linkMagazineFirearm(magB.id, fa.id);
+
+    let caught: unknown;
+    try {
+      await updateFirearm(userA, fa.id, {
+        name: "SharedHost",
+        caliber: "9mm",
+        ...CLASS,
+        isMagazineFed: false,
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ValidationError);
+    expect((caught as ValidationError).codes).toContain(
+      "magazineFedHasCompatibleMagazines",
+    );
+  });
+
+  test("the guard does not fire on an unrelated edit that leaves the firearm magazine-fed", async () => {
+    const fa = await createFirearm(userA, {
+      name: "StillMagFed",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    const mag = await makeMagazine(userA);
+    await linkMagazineFirearm(mag.id, fa.id);
+
+    const updated = await updateFirearm(userA, fa.id, {
+      name: "StillMagFed Renamed",
+      caliber: "9mm",
+      ...CLASS,
+    });
+    expect(updated.name).toBe("StillMagFed Renamed");
+    expect(updated.isMagazineFed).toBe(true);
+  });
+
+  test("turning the flag back on succeeds even with a compatibility link present", async () => {
+    const fa = await createFirearm(userA, {
+      name: "BackOn",
+      caliber: "9mm",
+      ...CLASS,
+      isMagazineFed: false,
+    });
+    // A link can pre-exist here via a restored backup or a direct DB write, so
+    // prove the guard is one-directional: it blocks the transition INTO
+    // non-magazine-fed, never the recovery back out of it.
+    const mag = await makeMagazine(userA);
+    await linkMagazineFirearm(mag.id, fa.id);
+
+    const updated = await updateFirearm(userA, fa.id, {
+      name: "BackOn",
+      caliber: "9mm",
+      ...CLASS,
+      isMagazineFed: true,
+    });
+    expect(updated.isMagazineFed).toBe(true);
+  });
+});

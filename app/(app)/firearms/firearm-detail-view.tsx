@@ -24,6 +24,7 @@ import { FirearmDocuments } from "./[id]/firearm-documents";
 import { type FirearmPhotoRow, FirearmPhotos } from "./[id]/firearm-photos";
 import { deleteFirearmAction } from "./actions";
 import { FirearmForm, type FirearmFormValues } from "./firearm-form";
+import { magazineCountValue } from "./magazine-count";
 import {
   MountedAccessories,
   type MountedAccessoryRow,
@@ -194,7 +195,10 @@ export function FirearmDetailView({
             />
             <DetailRow
               label="Compatible magazines"
-              value={<Data>{magazineCount}</Data>}
+              value={magazineCountValue(
+                firearm.isMagazineFed,
+                <Data>{magazineCount}</Data>,
+              )}
             />
             <DetailRow
               label="NFA item"
