@@ -47,8 +47,17 @@ export async function replaceCompatibility(
   magazineId: string,
   firearmIds: string[],
 ): Promise<string[]> {
-  await assertAllMagazineFed(tx, firearmIds);
-  return replaceRelation(tx, MAGAZINE_FIREARM, actorId, magazineId, firearmIds);
+  return replaceRelation(
+    tx,
+    MAGAZINE_FIREARM,
+    actorId,
+    magazineId,
+    firearmIds,
+    // Passed as the post-visibility hook, NOT called beforehand: an id the
+    // actor cannot see must fail as not-found, never as "that firearm is not
+    // magazine-fed" (which would confirm it exists).
+    (visibleIds) => assertAllMagazineFed(tx, visibleIds),
+  );
 }
 
 /**
@@ -68,11 +77,11 @@ export async function replaceCompatibility(
  * and an optic or light mounting on a revolver is entirely legitimate. Pushing
  * this rule down into the shared relation would silently forbid that.
  *
- * Like `assertNoCompatibleMagazines`, the lookup is NOT visibility-scoped —
- * whether a firearm is magazine-fed is a property of the firearm, not of who
- * is looking at it. The caller has already been visibility-gated by
- * `replaceRelation`, so this adds no disclosure: it can only reject an id the
- * actor was able to name anyway.
+ * Like `assertNoCompatibleMagazines`, the lookup itself is not visibility-scoped
+ * — whether a firearm is magazine-fed is a property of the firearm, not of who
+ * is looking at it. Disclosure is prevented by WHERE this runs instead: it is
+ * registered as `replaceRelation`'s post-visibility hook, so every id it sees
+ * has already cleared the visibility gate. Never call it before that gate.
  */
 async function assertAllMagazineFed(
   tx: DbOrTx,

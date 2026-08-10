@@ -158,6 +158,19 @@ export async function replaceCompatibility<TTable extends PgTable>(
   actorId: string,
   parentId: string,
   firearmIds: string[],
+  /**
+   * Optional parent-specific rule applied to the submitted ids AFTER the
+   * visibility gate above and before any write (magazines use it to reject
+   * non-magazine-fed firearms, #37 R5).
+   *
+   * The ordering is the point, not a convenience: running a property check
+   * before the visibility gate would answer questions about firearms the actor
+   * cannot see — an invisible id would surface that rule's error instead of
+   * `NotFoundError`, distinguishing "does not exist / not yours" from "exists
+   * and fails this rule". Everything reachable through this hook has already
+   * passed visibility.
+   */
+  validateVisibleFirearms?: (ids: string[]) => Promise<void>,
 ): Promise<string[]> {
   const deduped = dedupeFirearmIds(firearmIds);
 
@@ -171,6 +184,8 @@ export async function replaceCompatibility<TTable extends PgTable>(
       );
     }
   }
+
+  await validateVisibleFirearms?.(deduped);
 
   const existing = await loadStoredRows(tx, relation, parentId);
   const preserved = existing.filter((row) => !visible.has(row.firearmId));

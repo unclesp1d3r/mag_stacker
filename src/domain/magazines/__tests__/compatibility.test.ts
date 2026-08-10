@@ -137,13 +137,19 @@ describe("replaceCompatibility — non-magazine-fed firearms (#37 R5)", () => {
     expect(rows).toHaveLength(0);
   });
 
-  test("rejects a mixed list, so one bad id blocks the whole replace", async () => {
+  test("rejects a mixed list, so one bad id blocks the whole replace and prior links survive", async () => {
     const ok = await makeFirearm(userA, { name: "Pistol" });
     const revolver = await makeFirearm(userA, {
       name: "Revolver 2",
       isMagazineFed: false,
     });
     const mag = await makeMagazine(userA);
+
+    // Seed a real link first: the rejection must leave the existing relation
+    // intact, not merely avoid a partial insert into an empty one.
+    await db.transaction(async (tx) => {
+      await replaceCompatibility(tx, userA, mag.id, [ok.id]);
+    });
 
     let caught: unknown;
     try {
@@ -154,11 +160,36 @@ describe("replaceCompatibility — non-magazine-fed firearms (#37 R5)", () => {
       caught = error;
     }
     expect(caught).toBeInstanceOf(ValidationError);
+    // The pre-existing link is still there, with its ordinal — the whole
+    // replace rolled back rather than clearing the relation.
     const rows = await db
-      .select()
+      .select({ firearmId: magazineFirearm.firearmId })
       .from(magazineFirearm)
-      .where(eq(magazineFirearm.magazineId, mag.id));
-    expect(rows).toHaveLength(0);
+      .where(eq(magazineFirearm.magazineId, mag.id))
+      .orderBy(asc(magazineFirearm.ordinal));
+    expect(rows.map((r) => r.firearmId)).toEqual([ok.id]);
+  });
+
+  test("an invisible non-magazine-fed firearm fails as not-found, never disclosing why", async () => {
+    // userB's revolver is NOT shared with userA. The magazine-fed rule must not
+    // run before the visibility gate, or the error would confirm the firearm
+    // exists and is non-magazine-fed.
+    const hidden = await makeFirearm(userB, {
+      name: "Hidden Revolver",
+      isMagazineFed: false,
+    });
+    const mag = await makeMagazine(userA);
+
+    let caught: unknown;
+    try {
+      await db.transaction(async (tx) => {
+        await replaceCompatibility(tx, userA, mag.id, [hidden.id]);
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(NotFoundError);
+    expect(caught).not.toBeInstanceOf(ValidationError);
   });
 
   test("the check is not visibility-scoped away: a shared non-magazine-fed firearm is still rejected", async () => {
