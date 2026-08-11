@@ -111,8 +111,8 @@ jobs:
 
       # Same context, Dockerfile, and platforms as docker-release.yml's build
       # step, minus the registry: `push: false`, no login, no tags, no
-      # attestations. Reading the shared `type=gha` cache also means a PR build
-      # warms the cache the subsequent release build reuses.
+      # attestations. A PR build reads the shared `type=gha` cache and reuses
+      # whatever is already there; it does not write to it (see below).
       #
       # Cache writes are restricted to `main` pushes on purpose. The Actions
       # cache is ~10GB per repo and `mode=max` multi-platform entries are large,
