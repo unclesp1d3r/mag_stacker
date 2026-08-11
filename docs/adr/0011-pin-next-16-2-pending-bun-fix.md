@@ -8,7 +8,7 @@
 
 PR #108 carried a `next` bump (`^16.2.11` → `^16.3.0`) alongside its feature work. The next `Docker Release` run failed on `main` and again on the `v1.7.0` tag, both at `RUN bun run build`:
 
-```
+```text
 panic: Segmentation fault at address 0x13CB0
 error: script "build" was terminated by signal SIGILL (Illegal instruction)
 ERROR: process "/bin/sh -c bun run build" did not complete successfully: exit code: 132
@@ -40,7 +40,7 @@ Revisit when **either** trigger fires:
 ### Alternative 1: Downgrade Bun in the Dockerfile
 - **Pros**: keeps Next current; touches only the image, not the app.
 - **Cons**: verified locally to be *worse*. Bun 1.3.10–1.3.13 fail earlier and harder — `Expected CommonJS module to have a function wrapper` loading `next/dist/compiled/next-server/app-page-turbo.runtime.prod.js`, a separate bug that 1.3.14 itself fixed. The build does not merely crash on exit; it never completes.
-- **Why not**: strictly regressive. There is no Bun version that builds Next 16.3.0.
+- **Why not**: strictly regressive. No stable Bun 1.3.x release builds Next 16.3.0 — the only build that does is canary, which Alternative 2 covers on its own terms.
 
 ### Alternative 2: Move the build to Bun canary
 - **Pros**: upstream-confirmed to fix the crash; keeps Next 16.3.0.
