@@ -28,6 +28,24 @@ updates:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
 
+      # Next 16.3.0 cannot be built by Bun <=1.3.14 inside the oven/bun image:
+      # `next build` finishes and prints its route table, then Bun segfaults
+      # tearing down the page-data worker threads (napi threadsafe-function
+      # release after the creating thread is gone — oven-sh/bun#36866). The
+      # layer dies with exit 132, so Docker Release fails while `ci` stays
+      # green, because setup-bun installs a non-baseline binary that never hits
+      # it. That is how v1.7.0 got tagged with no image and no GitHub Release.
+      # Full rationale: docs/adr/0011-pin-next-16-2-pending-bun-fix.md.
+      #
+      # Minor and major are blocked; PATCH updates deliberately still come
+      # through, so 16.2.x security releases are not held back — 16.2.11 is
+      # itself the fix for the 2026-07-22 SSRF/cache-confusion advisories.
+      # REMOVE this entry (and unpin `next` in package.json) once Bun stable
+      # ships the fix — watch oven-sh/bun#36866 / PR #34067.
+      - dependency-name: "next"
+        update-types:
+          ["version-update:semver-minor", "version-update:semver-major"]
+
   # Maintain dependencies for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
