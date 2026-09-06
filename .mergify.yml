@@ -1,11 +1,233 @@
+# Aligned with the EvilBit Labs house pattern (see ../opnDossier, ../cipherswarm):
+# four queue rules (two bot fast paths, one bot full path, one manual), bot
+# auto-approval, auto-update, and merge_protections mirroring the queue's
+# merge_conditions.
+#
+# Adapted for this repo:
+#   * Check names are `ci`, `docker`, `e2e` (job ids in ci.yml) plus `DCO`.
+#   * The reference repos gate their bot fast path on a cheap standalone `lint`
+#     check. `ci` here is monolithic (Biome + typecheck + test + build), so the
+#     fast path instead keeps `ci` and drops the two slow jobs, `docker`
+#     (multi-platform, ~11m with emulated arm64) and `e2e` (Playwright).
+#   * CodeQL's checks (`CodeQL`, `Analyze (actions)`,
+#     `Analyze (javascript-typescript)`) are deliberately absent from every
+#     conditions list: default-setup CodeQL reports `skipping` on some PRs, and
+#     a required check that skips never resolves, which would wedge the queue.
+#     `Mergify Merge Queue` is likewise never referenced — self-reference
+#     deadlocks.
+
 queue_rules:
+  # ───────────────────────────────────────────────────────────────────────────
+  # 1. dosubot — fast path
+  # ───────────────────────────────────────────────────────────────────────────
+  - name: dosubot
+    merge_method: squash
+    # This repo squash-merges with squash_title=PR_TITLE / squash_msg=PR_BODY,
+    # so the PR title and body ARE the commit message on main. AGENTS.md's
+    # breaking-change markers (`!` in the title, a `BREAKING CHANGE:` footer in
+    # the body) and the hand-cut `v*.*.*` release tags depend on that mapping
+    # surviving the queue, so every rule pins it explicitly.
+    commit_message_format:
+      title: pr-title
+      body: pr-body
+      trailers: []
+    queue_conditions:
+      - base = main
+      - label != do-not-merge
+      - author = dosubot[bot]
+    merge_conditions:
+      - check-success = ci
+      - check-success = DCO
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # 2. dependabot-workflows — workflow-only changes, fast path
+  #
+  # Known gap, inherited from the reference repos: docker-release.yml lives
+  # under .github/workflows/, so a bump to an action used only by the release
+  # workflow takes this path and never builds the image. That is the exact
+  # "ci green, release broken" shape ADR-0011 was written about (v1.7.0 tagged
+  # with no image). Dockerfile bumps are NOT workflow-only and still get the
+  # full path below, which is the case that matters most here.
+  # ───────────────────────────────────────────────────────────────────────────
+  - name: dependabot-workflows
+    merge_method: squash
+    commit_message_format:
+      title: pr-title
+      body: pr-body
+      trailers: []
+    queue_conditions:
+      - base = main
+      - label != do-not-merge
+      - author = dependabot[bot]
+      - "-files ~= ^(?!\\.github/workflows/)"
+    merge_conditions:
+      - check-success = ci
+      - check-success = DCO
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # 3. dependabot — everything else, full CI
+  # ───────────────────────────────────────────────────────────────────────────
+  - name: dependabot
+    merge_method: squash
+    commit_message_format:
+      title: pr-title
+      body: pr-body
+      trailers: []
+    queue_conditions:
+      - base = main
+      - label != do-not-merge
+      - author = dependabot[bot]
+    merge_conditions:
+      - check-success = ci
+      - check-success = docker
+      - check-success = e2e
+      - check-success = DCO
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # 4. default — maintainer PRs, manually enqueued with /queue, full CI
+  # ───────────────────────────────────────────────────────────────────────────
   - name: default
+    merge_method: squash
     commit_message_format:
       title: pr-title
       body: pr-body
       trailers: []
     update_method: rebase
-    queue_branch_merge_method: fast-forward
+    queue_conditions:
+      - base = main
+      - label != do-not-merge
+      - author != dependabot[bot]
+      - author != dosubot[bot]
+    merge_conditions:
+      - check-success = ci
+      - check-success = docker
+      - check-success = e2e
+      - check-success = DCO
+
+pull_request_rules:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Auto-approve bot PRs so they can proceed through the queue
+  # ───────────────────────────────────────────────────────────────────────────
+  - name: Auto-approve dosubot PRs
+    conditions:
+      - base = main
+      - author = dosubot[bot]
+    actions:
+      review:
+        type: APPROVE
+        message: Automatically approved by Mergify
+
+  - name: Auto-approve dependabot PRs
+    conditions:
+      - base = main
+      - author = dependabot[bot]
+    actions:
+      review:
+        type: APPROVE
+        message: Automatically approved by Mergify
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Keep PRs up to date
+  # ───────────────────────────────────────────────────────────────────────────
+  - name: Keep PRs up to date with main
+    conditions:
+      - base = main
+      - -conflict
+      - -draft
+    actions:
+      update: {}
+
+merge_protections:
+  # ───────────────────────────────────────────────────────────────────────────
+  # 1. Conventional commits (skipped for bots, which already comply)
+  #
+  # Load-bearing here beyond style: the PR title becomes the subject line on
+  # main verbatim under squash_title=PR_TITLE.
+  # ───────────────────────────────────────────────────────────────────────────
+  - name: Enforce conventional commit
+    description: >-
+      Require conventional commit format per
+      https://www.conventionalcommits.org/en/v1.0.0/. Skipped for dependabot and
+      dosubot.
+    if:
+      - base = main
+      - author != dependabot[bot]
+      - author != dosubot[bot]
+    success_conditions:
+      - "title ~= ^(fix|feat|docs|style|refactor|perf|test|build|ci|chore|revert)(?:\\(.+\\\
+        ))?!?:"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # 2. Full CI for humans, and for dependabot outside .github/workflows/
+  # ───────────────────────────────────────────────────────────────────────────
+  - name: Full CI must pass
+    description: >-
+      All CI checks must pass. Activates for non-bot authors, or dependabot when
+      files exist outside .github/workflows/.
+    if:
+      - base = main
+      - or:
+          - and:
+              - author != dependabot[bot]
+              - author != dosubot[bot]
+          - and:
+              - author = dependabot[bot]
+              - "files ~= ^(?!\\.github/workflows/)"
+    success_conditions:
+      - check-success = ci
+      - check-success = docker
+      - check-success = e2e
+      - check-success = DCO
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # 3. Fast path for bots with workflow-only changes
+  # ───────────────────────────────────────────────────────────────────────────
+  - name: CI must pass for bot workflow PRs
+    description: >-
+      The `ci` check must pass for dosubot, or dependabot when all files are
+      within .github/workflows/.
+    if:
+      - base = main
+      - or:
+          - author = dosubot[bot]
+          - and:
+              - author = dependabot[bot]
+              - "-files ~= ^(?!\\.github/workflows/)"
+    success_conditions:
+      - check-success = ci
+      - check-success = DCO
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # 4. Outdated PR protection
+  # ───────────────────────────────────────────────────────────────────────────
+  - name: Do not merge outdated PRs
+    description: Make sure PRs are within 10 commits of the base branch before merging
+    if:
+      - base = main
+    success_conditions:
+      - "#commits-behind <= 10"
+
+merge_protections_settings:
+  reporting_method: check-runs
+  # Mirrors the queue_conditions of the bot queue rules: those enter the queue
+  # automatically. The `default` rule is maintainer-only and stays reachable
+  # via the `/queue` command.
+  auto_merge_conditions:
+    - or:
+        - and:
+            - base = main
+            - label != do-not-merge
+            - author = dosubot[bot]
+        - and:
+            - base = main
+            - label != do-not-merge
+            - author = dependabot[bot]
+            - "-files ~= ^(?!\\.github/workflows/)"
+        - and:
+            - base = main
+            - label != do-not-merge
+            - author = dependabot[bot]
+
 merge_queue:
   skip_intermediate_results: true
   max_parallel_checks: 3
