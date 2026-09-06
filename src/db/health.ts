@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
+import { Client } from "pg";
 import { db } from "./client";
+import { requireDatabaseUrl } from "./env";
 
 /**
  * Database availability surface (U12, R74). Store-backed operations that hit an
@@ -56,6 +58,45 @@ export async function checkDatabase(): Promise<boolean> {
     await db.execute(sql`select 1`);
     return true;
   } catch {
+    return false;
+  }
+}
+
+/** Default bound for `probeDatabase()`: well inside the container healthcheck timeout. */
+export const DEFAULT_PROBE_TIMEOUT_MS = 2_000;
+
+/**
+ * Bounded readiness probe for `GET /api/health` (issue #14, KTD2).
+ *
+ * Deliberately NOT the shared pool: a probe raced against a timer through the
+ * pool would bound only the HTTP response, and against a database host that
+ * accepts TCP but never answers it would pin one pool client per poll with
+ * nothing to release it — exhausting the default pool of 10 in under two
+ * minutes and starving every other route during exactly the outage the probe
+ * exists to detect. A dedicated client costs one extra TCP connection per poll
+ * and can carry its own connect and query timeouts.
+ */
+export async function probeDatabase({
+  timeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
+}: {
+  timeoutMs?: number;
+} = {}): Promise<boolean> {
+  const client = new Client({
+    connectionString: requireDatabaseUrl(),
+    connectionTimeoutMillis: timeoutMs,
+    query_timeout: timeoutMs,
+  });
+  try {
+    await client.connect();
+    await client.query("select 1");
+    await client.end();
+    return true;
+  } catch {
+    // pg destroys the socket itself on a connect timeout; on a query timeout
+    // the connection is still open, so send Terminate. Not awaited: against a
+    // black-holed peer `end()` could wait for a FIN that never arrives, and the
+    // dedicated client has nothing else to protect.
+    client.end().catch(() => {});
     return false;
   }
 }

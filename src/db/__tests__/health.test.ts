@@ -4,6 +4,7 @@ import {
   checkDatabase,
   DatabaseUnavailableError,
   isConnectionError,
+  probeDatabase,
   withDatabase,
 } from "../health";
 
@@ -53,5 +54,9 @@ describe("database health surface (U12, R74)", () => {
 
   test("checkDatabase returns true against a reachable database", async () => {
     expect(await checkDatabase()).toBe(true);
+  });
+
+  test("probeDatabase returns true against a reachable database over its own client (KTD2)", async () => {
+    expect(await probeDatabase()).toBe(true);
   });
 });

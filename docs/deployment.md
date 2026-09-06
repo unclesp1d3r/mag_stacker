@@ -93,6 +93,35 @@ credentials are never sent in cleartext, and set `BETTER_AUTH_URL` to the
 `APP_HOST_PORT` (default 3000) publishes the app. Change `APP_HOST_PORT` if the
 default collides with another service on the host.
 
+## Health
+
+The app exposes an unauthenticated health route for container tooling, reverse
+proxies, and orchestrators:
+
+| Request | Response | Meaning |
+|---------|----------|---------|
+| `GET /api/health` | `200` `{"status":"ok","db":"ok"}` | The app is serving and Postgres answered a probe. |
+| `GET /api/health` | `503` `{"status":"unavailable","db":"unreachable"}` | The app is serving but Postgres refused, timed out, or never answered. |
+
+The body is fixed and never includes connection details. The route is never
+cached (`Cache-Control: no-store`), needs no session, and `HEAD` works too.
+
+The image `HEALTHCHECK` and the `app` service's Compose healthcheck both run
+`bun scripts/healthcheck.ts` against that route every 10 seconds (5 second
+timeout, 3 retries, 20 second start period), so:
+
+```bash
+docker compose ps            # app shows "healthy" once serving + DB reachable
+docker inspect --format '{{json .State.Health}}' <app-container>   # probe log
+```
+
+Stopping the database flips the app to `unhealthy` within about 30 seconds and
+it recovers on its own once the database is back — no `app` restart needed.
+Docker does **not** restart a container for being unhealthy; the status is a
+signal for you, your proxy, or a dependant gating on `condition:
+service_healthy`. Every failed probe also logs one `warn` line
+(`health probe: database unreachable`).
+
 ## Logging
 
 The app logs as **structured JSON to stdout** by default, so `docker logs`

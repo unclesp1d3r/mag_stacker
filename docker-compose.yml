@@ -184,6 +184,19 @@ services:
       - magstacker-uploads:/data/uploads
     ports:
       - "${APP_HOST_PORT:-3000}:3000"
+    # Real application health (issue #14): mirrors the image HEALTHCHECK in the
+    # Dockerfile — same script, same timings; keep them in step. Compose
+    # overrides the image's check when both exist, so the timings live here
+    # where operators tune them. `docker compose ps` reports `healthy` only
+    # when the app serves AND can reach Postgres, and another service can gate
+    # on `condition: service_healthy`. Docker does not restart a container for
+    # being unhealthy — this is a signal, not self-healing.
+    healthcheck:
+      test: ["CMD", "bun", "scripts/healthcheck.ts"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     depends_on:
       migrate:
         condition: service_completed_successfully
