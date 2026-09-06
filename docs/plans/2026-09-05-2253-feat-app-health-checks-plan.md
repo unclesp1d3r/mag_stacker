@@ -120,7 +120,7 @@ sequenceDiagram
   D->>S: run every interval
   S->>P: GET /api/health (redirect: manual)
   P-->>R: pass through (path excluded from matcher)
-  R->>DB: select 1 over a dedicated client (2s connect and query timeouts)
+  R->>DB: select 1 over a dedicated client (1.5s connect and query timeouts)
   alt reachable
     DB-->>R: ok
     R-->>S: 200 { status: ok, db: ok }

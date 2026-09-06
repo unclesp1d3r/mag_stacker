@@ -1,5 +1,4 @@
 import { DEFAULT_PROBE_TIMEOUT_MS, probeDatabase } from "@/src/db/health";
-import { logger } from "@/src/lib/logging";
 import { withRequestContext } from "@/src/lib/logging/entry-context";
 
 /**
@@ -22,9 +21,8 @@ export const GET = withRequestContext(
     if (isDatabaseReachable) {
       return Response.json({ status: "ok", db: "ok" }, { headers: HEADERS });
     }
-    // One line per failed probe, no cause (the probe returns only a boolean),
-    // so an outage is visible in the logs without leaking connection details.
-    logger.warn("health probe: database unreachable");
+    // The probe itself logs one warn line per failed probe (single-flight
+    // leader), so concurrent callers sharing a failure do not multiply it.
     return Response.json(
       { status: "unavailable", db: "unreachable" },
       { status: 503, headers: HEADERS },

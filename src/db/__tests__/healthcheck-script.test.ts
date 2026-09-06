@@ -27,6 +27,10 @@ describe("scripts/healthcheck.ts (U3)", () => {
       "http://127.0.0.1:3000/api/health",
     );
     expect(healthUrl({ PORT: "0" })).toBe("http://127.0.0.1:3000/api/health");
+    expect(healthUrl({ PORT: "4100foo" })).toBe(
+      "http://127.0.0.1:3000/api/health",
+    );
+    expect(healthUrl({ PORT: "1.5" })).toBe("http://127.0.0.1:3000/api/health");
     expect(healthUrl({ PORT: "70000" })).toBe(
       "http://127.0.0.1:3000/api/health",
     );

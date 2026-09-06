@@ -40,7 +40,10 @@ export type FetchLike = (
 export function healthUrl(
   env: Readonly<Record<string, string | undefined>>,
 ): string {
-  const parsed = Number.parseInt(env.PORT ?? "", 10);
+  const raw = env.PORT ?? "";
+  // Whole-string check: parseInt would accept "4100foo" or "1.5" as numeric
+  // prefixes and silently probe the wrong port.
+  const parsed = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
   const isValidPort =
     Number.isInteger(parsed) && parsed > 0 && parsed <= MAX_TCP_PORT;
   const port = isValidPort ? parsed : DEFAULT_PORT;

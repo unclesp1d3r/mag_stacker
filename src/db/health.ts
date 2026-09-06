@@ -1,4 +1,5 @@
 import { Client } from "pg";
+import { logger } from "@/src/lib/logging";
 import { requireDatabaseUrl } from "./env";
 
 /**
@@ -105,6 +106,10 @@ async function runProbe({
     await client.query("select 1");
     return true;
   } catch {
+    // Logged here, by the single-flight leader, so one failed probe produces
+    // one line however many concurrent callers share it. No cause text: the
+    // probe returns only a boolean and the route body must stay detail-free.
+    logger.warn("health probe: database unreachable");
     return false;
   } finally {
     // The probe never rejects: cleanup failures are swallowed too, so a
