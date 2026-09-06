@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # --- Builder: install all deps and produce the production build -------------
-FROM oven/bun:1.3.14 AS builder
+FROM oven/bun:1.4.0 AS builder
 WORKDIR /app
 
 # Install dependencies against the committed lockfile for reproducible builds.
@@ -18,7 +18,7 @@ ENV BETTER_AUTH_SECRET="build-only-placeholder-secret-not-used-at-runtime"
 RUN bun run build
 
 # --- Runner: production-only deps + built app + migration sources -----------
-FROM oven/bun:1.3.14-slim AS runner
+FROM oven/bun:1.4.0-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
