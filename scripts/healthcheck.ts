@@ -16,6 +16,8 @@
  */
 export const DEFAULT_PORT = 3000;
 
+const MAX_TCP_PORT = 65_535;
+
 /**
  * Nests between the route's worst case (2 x DEFAULT_PROBE_TIMEOUT_MS in
  * src/db/health.ts = 3 s) and the 5 s Dockerfile/Compose HEALTHCHECK timeout,
@@ -34,12 +36,14 @@ export type FetchLike = (
   init?: RequestInit,
 ) => Promise<Response>;
 
-/** `http://127.0.0.1:<PORT>/api/health`, falling back to port 3000 when PORT is unset or invalid. */
+/** `http://127.0.0.1:<PORT>/api/health`, falling back to port 3000 when PORT is unset or not a valid TCP port (1-65535). */
 export function healthUrl(
   env: Readonly<Record<string, string | undefined>>,
 ): string {
   const parsed = Number.parseInt(env.PORT ?? "", 10);
-  const port = Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_PORT;
+  const isValidPort =
+    Number.isInteger(parsed) && parsed > 0 && parsed <= MAX_TCP_PORT;
+  const port = isValidPort ? parsed : DEFAULT_PORT;
   return `http://127.0.0.1:${port}/api/health`;
 }
 

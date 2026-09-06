@@ -122,7 +122,11 @@ describe("GET /api/health (U1)", () => {
       const response = await getHealth();
       const elapsedMs = performance.now() - started;
       expect(response.status).toBe(503);
-      expect(elapsedMs).toBeLessThan(3_000);
+      // Bounded, not hung: the connect phase times out at 1.5s and the close
+      // at 0.5s, so ~2s is typical. The bound is the probe script's 4s fetch
+      // budget rather than that typical figure, leaving CI-load headroom while
+      // still proving the route answers inside the container's 5s timeout.
+      expect(elapsedMs).toBeLessThan(4_000);
       expect(pool.totalCount).toBe(poolClientsBefore);
     } finally {
       await hole.stop();

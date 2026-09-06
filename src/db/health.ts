@@ -107,7 +107,9 @@ async function runProbe({
   } catch {
     return false;
   } finally {
-    if (client) await closeQuietly(client);
+    // The probe never rejects: cleanup failures are swallowed too, so a
+    // surprising pg internal shape cannot turn a 503 into an unhandled error.
+    if (client) await closeQuietly(client).catch(() => {});
   }
 }
 
