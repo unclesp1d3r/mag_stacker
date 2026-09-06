@@ -1,0 +1,11 @@
+queue_rules:
+  - name: default
+    commit_message_format:
+      title: pr-title
+      body: pr-body
+      trailers: []
+    update_method: rebase
+    queue_branch_merge_method: fast-forward
+merge_queue:
+  skip_intermediate_results: true
+  max_parallel_checks: 3
