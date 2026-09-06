@@ -1,7 +1,7 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect } from "bun:test";
 import { createServer, type Server, type Socket } from "node:net";
 import { closePool, pool } from "@/src/db/client";
-import { containerTest } from "../../test-support/container-test";
+import { containerTest as test } from "../../test-support/container-test";
 
 /**
  * `GET /api/health` contract (issue #14, R1–R6).
@@ -108,24 +108,39 @@ describe("GET /api/health (U1)", () => {
     }
   });
 
-  containerTest(
-    "covers AE3: returns 503 within the time bound when the database accepts but never answers, without borrowing from the shared pool",
-    async () => {
-      const hole = await blackHole();
-      try {
-        pointDatabaseAt(hole.port);
-        const poolClientsBefore = pool.totalCount;
-        const started = performance.now();
-        const response = await getHealth();
-        const elapsedMs = performance.now() - started;
-        expect(response.status).toBe(503);
-        expect(elapsedMs).toBeLessThan(3_000);
-        expect(pool.totalCount).toBe(poolClientsBefore);
-      } finally {
-        await hole.stop();
-      }
-    },
-  );
+  test("covers AE3: returns 503 within the time bound when the database accepts but never answers, without borrowing from the shared pool", async () => {
+    // Bind the shared pool to the real database first, so the baseline read
+    // below reflects a real pool and not one lazily built against the hole.
+    restoreDatabaseUrl();
+    await closePool();
+    await pool.query("select 1");
+    const hole = await blackHole();
+    try {
+      pointDatabaseAt(hole.port);
+      const poolClientsBefore = pool.totalCount;
+      const started = performance.now();
+      const response = await getHealth();
+      const elapsedMs = performance.now() - started;
+      expect(response.status).toBe(503);
+      expect(elapsedMs).toBeLessThan(3_000);
+      expect(pool.totalCount).toBe(poolClientsBefore);
+    } finally {
+      await hole.stop();
+    }
+  });
+
+  test("returns 503, not an error, when DATABASE_URL is unset", async () => {
+    delete process.env.DATABASE_URL;
+    const response = await getHealth();
+    expect(response.status).toBe(503);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    const text = await response.text();
+    expect(JSON.parse(text)).toEqual({
+      status: "unavailable",
+      db: "unreachable",
+    });
+    expect(text).not.toContain("DATABASE_URL");
+  });
 
   test("recovers: returns 200 again once the database is reachable", async () => {
     restoreDatabaseUrl();

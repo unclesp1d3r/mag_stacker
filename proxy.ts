@@ -11,8 +11,9 @@ import { type NextRequest, NextResponse } from "next/server";
  * forged cookie passes here but fails the real check downstream.
  *
  * The matcher covers all gated routes and `/api/export`, and excludes
- * `/api/auth/**`, `/api/health` (unauthenticated container/orchestrator probe,
- * issue #14), `/_next/**`, static assets, and the login route.
+ * `/api/auth/**`, exactly `/api/health` (unauthenticated container/orchestrator
+ * probe, issue #14 — anchored so `/api/healthz` or `/api/health/x` stay gated),
+ * `/_next/**`, static assets, and the login route.
  */
 export function proxy(request: NextRequest): NextResponse {
   const sessionCookie = getSessionCookie(request);
@@ -28,6 +29,6 @@ export const config = {
   matcher: [
     // Run on everything except the Better Auth endpoints, the login route,
     // Next internals, and static asset files.
-    "/((?!api/auth|api/health|login|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!api/auth|api/health$|login|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

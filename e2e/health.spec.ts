@@ -18,6 +18,17 @@ test.describe("GET /api/health (U2)", () => {
     expect(await response.json()).toEqual({ status: "ok", db: "ok" });
   });
 
+  test("sibling paths under the health prefix stay auth-gated", async ({
+    request,
+  }) => {
+    for (const path of ["/api/healthz", "/api/health/anything"]) {
+      const response = await request.get(path, { maxRedirects: 0 });
+      expect(response.status(), path).toBeGreaterThanOrEqual(300);
+      expect(response.status(), path).toBeLessThan(400);
+      expect(response.headers().location, path).toContain("/login");
+    }
+  });
+
   test("HEAD answers 200 with an empty body", async ({ request }) => {
     const response = await request.head("/api/health", { maxRedirects: 0 });
     expect(response.status()).toBe(200);

@@ -16,7 +16,12 @@
  */
 export const DEFAULT_PORT = 3000;
 
-/** Below the 5s HEALTHCHECK timeout so a hung response is reported as unhealthy, not killed. */
+/**
+ * Nests between the route's worst case (2 x DEFAULT_PROBE_TIMEOUT_MS in
+ * src/db/health.ts = 3 s) and the 5 s Dockerfile/Compose HEALTHCHECK timeout,
+ * so a slow probe surfaces as the route's own 503 and a hung one as a script
+ * abort — never as Docker killing the probe.
+ */
 export const REQUEST_TIMEOUT_MS = 4_000;
 
 const HEALTHY_STATUS = 200;

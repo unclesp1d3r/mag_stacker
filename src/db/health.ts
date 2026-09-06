@@ -1,6 +1,4 @@
-import { sql } from "drizzle-orm";
 import { Client } from "pg";
-import { db } from "./client";
 import { requireDatabaseUrl } from "./env";
 
 /**
@@ -52,18 +50,19 @@ export async function withDatabase<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-/** Liveness probe — true when `select 1` succeeds. */
-export async function checkDatabase(): Promise<boolean> {
-  try {
-    await db.execute(sql`select 1`);
-    return true;
-  } catch {
-    return false;
-  }
-}
+/**
+ * Per-phase bound for `probeDatabase()`. It applies to the connect phase and
+ * the query phase independently, so the worst case is 2x this value (3 s).
+ * That nests under `scripts/healthcheck.ts`'s 4 s fetch budget, which nests
+ * under the 5 s Dockerfile/Compose healthcheck timeout — keep all three in
+ * that order when changing any of them.
+ */
+export const DEFAULT_PROBE_TIMEOUT_MS = 1_500;
 
-/** Default bound for `probeDatabase()`: well inside the container healthcheck timeout. */
-export const DEFAULT_PROBE_TIMEOUT_MS = 2_000;
+/** How long a probe waits for Postgres to acknowledge Terminate before the socket is destroyed. */
+const PROBE_CLOSE_TIMEOUT_MS = 500;
+
+let inFlightProbe: Promise<boolean> | undefined;
 
 /**
  * Bounded readiness probe for `GET /api/health` (issue #14, KTD2).
@@ -75,28 +74,64 @@ export const DEFAULT_PROBE_TIMEOUT_MS = 2_000;
  * minutes and starving every other route during exactly the outage the probe
  * exists to detect. A dedicated client costs one extra TCP connection per poll
  * and can carry its own connect and query timeouts.
+ *
+ * Single-flight: the route is unauthenticated, so concurrent callers share the
+ * one outstanding probe instead of each opening a Postgres connection. Never
+ * rejects — every failure, including a missing `DATABASE_URL`, is `false`.
  */
-export async function probeDatabase({
+export function probeDatabase(
+  options: { timeoutMs?: number } = {},
+): Promise<boolean> {
+  if (inFlightProbe) return inFlightProbe;
+  inFlightProbe = runProbe(options).finally(() => {
+    inFlightProbe = undefined;
+  });
+  return inFlightProbe;
+}
+
+async function runProbe({
   timeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
 }: {
   timeoutMs?: number;
-} = {}): Promise<boolean> {
-  const client = new Client({
-    connectionString: requireDatabaseUrl(),
-    connectionTimeoutMillis: timeoutMs,
-    query_timeout: timeoutMs,
-  });
+}): Promise<boolean> {
+  let client: Client | undefined;
   try {
+    client = new Client({
+      connectionString: requireDatabaseUrl(),
+      connectionTimeoutMillis: timeoutMs,
+      query_timeout: timeoutMs,
+    });
     await client.connect();
     await client.query("select 1");
-    await client.end();
     return true;
   } catch {
-    // pg destroys the socket itself on a connect timeout; on a query timeout
-    // the connection is still open, so send Terminate. Not awaited: against a
-    // black-holed peer `end()` could wait for a FIN that never arrives, and the
-    // dedicated client has nothing else to protect.
-    client.end().catch(() => {});
     return false;
+  } finally {
+    if (client) await closeQuietly(client);
+  }
+}
+
+/**
+ * `client.end()` sends Terminate and resolves only when the peer closes the
+ * socket; a peer that never does would hang the probe. Bound it, then destroy
+ * the socket if it did not settle. pg has no public force-close, so this
+ * reaches its untyped `connection.stream`; a missing stream is a no-op.
+ */
+async function closeQuietly(client: Client): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), PROBE_CLOSE_TIMEOUT_MS);
+  });
+  const closed = client.end().then(
+    () => "closed" as const,
+    () => "closed" as const,
+  );
+  const outcome = await Promise.race([closed, deadline]);
+  clearTimeout(timer);
+  if (outcome === "timeout") {
+    const internals = client as unknown as {
+      connection?: { stream?: { destroy: () => void } };
+    };
+    internals.connection?.stream?.destroy();
   }
 }

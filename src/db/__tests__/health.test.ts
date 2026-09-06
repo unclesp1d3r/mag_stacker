@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { validateFirearm } from "@/src/domain/firearms/validate";
 import {
-  checkDatabase,
   DatabaseUnavailableError,
   isConnectionError,
   probeDatabase,
@@ -52,11 +51,16 @@ describe("database health surface (U12, R74)", () => {
     ).toEqual(["emptyName"]);
   });
 
-  test("checkDatabase returns true against a reachable database", async () => {
-    expect(await checkDatabase()).toBe(true);
-  });
-
   test("probeDatabase returns true against a reachable database over its own client (KTD2)", async () => {
     expect(await probeDatabase()).toBe(true);
+  });
+
+  test("probeDatabase single-flights concurrent callers onto one probe", async () => {
+    const first = probeDatabase();
+    const second = probeDatabase();
+    expect(second).toBe(first);
+    expect(await first).toBe(true);
+    // Once settled, the next call is a fresh probe.
+    expect(probeDatabase()).not.toBe(first);
   });
 });
