@@ -68,3 +68,4 @@ next-env.d.ts
 .dosu/
 .compound-engineering/*.local.yaml
 .context/compound-engineering/
+docs/feedback-sweep/

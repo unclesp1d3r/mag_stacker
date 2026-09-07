@@ -141,16 +141,17 @@ export async function getAmmo(
 export async function listAmmo(actorId: string): Promise<AmmoListRow[]> {
   const visible = await getVisibleIds(db, actorId, "ammo");
   if (visible.size === 0) return [];
-  const rows = await db
-    .select()
-    .from(ammo)
-    .where(inArray(ammo.id, [...visible]))
-    .orderBy(asc(ammo.caliber), asc(ammo.brand), asc(ammo.grain));
-  const byId = await loadLastInventoriedBatch(
-    db,
-    "ammo",
-    rows.map((r) => r.id),
-  );
+  const visibleIds = [...visible];
+  // Independent queries over the same scoped id set — run them concurrently
+  // on the shared pool (mirrors `listMagazinesFiltered`).
+  const [rows, byId] = await Promise.all([
+    db
+      .select()
+      .from(ammo)
+      .where(inArray(ammo.id, visibleIds))
+      .orderBy(asc(ammo.caliber), asc(ammo.brand), asc(ammo.grain)),
+    loadLastInventoriedBatch(db, "ammo", visibleIds),
+  ]);
   return rows.map((r) => ({
     ...r,
     lastInventoriedAt: byId.get(r.id) ?? null,

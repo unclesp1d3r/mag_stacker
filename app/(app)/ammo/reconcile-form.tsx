@@ -12,7 +12,7 @@ import { MAX_COUNT } from "@/src/domain/ammo/validate";
 import { validateLogEntry } from "@/src/domain/inventory-log/validate";
 import { firstMessage } from "@/src/domain/validation-messages";
 import { reconcileAmmoAction } from "../inventory-log/log-actions";
-import { nowLocal } from "../inventory-log/log-entry-form";
+import { nowLocal, OCCURRED_AT_CODES } from "../inventory-log/log-entry-form";
 import { parseCountInput, previewVariance } from "./variance";
 
 const COUNTED_CODES = [
@@ -25,7 +25,6 @@ const COUNTED_CODES = [
   "invalidParentType",
   "invalidEventType",
 ];
-const OCCURRED_AT_CODES = ["occurredAtInFuture", "invalidOccurredAt"];
 
 interface ReconcileFormProps {
   ammoId: string;

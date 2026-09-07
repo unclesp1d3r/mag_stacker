@@ -26,6 +26,13 @@ export const LOG_PARENT_TYPES = ["firearm", "magazine", "ammo"] as const;
 export type LogParentType = (typeof LOG_PARENT_TYPES)[number];
 
 /**
+ * The families whose entries are bare check-ins (no counted figure). Ammo is
+ * excluded (#100): its entries are reconciliations that require a count, so
+ * the generic "Mark inventoried" / "Log…" UI cannot apply to a lot.
+ */
+export type GenericLogParentType = Exclude<LogParentType, "ammo">;
+
+/**
  * Event types valid for a firearm parent (R2). `cleaned` and `lubed` were
  * retired here by the service-intervals plan's U5 (R13) — logging service
  * against a named `service_rule` (see `src/domain/service-intervals/`) is now

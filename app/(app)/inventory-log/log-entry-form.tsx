@@ -8,10 +8,12 @@ import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import type { EventType } from "@/src/domain/inventory-log/constants";
+import type {
+  EventType,
+  GenericLogParentType,
+} from "@/src/domain/inventory-log/constants";
 import { validateLogEntry } from "@/src/domain/inventory-log/validate";
 import { firstMessage } from "@/src/domain/validation-messages";
-import type { GenericLogParentType } from "./inventory-log-history";
 import { logEventAction } from "./log-actions";
 
 // Codes that belong to the event-type field. `invalidParentType` is a
@@ -20,7 +22,8 @@ import { logEventAction } from "./log-actions";
 // it must still render — and steal focus — on the event-type field rather
 // than being silently swallowed.
 const EVENT_TYPE_CODES = ["invalidEventType", "invalidParentType"];
-const OCCURRED_AT_CODES = ["occurredAtInFuture", "invalidOccurredAt"];
+/** Codes that belong to the date-and-time field; shared with the ammo reconcile form. */
+export const OCCURRED_AT_CODES = ["occurredAtInFuture", "invalidOccurredAt"];
 
 /** Display label for a stored event type ("inventoried" -> "Inventoried"). */
 export function eventTypeLabel(value: string): string {

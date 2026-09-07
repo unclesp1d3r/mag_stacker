@@ -1,4 +1,4 @@
-import { and, desc, eq, max } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   authorizeOwnerOnlyUpdate,
   authorizeUpdate,
@@ -9,6 +9,7 @@ import { type DbOrTx, db } from "@/src/db/client";
 import { ammo, inventoryLog } from "@/src/db/schema";
 import { ValidationError } from "../errors";
 import type { LogParentType } from "./constants";
+import { loadLastInventoriedBatch } from "./last-inventoried";
 import { type LogEntryInput, validateLogEntry } from "./validate";
 
 /**
@@ -83,22 +84,14 @@ async function lockAmmoForReconcile(
     .for("update");
   if (!lot) throw new NotFoundError();
 
-  const [latest] = await tx
-    .select({ last: max(inventoryLog.occurredAt) })
-    .from(inventoryLog)
-    .where(
-      and(
-        eq(inventoryLog.parentType, "ammo"),
-        eq(inventoryLog.parentId, ammoId),
-        eq(inventoryLog.eventType, "inventoried"),
-      ),
-    );
   // The newest-dated count owns the quantity (KTD5): an entry dated before an
-  // existing count is history, not a correction.
+  // existing count is history, not a correction. Same grouped max query the
+  // list column uses, run inside this transaction for one id.
+  const latest = (await loadLastInventoriedBatch(tx, "ammo", [ammoId])).get(
+    ammoId,
+  );
   const applies =
-    latest?.last === null ||
-    latest?.last === undefined ||
-    occurredAt.getTime() >= latest.last.getTime();
+    latest === undefined || occurredAt.getTime() >= latest.getTime();
   return { recordedRounds: lot.quantityRounds, applies };
 }
 

@@ -19,15 +19,11 @@ import {
 import { orDash } from "@/components/ui/detail-row";
 import { Badge, EmptyState } from "@/components/ui/feedback";
 import { Card, PageHeader } from "@/components/ui/surface";
-import { Data } from "@/components/ui/typography";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import { useRowFlash } from "@/hooks/use-row-flash";
 import { useTableViewState } from "@/hooks/use-table-view-state";
 import { isLowStock } from "@/src/domain/ammo/validate";
-import {
-  formatLastInventoried,
-  lastInventoriedSortValue,
-} from "../inventory-log/last-inventoried";
+import { lastInventoriedColumn } from "../inventory-log/last-inventoried-column";
 import { deleteAmmoAction } from "./actions";
 import { AmmoForm, lotDisplayName } from "./ammo-form";
 import { ExportButton } from "./export-button";
@@ -157,19 +153,9 @@ export function AmmoView({
             <Badge tone="destructive">Low stock</Badge>
           ) : null,
       },
-      {
-        // Default-visible and sortable (#100 R16): the numeric accessor maps
-        // never-counted to -Infinity so those rows sort as maximally stale in
-        // both directions (see the magazines column and KTD-4 of #70).
-        id: "lastInventoried",
-        accessorFn: (a) => lastInventoriedSortValue(a.lastInventoriedAt),
-        sortingFn: "basic",
-        header: "Last inventoried",
-        meta: { label: "Last inventoried" },
-        cell: ({ row }) => (
-          <Data>{formatLastInventoried(row.original.lastInventoriedAt)}</Data>
-        ),
-      },
+      // Default-visible and sortable (#100 R16); never-counted sorts as
+      // maximally stale in both directions.
+      lastInventoriedColumn<AmmoListItem>(),
       {
         accessorKey: "acquiredDate",
         id: "acquiredDate",

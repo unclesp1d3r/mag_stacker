@@ -5,6 +5,7 @@ import {
   readArtifact,
   storageStateFor,
 } from "./fixtures/auth";
+import { localDateTimeInput } from "./fixtures/datetime";
 
 /**
  * Ammo reconciliation (#100, plan U5): the Last inventoried column and detail
@@ -40,12 +41,6 @@ function detailValue(page: Page, label: string) {
   return page
     .locator("dt", { hasText: label })
     .locator("xpath=following-sibling::dd[1]");
-}
-
-/** `datetime-local` wire value for `date` in the browser's local zone, to the minute. */
-function toLocalInput(date: Date): string {
-  const offsetMs = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
 /** The form's live preview line ("On record N · Variance X"), not the history's Variance column header. */
@@ -173,7 +168,7 @@ test("reconcile flow, history, Low Stock, column sort, and sharing gates", async
     await openReconcileForm(page);
     await page.getByLabel("Counted rounds").fill("320");
     const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    await page.getByLabel("Date & time").fill(toLocalInput(lastWeek));
+    await page.getByLabel("Date & time").fill(localDateTimeInput(lastWeek));
     await submitReconcile(page);
     await expect(page.getByText("Reconciled").first()).toBeVisible();
 

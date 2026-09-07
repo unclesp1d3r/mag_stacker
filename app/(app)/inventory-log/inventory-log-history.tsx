@@ -23,7 +23,7 @@ import type { ParentType } from "@/src/auth/visibility";
 import {
   type EventType,
   FIREARM_LOG_EVENTS,
-  type LogParentType,
+  type GenericLogParentType,
   MAGAZINE_LOG_EVENTS,
 } from "@/src/domain/inventory-log/constants";
 import {
@@ -34,14 +34,11 @@ import {
 import { eventTypeLabel, LogEntryForm } from "./log-entry-form";
 
 /**
- * The families this generic card serves. Ammo is excluded by type (#100
- * KTD4): its log entries are reconciliations that require a counted figure,
- * so the bare "Mark inventoried" / "Log…" affordances below cannot apply —
- * `app/(app)/ammo/reconcile-history.tsx` is the ammo card.
+ * Per-family event sets for the families this generic card serves
+ * (`GenericLogParentType` — ammo has its own card,
+ * `app/(app)/ammo/reconcile-history.tsx`). Exhaustive, so a new generic
+ * family is a compile error here.
  */
-export type GenericLogParentType = Exclude<LogParentType, "ammo">;
-
-/** Per-family event sets — exhaustive, so a new generic family is a compile error here. */
 const EVENT_TYPES_BY_FAMILY: Record<
   GenericLogParentType,
   readonly EventType[]
