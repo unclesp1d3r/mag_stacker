@@ -21,7 +21,9 @@ import { Data } from "@/components/ui/typography";
 import { useTableViewState } from "@/hooks/use-table-view-state";
 import type { ParentType } from "@/src/auth/visibility";
 import {
+  type EventType,
   FIREARM_LOG_EVENTS,
+  type LogParentType,
   MAGAZINE_LOG_EVENTS,
 } from "@/src/domain/inventory-log/constants";
 import {
@@ -31,8 +33,25 @@ import {
 } from "./log-actions";
 import { eventTypeLabel, LogEntryForm } from "./log-entry-form";
 
+/**
+ * The families this generic card serves. Ammo is excluded by type (#100
+ * KTD4): its log entries are reconciliations that require a counted figure,
+ * so the bare "Mark inventoried" / "Log…" affordances below cannot apply —
+ * `app/(app)/ammo/reconcile-history.tsx` is the ammo card.
+ */
+export type GenericLogParentType = Exclude<LogParentType, "ammo">;
+
+/** Per-family event sets — exhaustive, so a new generic family is a compile error here. */
+const EVENT_TYPES_BY_FAMILY: Record<
+  GenericLogParentType,
+  readonly EventType[]
+> = {
+  firearm: FIREARM_LOG_EVENTS,
+  magazine: MAGAZINE_LOG_EVENTS,
+};
+
 interface InventoryLogHistoryProps {
-  parentType: ParentType;
+  parentType: GenericLogParentType;
   parentId: string;
   /** True when the actor may log events / mark inventoried for this parent (R10/R11). */
   canEdit: boolean;
@@ -40,8 +59,8 @@ interface InventoryLogHistoryProps {
   onChange?: () => void;
 }
 
-/** Local, human-readable timestamp — date + time, no seconds (R9). */
-function formatTimestamp(value: Date | string): string {
+/** Local, human-readable timestamp — date + time, no seconds (R9). Shared with the ammo reconciliation history. */
+export function formatTimestamp(value: Date | string): string {
   const date = value instanceof Date ? value : new Date(value);
   return date.toLocaleString(undefined, {
     dateStyle: "medium",
@@ -121,8 +140,7 @@ export function InventoryLogHistory({
     });
   }
 
-  const eventTypes =
-    parentType === "firearm" ? FIREARM_LOG_EVENTS : MAGAZINE_LOG_EVENTS;
+  const eventTypes = EVENT_TYPES_BY_FAMILY[parentType];
 
   const list = entries ?? [];
 

@@ -16,6 +16,7 @@ import { isLowStock } from "@/src/domain/ammo/validate";
 import { formatLastInventoried } from "../inventory-log/last-inventoried";
 import { deleteAmmoAction } from "./actions";
 import { AmmoForm, type AmmoFormValues, lotDisplayName } from "./ammo-form";
+import { ReconcileHistory } from "./reconcile-history";
 
 export interface AmmoDetail extends AmmoFormValues {
   id: string;
@@ -165,9 +166,15 @@ export function AmmoDetailView({
         </Card>
       )}
 
-      {/* Ammo is deliberately excluded from inventory_log (see the
-          `inventory_log_parent_type_valid` CHECK and ammo plan U4 notes) — no
-          InventoryLogHistory here, unlike firearm/magazine detail views. */}
+      {/* Reconciliation is an edit action (R8): owner or edit grantee. The
+          history reloads itself, then the router refresh re-reads the
+          corrected quantity, Low Stock badge, and Last inventoried (R14). */}
+      <ReconcileHistory
+        ammoId={ammo.id}
+        canEdit={canEdit}
+        quantityOnRecord={Number(ammo.quantityRounds)}
+        onChange={() => router.refresh()}
+      />
 
       <ConfirmDialog
         open={del.target !== null}
