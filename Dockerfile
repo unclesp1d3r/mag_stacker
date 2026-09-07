@@ -60,5 +60,16 @@ EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0
 ENV UPLOAD_DIR=/data/uploads
 
+# Real application health (issue #14): `GET /api/health` answers 200 only when
+# `next start` is serving AND Postgres answers a bounded probe, so `docker ps`
+# shows what an operator actually cares about, not just that the process is
+# alive. Runs scripts/healthcheck.ts with bun because this slim image ships
+# neither curl nor wget; the script reads $PORT itself, which is why the exec
+# form needs no shell. docker-compose.yml's `app` healthcheck restates this
+# command and these timings (Compose overrides the image check when both
+# exist) — keep the two in step.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 \
+  CMD ["bun", "scripts/healthcheck.ts"]
+
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["bun", "run", "start"]
