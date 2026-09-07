@@ -78,7 +78,10 @@ export function ReconcileForm({
     // The datetime-local value has no timezone; the Date constructor treats
     // it as local time, matching what the picker showed the user.
     const occurredAtDate = new Date(occurredAt);
-    const countedRounds = parseCountInput(counted);
+    // An empty field is "not provided" (-> countedRoundsRequired); anything
+    // else parses NaN-safe so garbage is "invalid", never a silent 0.
+    const countedRounds =
+      counted.trim() === "" ? undefined : parseCountInput(counted);
     const found = validateLogEntry({
       parentType: "ammo",
       parentId: ammoId,
@@ -88,7 +91,7 @@ export function ReconcileForm({
     });
     setCodes(found);
     setServerError(null);
-    if (found.length > 0) {
+    if (found.length > 0 || countedRounds === undefined) {
       focusFirstInvalid(found);
       return;
     }
