@@ -169,6 +169,13 @@
       "when": 1786226294162,
       "tag": "0023_crazy_spirit",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788758079773,
+      "tag": "0024_conscious_toad",
+      "breakpoints": true
     }
   ]
 }

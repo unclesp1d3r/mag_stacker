@@ -26,7 +26,9 @@ import {
   UNSPECIFIED,
 } from "../domain/firearms/constants";
 import {
+  AMMO_LOG_EVENTS,
   FIREARM_LOG_EVENTS,
+  LOG_PARENT_TYPES,
   MAGAZINE_LOG_EVENTS,
 } from "../domain/inventory-log/constants";
 import { user } from "./auth-schema";
@@ -159,9 +161,10 @@ export const magazine = pgTable(
  * controlled/CHECK-enforced set (R6) — see `domain/ammo/constants.ts`.
  * `grain`/`quantityRounds`/`lowStockThreshold` default to 0 so ADD COLUMN
  * backfills cleanly (R12-style); low-stock (`quantityRounds <= lowStockThreshold`)
- * is a derived read, never stored (R9). Deliberately excluded from
- * `inventory_log` (#46) — the log's parent-type CHECK stays
- * `('firearm', 'magazine')` (see that CHECK's comment).
+ * is a derived read, never stored (R9). Since #100 an ammo lot is an
+ * `inventory_log` parent: a reconciliation appends an `inventoried` entry
+ * carrying the counted rounds and corrects `quantity_rounds` in the same
+ * transaction (see `inventoryLog` and `domain/inventory-log/service.ts`).
  */
 export const ammo = pgTable(
   "ammo",
@@ -787,13 +790,22 @@ export const grant = pgTable(
 
 /**
  * Inventory event log (U2/U3) — an append-only audit trail of actions taken
- * against a firearm or magazine (`inventoried`, the only event type either
- * parent family carries — `cleaned` and `lubed` were retired and converted to
- * `service_event` rows by the service-intervals plan's U5). Polymorphic
- * `parent_type`/`parent_id` mirrors `grant`: no FK on `parent_id` (it spans
- * two parent tables), with a `parent_type` CHECK plus a parent-gated
- * `event_type` CHECK sourced from `domain/inventory-log/constants.ts` (R3
- * backstop; the domain validator is the primary gate). `actor_id` FKs to
+ * against a firearm, magazine, or ammo lot (`inventoried`, the only event
+ * type any parent family carries — `cleaned` and `lubed` were retired and
+ * converted to `service_event` rows by the service-intervals plan's U5).
+ * Polymorphic `parent_type`/`parent_id` mirrors `grant`: no FK on `parent_id`
+ * (it spans three parent tables), with a `parent_type` CHECK plus a
+ * parent-gated `event_type` CHECK sourced from
+ * `domain/inventory-log/constants.ts` (R3 backstop; the domain validator is
+ * the primary gate).
+ *
+ * An ammo entry is a reconciliation (#100, KTD2): `counted_rounds` is the
+ * physically counted figure and `recorded_rounds` is the lot's quantity on
+ * record immediately before the reconcile was applied, read under a row lock
+ * in the same transaction. Variance is derived (`counted - recorded`), never
+ * stored. Both columns are non-null and `>= 0` for an `ammo` parent and null
+ * for every other family — the `inventory_log_counts_by_family` CHECK is the
+ * backstop for that rule. `actor_id` FKs to
  * `user` with `onDelete: "set null"` — the log row is a child of its parent
  * ITEM (already cleaned up by the parent-delete trigger below), not of the
  * actor, so deleting a user account must never be blocked by entries that
@@ -802,9 +814,10 @@ export const grant = pgTable(
  * acting user's id); it is only set to NULL later, if that actor's account
  * is subsequently deleted, which preserves the owner's audit entry with
  * degraded attribution rather than deleting it or blocking the user delete.
- * Rows are cleaned up via a parent-delete cascade trigger (added by hand in
- * the generated migration), matching the `grant` cleanup pattern, since
- * `parent_id` cannot carry an FK (R13).
+ * Rows are cleaned up via a parent-delete cascade trigger on each parent
+ * table (added by hand in the generated migrations: firearm/magazine in 0008,
+ * ammo in 0024), matching the `grant` cleanup pattern, since `parent_id`
+ * cannot carry an FK (R13).
  */
 export const inventoryLog = pgTable(
   "inventory_log",
@@ -819,6 +832,9 @@ export const inventoryLog = pgTable(
     occurredAt: timestamp("occurred_at").defaultNow().notNull(),
     // Empty-not-null (R5).
     notes: text("notes").notNull().default(""),
+    // Reconciliation counts (#100): NULL for firearm/magazine, required for ammo.
+    countedRounds: integer("counted_rounds"),
+    recordedRounds: integer("recorded_rounds"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => [
@@ -830,13 +846,19 @@ export const inventoryLog = pgTable(
     ),
     check(
       "inventory_log_parent_type_valid",
-      sql`${t.parentType} in ('firearm', 'magazine')`,
+      sql`${t.parentType} in (${sql.raw(inList(LOG_PARENT_TYPES))})`,
     ),
     // R3 backstop — domain validation is the primary surface. Value lists
     // come from the single source in domain/inventory-log/constants.ts.
     check(
       "inventory_log_event_type_valid",
-      sql`(${t.parentType} = 'firearm' AND ${t.eventType} in (${sql.raw(inList(FIREARM_LOG_EVENTS))})) OR (${t.parentType} = 'magazine' AND ${t.eventType} in (${sql.raw(inList(MAGAZINE_LOG_EVENTS))}))`,
+      sql`(${t.parentType} = 'firearm' AND ${t.eventType} in (${sql.raw(inList(FIREARM_LOG_EVENTS))})) OR (${t.parentType} = 'magazine' AND ${t.eventType} in (${sql.raw(inList(MAGAZINE_LOG_EVENTS))})) OR (${t.parentType} = 'ammo' AND ${t.eventType} in (${sql.raw(inList(AMMO_LOG_EVENTS))}))`,
+    ),
+    // #100 R2/R3 backstop: ammo entries carry both counts (>= 0); no other
+    // family may carry either.
+    check(
+      "inventory_log_counts_by_family",
+      sql`(${t.parentType} = 'ammo' AND ${t.countedRounds} IS NOT NULL AND ${t.countedRounds} >= 0 AND ${t.recordedRounds} IS NOT NULL AND ${t.recordedRounds} >= 0) OR (${t.parentType} <> 'ammo' AND ${t.countedRounds} IS NULL AND ${t.recordedRounds} IS NULL)`,
     ),
   ],
 );
