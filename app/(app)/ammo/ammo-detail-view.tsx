@@ -13,11 +13,14 @@ import { Data } from "@/components/ui/typography";
 import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import type { Permission } from "@/src/auth/visibility";
 import { isLowStock } from "@/src/domain/ammo/validate";
+import { formatLastInventoried } from "../inventory-log/last-inventoried";
 import { deleteAmmoAction } from "./actions";
 import { AmmoForm, type AmmoFormValues, lotDisplayName } from "./ammo-form";
 
 export interface AmmoDetail extends AmmoFormValues {
   id: string;
+  /** ISO datetime of the latest reconciliation, or null when never counted (#100 R15). */
+  lastInventoriedAt: string | null;
 }
 
 interface AmmoDetailViewProps {
@@ -141,6 +144,12 @@ export function AmmoDetailView({
             <DetailRow
               label="Acquired date"
               value={orDash(ammo.acquiredDate)}
+            />
+            <DetailRow
+              label="Last inventoried"
+              value={
+                <Data>{formatLastInventoried(ammo.lastInventoriedAt)}</Data>
+              }
             />
             <DetailRow
               label="Notes"

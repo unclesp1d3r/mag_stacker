@@ -12,6 +12,7 @@ import {
 } from "@/src/auth/visibility";
 import { db } from "@/src/db/client";
 import { ammo } from "@/src/db/schema";
+import { loadLastInventoriedBatch } from "@/src/domain/inventory-log/last-inventoried";
 import { ValidationError } from "../errors";
 import { type AmmoFields, validateAmmo } from "./validate";
 
@@ -25,6 +26,13 @@ import { type AmmoFields, validateAmmo } from "./validate";
  */
 
 export type Ammo = typeof ammo.$inferSelect;
+
+/**
+ * A lot with its derived Last Inventoried attached (#100 R15): the
+ * `occurredAt` of its latest `inventoried` log entry, or `null` when it has
+ * never been counted. Derived, never stored.
+ */
+export type AmmoListRow = Ammo & { lastInventoriedAt: Date | null };
 
 export interface AmmoInput extends AmmoFields {
   /** Optional brand; empty-not-null when omitted (R2/R18). */
@@ -99,31 +107,52 @@ export async function deleteAmmo(actorId: string, id: string): Promise<void> {
   await authorizeAndDeleteParent(actorId, "ammo", id);
 }
 
-/** Get a single ammo lot, or not-found if it is outside the requester's visible set. */
+/**
+ * Get a single ammo lot, or not-found if it is outside the requester's visible
+ * set. Also carries the lot's Last Inventoried (#100 R15), loaded for this one
+ * id only after visibility resolved.
+ */
 export async function getAmmo(
   actorId: string,
   id: string,
-): Promise<{ ammo: Ammo; permission: Permission }> {
+): Promise<{
+  ammo: Ammo;
+  permission: Permission;
+  lastInventoriedAt: Date | null;
+}> {
   const permission = await resolvePermission(db, actorId, "ammo", id);
   if (permission === null) throw new NotFoundError();
   const [row] = await db.select().from(ammo).where(eq(ammo.id, id)).limit(1);
   if (!row) throw new NotFoundError();
+  const byId = await loadLastInventoriedBatch(db, "ammo", [row.id]);
   // Return the viewer's permission alongside the row so the caller doesn't
   // re-resolve it (one query, and no read-vs-permission race between two calls).
-  return { ammo: row, permission };
+  return { ammo: row, permission, lastInventoriedAt: byId.get(row.id) ?? null };
 }
 
 /**
  * Owned + shared ammo lots ordered by caliber, then brand, then grain
  * (ascending); always an array (R68-style). Records sharing brand/caliber/
- * type/grain are never merged (R7) — they list as separate rows.
+ * type/grain are never merged (R7) — they list as separate rows. Each row
+ * carries its Last Inventoried, batch-loaded in one grouped query over the
+ * already visibility-scoped ids (#100 R15/R17, KTD7) — the loader trusts its
+ * id input, so this call site is the scoping boundary.
  */
-export async function listAmmo(actorId: string): Promise<Ammo[]> {
+export async function listAmmo(actorId: string): Promise<AmmoListRow[]> {
   const visible = await getVisibleIds(db, actorId, "ammo");
   if (visible.size === 0) return [];
-  return db
+  const rows = await db
     .select()
     .from(ammo)
     .where(inArray(ammo.id, [...visible]))
     .orderBy(asc(ammo.caliber), asc(ammo.brand), asc(ammo.grain));
+  const byId = await loadLastInventoriedBatch(
+    db,
+    "ammo",
+    rows.map((r) => r.id),
+  );
+  return rows.map((r) => ({
+    ...r,
+    lastInventoriedAt: byId.get(r.id) ?? null,
+  }));
 }

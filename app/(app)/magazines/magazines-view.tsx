@@ -53,12 +53,12 @@ import {
   magazineByTypeKey,
   magazineCapacityAggregate,
 } from "@/src/domain/tables/magazine-groups";
-import { deleteMagazineAction } from "./actions";
-import { ExportButton } from "./export-button";
 import {
   formatLastInventoried,
   lastInventoriedSortValue,
-} from "./last-inventoried";
+} from "../inventory-log/last-inventoried";
+import { deleteMagazineAction } from "./actions";
+import { ExportButton } from "./export-button";
 import { type FirearmOption, MagazineForm } from "./magazine-form";
 
 export interface MagazineListItem {
