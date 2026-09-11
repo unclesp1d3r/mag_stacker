@@ -66,3 +66,6 @@ next-env.d.ts
 !.claude/skills/skill-library
 .impeccable/
 .dosu/
+.compound-engineering/*.local.yaml
+.context/compound-engineering/
+docs/feedback-sweep/
