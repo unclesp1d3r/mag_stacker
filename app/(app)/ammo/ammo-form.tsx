@@ -10,6 +10,7 @@ import { COMMON_AMMO_TYPES } from "@/src/domain/ammo/constants";
 import { MAX_COUNT, validateAmmo } from "@/src/domain/ammo/validate";
 import { firstMessage } from "@/src/domain/validation-messages";
 import { createAmmoAction, updateAmmoAction } from "./actions";
+import { parseCountInput } from "./variance";
 
 export interface AmmoFormValues {
   id?: string;
@@ -36,10 +37,8 @@ const DEFAULTS: AmmoFormValues = {
 
 // Cleared ("" -> Number("") is 0!) or unparseable input becomes NaN, not a
 // silent value, so validateAmmo's isStorableCount rejects it visibly instead
-// of saving a zero-value lot (CodeRabbit).
-function num(value: string): number {
-  return value.trim() === "" ? Number.NaN : Number(value);
-}
+// of saving a zero-value lot (CodeRabbit). Shared with the reconcile form.
+const num = parseCountInput;
 
 /** Toast/dialog display label: "Brand Caliber", or just Caliber when brand is unset. */
 export function lotDisplayName(
