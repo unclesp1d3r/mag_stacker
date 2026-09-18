@@ -22,12 +22,14 @@ export default async function AmmoDetailPage({ params }: PageProps) {
   // getAmmo resolves the viewer's permission and throws NotFoundError for a lot
   // that is not owned or shared — the not-found path never reveals existence
   // (R9). It returns the permission so we don't re-resolve it.
-  const { ammo: row, permission } = await getAmmo(user.id, id).catch(
-    (error: unknown) => {
-      if (error instanceof NotFoundError) notFound();
-      throw error;
-    },
-  );
+  const {
+    ammo: row,
+    permission,
+    lastInventoriedAt,
+  } = await getAmmo(user.id, id).catch((error: unknown) => {
+    if (error instanceof NotFoundError) notFound();
+    throw error;
+  });
 
   const caliberSuggestions = await calibersForInput(db, user.id);
 
@@ -43,6 +45,9 @@ export default async function AmmoDetailPage({ params }: PageProps) {
         lowStockThreshold: String(row.lowStockThreshold),
         acquiredDate: row.acquiredDate ?? "",
         notes: row.notes,
+        lastInventoriedAt: lastInventoriedAt
+          ? lastInventoriedAt.toISOString()
+          : null,
       }}
       permission={permission}
       caliberSuggestions={caliberSuggestions}

@@ -24,8 +24,8 @@ export type AmmoValidationCode =
  */
 export const MAX_COUNT = 2_147_483_647;
 
-/** True when `n` is a whole number the int4 columns can store. */
-function isStorableCount(n: number): boolean {
+/** True when `n` is a whole number the int4 columns can store. Shared with the inventory-log validator's counted-rounds rule (#100). */
+export function isStorableCount(n: number): boolean {
   return Number.isInteger(n) && n <= MAX_COUNT;
 }
 
