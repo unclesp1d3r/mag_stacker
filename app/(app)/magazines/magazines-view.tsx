@@ -53,12 +53,9 @@ import {
   magazineByTypeKey,
   magazineCapacityAggregate,
 } from "@/src/domain/tables/magazine-groups";
+import { lastInventoriedColumn } from "../inventory-log/last-inventoried-column";
 import { deleteMagazineAction } from "./actions";
 import { ExportButton } from "./export-button";
-import {
-  formatLastInventoried,
-  lastInventoriedSortValue,
-} from "./last-inventoried";
 import { type FirearmOption, MagazineForm } from "./magazine-form";
 
 export interface MagazineListItem {
@@ -242,27 +239,9 @@ export function MagazinesView({
         meta: { label: "Acquired" },
         optIn: true,
       },
-      {
-        // Default-visible counterpart to the opt-in "Acquired" column above
-        // (#70): surfaces inventory staleness without an extra click.
-        // Never-inventoried must sort as if *infinitely old* — top when
-        // ascending (oldest-first), bottom when descending (newest-first) —
-        // so the accessor returns a NUMBER (`-Infinity` for never) and lets
-        // the built-in `"basic"` comparator handle it: TanStack negates a
-        // comparator's result for `desc`, so `-Infinity` naturally flips ends
-        // with direction. (`sortUndefined: "first"` would NOT do this — it
-        // returns before that `desc` inversion, so it pins undefined rows to
-        // the top regardless of sort direction.) The `cell` below still reads
-        // the real value off `row.original`, not this numeric accessor.
-        id: "lastInventoried",
-        accessorFn: (m) => lastInventoriedSortValue(m.lastInventoriedAt),
-        sortingFn: "basic",
-        header: "Last inventoried",
-        meta: { label: "Last inventoried" },
-        cell: ({ row }) => (
-          <Data>{formatLastInventoried(row.original.lastInventoriedAt)}</Data>
-        ),
-      },
+      // Default-visible counterpart to the opt-in "Acquired" column above
+      // (#70): surfaces inventory staleness without an extra click.
+      lastInventoriedColumn<MagazineListItem>(),
       {
         id: ACTIONS_COLUMN_ID,
         header: () => <span className="sr-only">Actions</span>,
