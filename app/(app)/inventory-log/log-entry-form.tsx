@@ -8,8 +8,10 @@ import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import type { ParentType } from "@/src/auth/visibility";
-import type { EventType } from "@/src/domain/inventory-log/constants";
+import type {
+  EventType,
+  GenericLogParentType,
+} from "@/src/domain/inventory-log/constants";
 import { validateLogEntry } from "@/src/domain/inventory-log/validate";
 import { firstMessage } from "@/src/domain/validation-messages";
 import { logEventAction } from "./log-actions";
@@ -20,7 +22,8 @@ import { logEventAction } from "./log-actions";
 // it must still render — and steal focus — on the event-type field rather
 // than being silently swallowed.
 const EVENT_TYPE_CODES = ["invalidEventType", "invalidParentType"];
-const OCCURRED_AT_CODES = ["occurredAtInFuture", "invalidOccurredAt"];
+/** Codes that belong to the date-and-time field; shared with the ammo reconcile form. */
+export const OCCURRED_AT_CODES = ["occurredAtInFuture", "invalidOccurredAt"];
 
 /** Display label for a stored event type ("inventoried" -> "Inventoried"). */
 export function eventTypeLabel(value: string): string {
@@ -30,16 +33,16 @@ export function eventTypeLabel(value: string): string {
 /**
  * The `datetime-local` value for "now", to the minute, in the browser's local
  * time zone (matches the `<input type="datetime-local">` wire format, which
- * carries no timezone of its own).
+ * carries no timezone of its own). Shared with the ammo reconcile form.
  */
-function nowLocal(): string {
+export function nowLocal(): string {
   const now = new Date();
   const offsetMs = now.getTimezoneOffset() * 60_000;
   return new Date(now.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
 interface LogEntryFormProps {
-  parentType: ParentType;
+  parentType: GenericLogParentType;
   parentId: string;
   /** The parent-appropriate event-type set (R11) — since U5 retired `cleaned`/`lubed`, both parent families offer only "inventoried". */
   eventTypes: readonly EventType[];
