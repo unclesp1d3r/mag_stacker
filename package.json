@@ -41,7 +41,7 @@
     "sharp": "^0.35.5",
     "sodium-native": "^5.1.0",
     "tailwind-merge": "^3.7.0",
-    "tar-stream": "^3.2.1",
+    "tar-stream": "^3.2.2",
     "thread-stream": "^4.2.0"
   },
   "devDependencies": {
