@@ -21,7 +21,7 @@ An owned magazine in a user's inventory. Another owned parent. Carries brand/mod
 
 ### Ammo
 
-An owned ammunition lot in a user's inventory. The third owned parent, shared through the same **Grant** model as Firearms (edit grants included). A lot carries an optional brand, a caliber, an optional load type (free text with suggestions — FMJ, JHP, Match, and so on), a grain weight, a quantity in rounds, a **Low Stock** threshold, and an optional acquired date and notes. Lots with identical brand/caliber/type/grain stay separate — never merged; per-caliber views aggregate across them instead. Ammo has no **child record** families yet and does not participate in the **Inventory Log**.
+An owned ammunition lot in a user's inventory. The third owned parent, shared through the same **Grant** model as Firearms (edit grants included). A lot carries an optional brand, a caliber, an optional load type (free text with suggestions — FMJ, JHP, Match, and so on), a grain weight, a quantity in rounds, a **Low Stock** threshold, and an optional acquired date and notes. Lots with identical brand/caliber/type/grain stay separate — never merged; per-caliber views aggregate across them instead. Ammo participates in the **Inventory Log** through **Reconciliation**: its Log Entries are its first **child record** family.
 
 ### Accessory
 
@@ -37,15 +37,15 @@ A single logged range trip for one Firearm — the date and the rounds fired tha
 
 ### Inventory Log
 
-An append-only history of physical-handling events on a single Firearm or Magazine — each **Log Entry** records an **Event Type**, the acting user, when it happened, and optional notes. A **child record** family: entries inherit their parent's owner and grants, cannot be shared on their own, and are removed with the parent. Entries are created and listed but not edited or deleted. `cleaned` and `lubed` were retired as Firearm Event Types once **Service Event** shipped (service-intervals plan, U5) — logging service against a **Service Rule** is now the single way to record either act; every prior `cleaned`/`lubed` entry converted to a Service Event and the Inventory Log now carries only `inventoried` for both parent families.
+An append-only history of physical-handling events on a single Firearm, Magazine, or Ammo lot — each **Log Entry** records an **Event Type**, the acting user, when it happened, and optional notes; an Ammo entry is a **Reconciliation** and also carries the counted rounds and the rounds on record. A **child record** family: entries inherit their parent's owner and grants, cannot be shared on their own, and are removed with the parent. Entries are created and listed but not edited or deleted. `cleaned` and `lubed` were retired as Firearm Event Types once **Service Event** shipped (service-intervals plan, U5) — logging service against a **Service Rule** is now the single way to record either act; every prior `cleaned`/`lubed` entry converted to a Service Event and the Inventory Log now carries only `inventoried` for all three parent families.
 
 ### Event Type
 
-The controlled kind of a **Log Entry** — currently *inventoried*, the only member for either parent family — drawn from a fixed value set whose valid members depend on the parent family. Deliberately not called an "action" — that name already means a Firearm's operating mechanism (see **Firearm Action**).
+The controlled kind of a **Log Entry** — currently *inventoried*, the only member for any of the three parent families (Firearm, Magazine, Ammo) — drawn from a fixed value set whose valid members depend on the parent family. Deliberately not called an "action" — that name already means a Firearm's operating mechanism (see **Firearm Action**).
 
 ### Child record
 
-A record that hangs off an owned parent (currently a Firearm or an Accessory; Magazine and Ammo have no child families yet) and inherits that parent's owner and grants rather than carrying its own. Child records are never shared independently and are removed with their parent. **Range Session** and **Inventory Log** are the first child families; **Attachment** is the accessory's. The pattern is the seam future child families follow.
+A record that hangs off an owned parent (currently a Firearm, an Ammo lot, or an Accessory; Magazine has no child family yet) and inherits that parent's owner and grants rather than carrying its own. Child records are never shared independently and are removed with their parent. **Range Session** and **Inventory Log** are the first child families; **Attachment** is the accessory's; an Ammo lot's **Reconciliation** entries are its. The pattern is the seam future child families follow.
 
 ### Compatibility
 
@@ -145,7 +145,11 @@ The derived state of an **Ammo** lot whose quantity in rounds is at or under its
 
 ### Last Inventoried
 
-A Magazine's most recent physical-count date: the `occurredAt` of the latest **Inventory Log** entry with **Event Type** `inventoried`. Derived, not stored — and blank (a first-class state) when the Magazine has never been inventoried. Respects owner-scoping: derived only from entries visible through the parent Magazine.
+A Magazine's or Ammo lot's most recent physical-count date: the `occurredAt` of the latest **Inventory Log** entry with **Event Type** `inventoried`. Derived, not stored — and blank (a first-class state) when the item has never been inventoried. Respects owner-scoping: derived only from entries visible through the parent item.
+
+### Reconciliation
+
+An Ammo lot's **Inventory Log** entry: the operator records the rounds they physically counted, and the lot's quantity becomes that count in the same act. The entry stores the counted rounds and the rounds on record at that moment; its **Variance** (counted minus on record) is derived wherever it is shown, never stored. Any variance is recorded, never blocked. A count dated before the lot's latest recorded count is appended as history but does not change the quantity (it shows as *not applied*); a mistaken count is corrected by a new reconciliation, never by editing the entry. Reconciling is an edit action (owner or `edit` grantee); anyone who can see the lot can read its history.
 
 ### Due
 

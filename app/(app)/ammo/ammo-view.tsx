@@ -23,6 +23,7 @@ import { useDeleteConfirmation } from "@/hooks/use-delete-confirmation";
 import { useRowFlash } from "@/hooks/use-row-flash";
 import { useTableViewState } from "@/hooks/use-table-view-state";
 import { isLowStock } from "@/src/domain/ammo/validate";
+import { lastInventoriedColumn } from "../inventory-log/last-inventoried-column";
 import { deleteAmmoAction } from "./actions";
 import { AmmoForm, lotDisplayName } from "./ammo-form";
 import { ExportButton } from "./export-button";
@@ -38,6 +39,8 @@ export interface AmmoListItem {
   lowStockThreshold: number;
   acquiredDate: string | null;
   notes: string;
+  /** ISO datetime of the latest reconciliation, or null when never counted (#100 R15). */
+  lastInventoriedAt: string | null;
 }
 
 interface AmmoViewProps {
@@ -150,6 +153,9 @@ export function AmmoView({
             <Badge tone="destructive">Low stock</Badge>
           ) : null,
       },
+      // Default-visible and sortable (#100 R16); never-counted sorts as
+      // maximally stale in both directions.
+      lastInventoriedColumn<AmmoListItem>(),
       {
         accessorKey: "acquiredDate",
         id: "acquiredDate",
