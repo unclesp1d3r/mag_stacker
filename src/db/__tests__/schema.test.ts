@@ -7,6 +7,7 @@ import {
   ammo,
   firearm,
   grant,
+  inventoryLog,
   magazine,
   magazineFirearm,
   user,
@@ -245,6 +246,132 @@ describe("core inventory schema (U3)", () => {
       .from(grant)
       .where(and(eq(grant.parentType, "ammo"), eq(grant.parentId, lot.id)));
     expect(grants).toHaveLength(0);
+  });
+
+  // #100 (ammo reconciliation) U1: ammo is a log parent, and the counted /
+  // recorded columns are required for ammo and forbidden for other families.
+  test("inventory_log accepts an ammo row with counted and recorded rounds (#100 R1/R2/R3)", async () => {
+    const [lot] = await db
+      .insert(ammo)
+      .values({ ownerId, caliber: "9mm" })
+      .returning();
+    const [row] = await db
+      .insert(inventoryLog)
+      .values({
+        parentType: "ammo",
+        parentId: lot.id,
+        eventType: "inventoried",
+        actorId: ownerId,
+        countedRounds: 480,
+        recordedRounds: 500,
+      })
+      .returning();
+    expect(row.countedRounds).toBe(480);
+    expect(row.recordedRounds).toBe(500);
+  });
+
+  test("inventory_log CHECK rejects an ammo row without counts or with a negative count (#100 R2)", async () => {
+    const [lot] = await db
+      .insert(ammo)
+      .values({ ownerId, caliber: "9mm" })
+      .returning();
+    await expectRejects(
+      db.insert(inventoryLog).values({
+        parentType: "ammo",
+        parentId: lot.id,
+        eventType: "inventoried",
+        actorId: ownerId,
+      }),
+    );
+    await expectRejects(
+      db.insert(inventoryLog).values({
+        parentType: "ammo",
+        parentId: lot.id,
+        eventType: "inventoried",
+        actorId: ownerId,
+        countedRounds: -1,
+        recordedRounds: 0,
+      }),
+    );
+    await expectRejects(
+      db.insert(inventoryLog).values({
+        parentType: "ammo",
+        parentId: lot.id,
+        eventType: "cleaned",
+        actorId: ownerId,
+        countedRounds: 1,
+        recordedRounds: 1,
+      }),
+    );
+  });
+
+  // Covers AE10 at the database layer.
+  test("inventory_log CHECK rejects a firearm row carrying counted rounds (#100 AE10)", async () => {
+    const [f] = await db
+      .insert(firearm)
+      .values({ ownerId, name: "Counted FA", caliber: "9mm" })
+      .returning();
+    await expectRejects(
+      db.insert(inventoryLog).values({
+        parentType: "firearm",
+        parentId: f.id,
+        eventType: "inventoried",
+        actorId: ownerId,
+        countedRounds: 1,
+        recordedRounds: 1,
+      }),
+    );
+  });
+
+  // Covers AE7 at the database layer (KTD8 cleanup trigger).
+  test("deleting an ammo lot removes its inventory_log rows via the cleanup trigger (#100 R10)", async () => {
+    const [lot] = await db
+      .insert(ammo)
+      .values({ ownerId, caliber: "9mm" })
+      .returning();
+    const [f] = await db
+      .insert(firearm)
+      .values({ ownerId, name: "Survivor FA", caliber: "9mm" })
+      .returning();
+    await db.insert(inventoryLog).values([
+      {
+        parentType: "ammo",
+        parentId: lot.id,
+        eventType: "inventoried",
+        actorId: ownerId,
+        countedRounds: 10,
+        recordedRounds: 10,
+      },
+      {
+        parentType: "firearm",
+        parentId: f.id,
+        eventType: "inventoried",
+        actorId: ownerId,
+      },
+    ]);
+
+    await db.delete(ammo).where(eq(ammo.id, lot.id));
+
+    const ammoRows = await db
+      .select()
+      .from(inventoryLog)
+      .where(
+        and(
+          eq(inventoryLog.parentType, "ammo"),
+          eq(inventoryLog.parentId, lot.id),
+        ),
+      );
+    expect(ammoRows).toHaveLength(0);
+    const firearmRows = await db
+      .select()
+      .from(inventoryLog)
+      .where(
+        and(
+          eq(inventoryLog.parentType, "firearm"),
+          eq(inventoryLog.parentId, f.id),
+        ),
+      );
+    expect(firearmRows).toHaveLength(1);
   });
 
   test("visibility indexes exist on owner_id and grant (grantee_id, parent_type) (R72)", async () => {
