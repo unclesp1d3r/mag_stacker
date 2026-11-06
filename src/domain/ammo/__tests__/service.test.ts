@@ -3,7 +3,12 @@ import { NotFoundError } from "@/src/auth/errors";
 import { createGrant } from "@/src/auth/grants";
 import { db } from "@/src/db/client";
 import { ValidationError } from "@/src/domain/errors";
-import { createUser, deleteUsers } from "@/src/test-support/factories";
+import {
+  createUser,
+  deleteUsers,
+  makeAmmo,
+  makeLogEntry,
+} from "@/src/test-support/factories";
 import {
   createAmmo,
   deleteAmmo,
@@ -268,5 +273,72 @@ describe("ammo service (ammo plan U3)", () => {
     const outsider = await createUser("AmmoSvcEmpty");
     expect(await listAmmo(outsider)).toEqual([]);
     await deleteUsers(userD, outsider);
+  });
+
+  // #100 U3 (R15/R17): Last Inventoried is attached from the log in one
+  // grouped query, derived only through the visible-id set.
+  test("covers R15: listAmmo attaches the latest counted occurredAt, null when never counted (#100)", async () => {
+    const userE = await createUser("AmmoSvcE");
+    const counted = await makeAmmo(userE, { brand: "Counted" });
+    const never = await makeAmmo(userE, { brand: "Never" });
+    await makeLogEntry("ammo", counted.id, {
+      actorId: userE,
+      occurredAt: new Date("2026-01-01T00:00:00.000Z"),
+      countedRounds: 100,
+      recordedRounds: 100,
+    });
+    await makeLogEntry("ammo", counted.id, {
+      actorId: userE,
+      occurredAt: new Date("2026-03-01T00:00:00.000Z"),
+      countedRounds: 90,
+      recordedRounds: 100,
+    });
+
+    const list = await listAmmo(userE);
+    const byId = new Map(list.map((a) => [a.id, a.lastInventoriedAt]));
+    expect(byId.get(counted.id)?.toISOString()).toBe(
+      "2026-03-01T00:00:00.000Z",
+    );
+    expect(byId.get(never.id)).toBeNull();
+
+    const detail = await getAmmo(userE, counted.id);
+    expect(detail.lastInventoriedAt?.toISOString()).toBe(
+      "2026-03-01T00:00:00.000Z",
+    );
+    expect((await getAmmo(userE, never.id)).lastInventoriedAt).toBeNull();
+    await deleteUsers(userE);
+  });
+
+  test("covers R15: a grantee sees the shared lot's date; an unshared lot never appears (#100)", async () => {
+    const ownerF = await createUser("AmmoSvcF");
+    const granteeF = await createUser("AmmoSvcG");
+    const shared = await makeAmmo(ownerF, { brand: "Shared" });
+    const hidden = await makeAmmo(ownerF, { brand: "Hidden" });
+    await makeLogEntry("ammo", shared.id, {
+      actorId: ownerF,
+      occurredAt: new Date("2026-02-01T00:00:00.000Z"),
+      countedRounds: 10,
+      recordedRounds: 10,
+    });
+    await makeLogEntry("ammo", hidden.id, {
+      actorId: ownerF,
+      occurredAt: new Date("2026-02-02T00:00:00.000Z"),
+      countedRounds: 10,
+      recordedRounds: 10,
+    });
+    await createGrant(db, {
+      actorId: ownerF,
+      granteeId: granteeF,
+      parentType: "ammo",
+      parentId: shared.id,
+      permission: "view",
+    });
+
+    const list = await listAmmo(granteeF);
+    expect(list.map((a) => a.id)).toEqual([shared.id]);
+    expect(list[0].lastInventoriedAt?.toISOString()).toBe(
+      "2026-02-01T00:00:00.000Z",
+    );
+    await deleteUsers(ownerF, granteeF);
   });
 });

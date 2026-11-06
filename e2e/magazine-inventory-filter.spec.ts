@@ -5,6 +5,7 @@ import {
   viewStateStorageKey,
 } from "../src/domain/tables/view-state-storage";
 import { authTest, expect } from "./fixtures/auth";
+import { localDateTimeInput } from "./fixtures/datetime";
 
 /**
  * Inventory-date filter on the magazines list (U4, #70): the "Last
@@ -23,17 +24,6 @@ const test = authTest("magazine-inventory-filter");
 test.describe.configure({ retries: 0 });
 
 const DAY_MS = 86_400_000;
-
-/**
- * The `datetime-local` value for `date`, to the minute, in the browser's local
- * time zone (matches `nowLocal()` in `app/(app)/inventory-log/log-entry-form.tsx`,
- * which the picker itself uses — a timezone-less string is interpreted as
- * local time by both the input and the `Date` constructor).
- */
-function localDateTimeInput(date: Date): string {
-  const offsetMs = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
-}
 
 /**
  * Move the open date-range popover's visible month(s) by `delta` months
