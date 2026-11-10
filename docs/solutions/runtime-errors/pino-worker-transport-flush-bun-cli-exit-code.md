@@ -7,7 +7,7 @@ problem_type: runtime_error
 component: tooling
 symptoms:
   - "A failed `bun run db:migrate` exits 0 instead of 1 — CI and the calling shell read a failed migration as success"
-  - "`pino`'s `logger.flush(cb)` callback never fires under Bun when the logger uses worker-thread transports"
+  - "`pino`'s `logger.flush(cb)` callback was observed not to fire under Bun when the logger used worker-thread transports"
   - "The success/failure log line is dropped or truncated in a short-lived CLI that calls `process.exit()`"
 tags: [pino, bun, logging, worker-threads, thread-stream, exit-code, cli, flush, process-exit, migration]
 ---
@@ -16,7 +16,9 @@ tags: [pino, bun, logging, worker-threads, thread-stream, exit-code, cli, flush,
 
 ## Problem
 
-A standalone CLI (`src/db/migrate.ts`, run via `bun run db:migrate`) that logs through a Pino logger backed by worker-thread transports (`pino.transport({ targets })`, e.g. `pino-pretty` / `pino-roll` / `pino/file`) can never reliably reach its own `process.exit(1)`. Under Bun, the process instead exits `0` via the runtime's natural path once the unref'd worker-thread handle drops — silently turning a **failed** migration into a reported **success** for CI and the calling shell.
+A standalone CLI (`src/db/migrate.ts`, run via `bun run db:migrate`) that logged through a Pino logger backed by worker-thread transports (`pino.transport({ targets })`, e.g. `pino-pretty` / `pino-roll` / `pino/file`) was observed not to reach its own `process.exit(1)`. Under Bun, the process instead exited `0` via the runtime's natural path once the unref'd worker-thread handle dropped — silently turning a **failed** migration into a reported **success** for CI and the calling shell.
+
+`thread-stream` keeps the worker referenced while `flush(cb)` is pending. The callback failure described below is a historical observation, not an established result with that worker-lifetime fix under Bun; revalidate it with a subprocess exit-code test before relying on it. The synchronous, no-transport logger below avoids depending on worker flushing.
 
 ## Symptoms
 
