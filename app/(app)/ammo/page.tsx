@@ -25,6 +25,9 @@ export default async function AmmoPage() {
     lowStockThreshold: a.lowStockThreshold,
     acquiredDate: a.acquiredDate,
     notes: a.notes,
+    lastInventoriedAt: a.lastInventoriedAt
+      ? a.lastInventoriedAt.toISOString()
+      : null,
   }));
 
   return (

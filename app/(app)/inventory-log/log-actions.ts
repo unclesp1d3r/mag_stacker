@@ -10,6 +10,8 @@ import {
   type LogEntryCreateInput,
   listLogForParent,
   markInventoried,
+  type ReconcileAmmoInput,
+  reconcileAmmo,
 } from "@/src/domain/inventory-log/service";
 import { withActionContext } from "@/src/lib/logging/entry-context";
 
@@ -45,6 +47,24 @@ export async function markInventoriedAction(
     const created = await markInventoried(userId, parentType, parentId);
     revalidatePath("/firearms");
     revalidatePath("/magazines");
+    return { ok: true, data: { id: created.id } };
+  });
+}
+
+/**
+ * Reconcile an ammo lot against a physical count (#100 U4, KTD9). The actor
+ * is the session user resolved by `withActionContext` — never a client value.
+ * Revalidates the ammo list and `/summary`, whose Low Stock roll-ups read the
+ * corrected quantity (R14).
+ */
+export async function reconcileAmmoAction(
+  ammoId: string,
+  input: ReconcileAmmoInput,
+): Promise<ActionResult<{ id: string }>> {
+  return withActionContext("inventory-log", async (userId) => {
+    const created = await reconcileAmmo(userId, ammoId, input);
+    revalidatePath("/ammo");
+    revalidatePath("/summary");
     return { ok: true, data: { id: created.id } };
   });
 }
