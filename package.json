@@ -45,7 +45,7 @@
     "thread-stream": "^4.2.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.4",
+    "@biomejs/biome": "2.6.6",
     "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4.3.4",
     "@testcontainers/postgresql": "^12.2.1",
