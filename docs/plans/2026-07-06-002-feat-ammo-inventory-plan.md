@@ -92,7 +92,7 @@ The app models firearms, magazines, and caliber reference data, but not ammuniti
 - Consumption / "consume rounds" events and deducting ammo after a range session (the `rangeSession.ammoId` seam stays FK-less until then).
 - Reservation/allocation of ammo to a trip or event.
 - Lot merging in the UI; richer analytics by caliber or load type **beyond the R11 low-stock counts and the R12 caliber-coverage signal** (e.g., per-caliber consumption trends, historical stock charts, per-load breakdowns).
-- **Inventory-log participation for ammo** (the append-only handling log, #46). Ammo lots get no log entries in this slice: the `inventory_log_parent_type_valid` CHECK stays `('firearm', 'magazine')` and the ammo detail view omits `InventoryLogHistory`. Deferred, not rejected — a fast-follow can widen that CHECK and add an ammo event-type set.
+- **Inventory-log participation for ammo** (the append-only handling log, #46). Ammo lots get no log entries in this slice: the `inventory_log_parent_type_valid` CHECK stays `('firearm', 'magazine')` and the ammo detail view omits `InventoryLogHistory`. Deferred, not rejected — a fast-follow can widen that CHECK and add an ammo event-type set. *(Later implemented in PR #148 (issue #100), which extended the Inventory Log to ammo with reconciliation entries carrying counted rounds.)*
 
 ### Open Questions / Assumptions
 
@@ -352,6 +352,10 @@ src/domain/csv/
 - `/summary` shows both low-stock roll-ups and the caliber-coverage signal.
 - Ammo CSV export works with threshold + status columns.
 - CONCEPTS.md updated; no stale "two owned parents" phrasing.
+
+## Subsequent Changes
+
+While this plan excluded inventory-log participation for ammo, that scope was later extended by PR #148 (issue #100), which added ammo reconciliation via the Inventory Log. Ammo lots now record physical counts through `inventoried` log entries carrying `counted_rounds` and `recorded_rounds`, and a reconciliation corrects `quantity_rounds` against the counted value in the same transaction. The `inventory_log_parent_type_valid` CHECK was widened to include `'ammo'`, and the ammo detail view now displays `InventoryLogHistory` with reconciliation entries showing counted/recorded/variance figures. This allows ammo to participate in the Low Stock surface with counts backed by physical inventory rather than only manual overwrites.
 
 ## Sources & Research
 

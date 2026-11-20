@@ -1,13 +1,14 @@
 /**
- * Pure formatting helper for the magazines table's "Last inventoried" column
- * (U3, #70). Kept separate from `magazines-view.tsx` so it's unit-testable
- * without pulling in React/TanStack.
+ * Pure formatting and sort helpers for a "Last inventoried" column or row
+ * (U3, #70; shared with ammo since #100, plan KTD7). Kept separate from the
+ * views so they're unit-testable without pulling in React/TanStack. Consumed
+ * by `magazines-view.tsx`, `ammo-view.tsx`, and `ammo-detail-view.tsx`.
  */
 
 /**
- * Renders the calendar date a magazine was last marked "inventoried", or an
+ * Renders the calendar date an item was last marked "inventoried", or an
  * em-dash when it never has been (or the stored value is unparsable). `value`
- * is the serialized ISO datetime string from `MagazineListItem.lastInventoriedAt`
+ * is the serialized ISO datetime string from the list item's `lastInventoriedAt`
  * (null when never inventoried) — only the date portion is shown, as an
  * absolute, locale-formatted date. This is not byte-identical to the
  * "Acquired" column, which renders its raw stored date string directly (a
