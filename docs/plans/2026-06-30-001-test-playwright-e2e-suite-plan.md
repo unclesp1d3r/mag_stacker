@@ -142,7 +142,7 @@ sequenceDiagram
 
 - GitHub-hosted `ubuntu-latest` runners provide a Docker daemon, so Testcontainers and its Ryuk reaper work in CI. A self-hosted runner would need Docker present and `TESTCONTAINERS_RYUK_DISABLED` left unset.
 - `auth.api.createUser` works against the container DB from the launcher without an admin session (verified: `scripts/seed-admin.ts` relies on exactly this).
-- The launcher can mint a user session in-process with the server-side Better Auth API — e.g. `auth.api.signInEmail` returning a `Set-Cookie` the launcher parses for the token. Confirm the exact `auth.api` call and token extraction against `better-auth ^1.6.22` at implementation.
+- The launcher can mint a user session in-process with the server-side Better Auth API — e.g. `auth.api.signInEmail` returning a `Set-Cookie` the launcher parses for the token. Confirm the exact `auth.api` call and token extraction against the Better Auth version resolved in [`bun.lock`](../../bun.lock) at implementation.
 - The launcher generates a random `BETTER_AUTH_SECRET` and admin credentials at startup; nothing is hardcoded or committed.
 - The session cookie name is `better-auth.session_token` (verified in `src/auth/__tests__/gating.test.ts`); the `storageState` cookie must reproduce its attributes (path, `httpOnly`, `sameSite`) or the browser silently drops it and specs land on `/login`.
 - CI installs Playwright browsers (`playwright install --with-deps chromium`) and authenticates or caches the Postgres image pull to avoid Docker Hub's unauthenticated rate limit on shared runner IPs.
