@@ -3,18 +3,25 @@ import { eq } from "drizzle-orm";
 import { NotAuthorizedError, NotFoundError } from "@/src/auth/errors";
 import { createGrant } from "@/src/auth/grants";
 import { db } from "@/src/db/client";
-import { firearm, inventoryLog, magazine } from "@/src/db/schema";
+import { ammo, firearm, inventoryLog, magazine } from "@/src/db/schema";
+import { deleteAmmo, getAmmo, updateAmmo } from "@/src/domain/ammo/service";
 import { ValidationError } from "@/src/domain/errors";
 import { expectRejects } from "@/src/test-support/assertions";
 import {
   createUser,
   deleteUsers,
+  makeAmmo,
   makeFirearm,
   makeLogEntry,
   makeMagazine,
 } from "@/src/test-support/factories";
 import * as service from "../service";
-import { createLogEntry, listLogForParent, markInventoried } from "../service";
+import {
+  createLogEntry,
+  listLogForParent,
+  markInventoried,
+  reconcileAmmo,
+} from "../service";
 
 describe("inventory-log service (U3)", () => {
   let owner = "";
@@ -359,5 +366,210 @@ describe("inventory-log service (U3)", () => {
     } finally {
       await deleteUsers(isolatedOwner);
     }
+  });
+});
+
+/**
+ * Ammo reconciliation (#100, plan U2): the single write path also corrects
+ * the lot, the on-record quantity is snapshotted under a row lock, and the
+ * newest-dated count owns the quantity (KTD2, KTD3, KTD5).
+ */
+describe("ammo reconciliation (#100 U2)", () => {
+  let owner = "";
+  let editor = "";
+  let viewer = "";
+  let stranger = "";
+
+  beforeAll(async () => {
+    owner = await createUser("reconOwner");
+    editor = await createUser("reconEditor");
+    viewer = await createUser("reconViewer");
+    stranger = await createUser("reconStranger");
+  });
+  afterAll(async () => {
+    await deleteUsers(owner, editor, viewer, stranger);
+  });
+
+  async function quantityOf(id: string): Promise<number> {
+    const [row] = await db.select().from(ammo).where(eq(ammo.id, id));
+    return row.quantityRounds;
+  }
+
+  test("covers AE1: reconciling 500 -> 480 corrects the lot and stores both counts", async () => {
+    const lot = await makeAmmo(owner, { quantityRounds: 500 });
+    const entry = await reconcileAmmo(owner, lot.id, {
+      countedRounds: 480,
+      occurredAt: "2026-02-01T00:00:00.000Z",
+    });
+    expect(entry.parentType).toBe("ammo");
+    expect(entry.eventType).toBe("inventoried");
+    expect(entry.countedRounds).toBe(480);
+    expect(entry.recordedRounds).toBe(500);
+    expect(entry.actorId).toBe(owner);
+    expect(await quantityOf(lot.id)).toBe(480);
+  });
+
+  test("covers AE2: a count equal to the quantity appends an entry and leaves the quantity", async () => {
+    const lot = await makeAmmo(owner, { quantityRounds: 100 });
+    const before = await getAmmo(owner, lot.id);
+    const entry = await reconcileAmmo(owner, lot.id, { countedRounds: 100 });
+    expect(entry.countedRounds).toBe(100);
+    expect(entry.recordedRounds).toBe(100);
+    expect(await quantityOf(lot.id)).toBe(100);
+    const after = await getAmmo(owner, lot.id);
+    expect(after.ammo.updatedAt.getTime()).toBeGreaterThanOrEqual(
+      before.ammo.updatedAt.getTime(),
+    );
+  });
+
+  test("covers AE3: the snapshot is the quantity at write time, not the previous count", async () => {
+    const lot = await makeAmmo(owner, { quantityRounds: 120 });
+    await reconcileAmmo(owner, lot.id, {
+      countedRounds: 100,
+      occurredAt: "2026-01-01T00:00:00.000Z",
+    });
+    await updateAmmo(owner, lot.id, {
+      caliber: lot.caliber,
+      grain: lot.grain,
+      quantityRounds: 80,
+      lowStockThreshold: lot.lowStockThreshold,
+    });
+    const second = await reconcileAmmo(owner, lot.id, {
+      countedRounds: 75,
+      occurredAt: "2026-01-02T00:00:00.000Z",
+    });
+    expect(second.recordedRounds).toBe(80);
+    expect((second.countedRounds ?? 0) - (second.recordedRounds ?? 0)).toBe(-5);
+    expect(await quantityOf(lot.id)).toBe(75);
+  });
+
+  test("covers AE9: a count dated before a newer one is recorded but not applied", async () => {
+    const lot = await makeAmmo(owner, { quantityRounds: 350 });
+    const today = new Date();
+    await reconcileAmmo(owner, lot.id, {
+      countedRounds: 300,
+      occurredAt: today,
+    });
+    const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const older = await reconcileAmmo(owner, lot.id, {
+      countedRounds: 320,
+      occurredAt: lastWeek,
+    });
+    expect(older.countedRounds).toBe(320);
+    expect(older.recordedRounds).toBe(300);
+    expect(await quantityOf(lot.id)).toBe(300);
+    const entries = await listLogForParent(owner, "ammo", lot.id);
+    expect(entries.map((e) => e.countedRounds)).toEqual([300, 320]);
+  });
+
+  test("covers AE11: a back-dated count with nothing newer sets the quantity", async () => {
+    const lot = await makeAmmo(owner, { quantityRounds: 300 });
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await reconcileAmmo(owner, lot.id, {
+      countedRounds: 280,
+      occurredAt: yesterday,
+    });
+    expect(await quantityOf(lot.id)).toBe(280);
+  });
+
+  test("a count of 0 is accepted and the lot reads 0", async () => {
+    const lot = await makeAmmo(owner, { quantityRounds: 5 });
+    await reconcileAmmo(owner, lot.id, { countedRounds: 0 });
+    expect(await quantityOf(lot.id)).toBe(0);
+  });
+
+  test("covers AE6/R8: an edit grantee reconciles and is attributed", async () => {
+    const lot = await makeAmmo(owner, { quantityRounds: 50 });
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: editor,
+      parentType: "ammo",
+      parentId: lot.id,
+      permission: "edit",
+    });
+    const entry = await reconcileAmmo(editor, lot.id, { countedRounds: 40 });
+    expect(entry.actorId).toBe(editor);
+    expect(await quantityOf(lot.id)).toBe(40);
+    expect(await listLogForParent(owner, "ammo", lot.id)).toHaveLength(1);
+  });
+
+  test("covers AE5/R8/R9: a view grantee can list but reconcile is rejected with no partial write", async () => {
+    const lot = await makeAmmo(owner, { quantityRounds: 50 });
+    await createGrant(db, {
+      actorId: owner,
+      granteeId: viewer,
+      parentType: "ammo",
+      parentId: lot.id,
+      permission: "view",
+    });
+    await expect(
+      reconcileAmmo(viewer, lot.id, { countedRounds: 10 }),
+    ).rejects.toBeInstanceOf(NotAuthorizedError);
+    expect(await quantityOf(lot.id)).toBe(50);
+    expect(await listLogForParent(viewer, "ammo", lot.id)).toHaveLength(0);
+  });
+
+  test("a stranger gets NotFoundError on reconcile and list", async () => {
+    const lot = await makeAmmo(owner, { quantityRounds: 50 });
+    await expect(
+      reconcileAmmo(stranger, lot.id, { countedRounds: 10 }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      listLogForParent(stranger, "ammo", lot.id),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  test("markInventoried on an ammo lot fails validation and writes nothing (KTD3)", async () => {
+    const lot = await makeAmmo(owner, { quantityRounds: 50 });
+    let codes: string[] = [];
+    try {
+      await markInventoried(owner, "ammo", lot.id);
+    } catch (error) {
+      expect(error).toBeInstanceOf(ValidationError);
+      codes = (error as ValidationError).codes;
+    }
+    expect(codes).toEqual(["countedRoundsRequired"]);
+    expect(await listLogForParent(owner, "ammo", lot.id)).toHaveLength(0);
+    expect(await quantityOf(lot.id)).toBe(50);
+  });
+
+  test("covers AE10: a firearm entry carrying countedRounds fails validation", async () => {
+    const fa = await makeFirearm(owner);
+    await expect(
+      createLogEntry(owner, {
+        parentType: "firearm",
+        parentId: fa.id,
+        eventType: "inventoried",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        countedRounds: 3,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  test("covers R12/R13: notes are stored unchanged; an omitted note is empty", async () => {
+    const lot = await makeAmmo(owner, { quantityRounds: 50 });
+    const withNote = await reconcileAmmo(owner, lot.id, {
+      countedRounds: 49,
+      notes: "Box damaged",
+    });
+    expect(withNote.notes).toBe("Box damaged");
+    const withoutNote = await reconcileAmmo(owner, lot.id, {
+      countedRounds: 48,
+    });
+    expect(withoutNote.notes).toBe("");
+  });
+
+  test("covers AE7/R10: deleting the lot removes its entries and hides the history", async () => {
+    const lot = await makeAmmo(owner, { quantityRounds: 50 });
+    await reconcileAmmo(owner, lot.id, { countedRounds: 45 });
+    await deleteAmmo(owner, lot.id);
+    const rows = await db
+      .select()
+      .from(inventoryLog)
+      .where(eq(inventoryLog.parentId, lot.id));
+    expect(rows).toHaveLength(0);
+    await expect(
+      listLogForParent(owner, "ammo", lot.id),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 });
